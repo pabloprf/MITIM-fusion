@@ -2141,6 +2141,151 @@ def PORTALSanalyzer_plotDebug(self, fig=None):
         lab = 'Optimization',
     )
     
+def _linear_regression(x, y):
+    '''Least-squares slope/intercept, or (None, None) if the fit is not defined'''
+    mask = np.isfinite(x) & np.isfinite(y)
+    if mask.sum() < 2 or np.ptp(x[mask]) == 0.0:
+        return None, None
+    slope, intercept = np.polyfit(x[mask], y[mask], 1)
+    return slope, intercept
+
+
+def PORTALSanalyzer_plotFluxesVsGradients(self, fig=None, flux_type="turb", normalized=True, plot_errors=True):
+    '''
+    Scatter of every evaluated flux against every evolved gradient, one panel per
+    (flux, gradient) pair and one color per radius. The diagonal panels are the
+    critical-gradient views (flux vs its own driving gradient); the off-diagonal
+    ones show cross-channel drives. Scatter (not lines) because each point is an
+    independent transport-code call at a different plasma state, so the vertical
+    spread at fixed gradient is the effect of everything else that moved (Ti/Te,
+    nu_ei, beta_e, ...).
+
+    flux_type:  'turb' (default), 'neoc' or 'total'
+    normalized: gyro-Bohm normalized fluxes (default) -- the right y for a
+                critical-gradient view, since it removes the trivial radial
+                scaling of Qgb/Ggb
+    plot_errors:1-sigma error bars from the transport model (the '_stds' fields:
+                TGLF's assigned relative error, CGYRO's time-trace scatter)
+    '''
+
+    if fig is None:
+        plt.ion()
+        fig = plt.figure(figsize=(15, 9))
+
+    channel_info = {
+        "te": {"grad": "aLte", "grad_label": "$a/L_{Te}$",
+               "flux": "QeMWm2", "gb": "Qgb",
+               "label": "$Q_e$ ($MW/m^2$)",       "label_gb": "$Q_e/Q_{GB}$"},
+        "ti": {"grad": "aLti", "grad_label": "$a/L_{Ti}$",
+               "flux": "QiMWm2", "gb": "Qgb",
+               "label": "$Q_i$ ($MW/m^2$)",       "label_gb": "$Q_i/Q_{GB}$"},
+        "ne": {"grad": "aLne", "grad_label": "$a/L_{ne}$",
+               "flux": "Ge1E20m2", "gb": "Ggb",
+               "label": "$\\Gamma_e$ ($10^{20}m^{-2}s^{-1}$)", "label_gb": "$\\Gamma_e/\\Gamma_{GB}$"},
+        "nZ": {"grad": "aLnZ", "grad_label": "$a/L_{nZ}$",
+               "flux": "GZ1E20m2", "gb": "Ggb",
+               "label": "$\\Gamma_Z$ ($10^{20}m^{-2}s^{-1}$)", "label_gb": "$\\Gamma_Z/\\Gamma_{GB}$"},
+        # aLw0_n is the c_s-normalized rotation-gradient the surrogates actually see, not a/L_w0
+        "w0": {"grad": "aLw0_n", "grad_label": "$-(a/c_s)\\cdot d\\omega_0/dr$",
+               "flux": "MtJm2", "gb": "Pgb",
+               "label": "$M_T$ ($J/m^2$)",        "label_gb": "$M_T/\\Pi_{GB}$"},
+    }
+
+    channels = [c for c in self.predicted_channels if c in channel_info]
+
+    suffix = {"turb": "_tr_turb", "neoc": "_tr_neoc", "total": "_tr"}[flux_type]
+    name_flux = {"turb": "turbulent", "neoc": "neoclassical", "total": "turb+neoc"}[flux_type]
+
+    # ------------------------------------------------------------------------
+    # Gather all evaluations: (n_evaluations, n_radii) arrays per quantity
+    # ------------------------------------------------------------------------
+
+    def _grab(power, key):
+        return power.plasma[key][0, 1:].cpu().numpy()
+
+    gradients, fluxes, errors = {}, {}, {}
+    for c in channels:
+        info = channel_info[c]
+        gradients[c] = np.array([_grab(p, info["grad"]) for p in self.powerstates])
+        f = np.array([_grab(p, info["flux"] + suffix) for p in self.powerstates])
+
+        # There is no '_tr_stds' field: for the summed flux, add turb and neoc in quadrature
+        if flux_type == "total":
+            e = np.sqrt(sum(np.array([_grab(p, f"{info['flux']}_tr_{s}_stds") for p in self.powerstates])**2
+                            for s in ["turb", "neoc"]))
+        else:
+            e = np.array([_grab(p, info["flux"] + suffix + "_stds") for p in self.powerstates])
+
+        if normalized:
+            gb = np.array([_grab(p, info["gb"]) for p in self.powerstates])
+            f, e = f / gb, e / gb
+
+        fluxes[c], errors[c] = f, e
+
+    # ------------------------------------------------------------------------
+    # Grid: rows = fluxes, columns = gradients
+    # ------------------------------------------------------------------------
+
+    n = len(channels)
+    grid = plt.GridSpec(nrows=n, ncols=n, hspace=0.1, wspace=0.1)
+    colors = GRAPHICStools.listColors()
+
+    for i, c_flux in enumerate(channels):
+
+        ax_row = None
+        for j, c_grad in enumerate(channels):
+
+            ax = fig.add_subplot(grid[i, j], sharey=ax_row)
+            if ax_row is None:
+                ax_row = ax
+
+            for ir in range(len(self.rhos)):
+
+                x, y = gradients[c_grad][:, ir], fluxes[c_flux][:, ir]
+
+                if plot_errors:
+                    ax.errorbar(
+                        x, y, yerr=errors[c_flux][:, ir],
+                        fmt="none", ecolor=colors[ir], elinewidth=0.8, capsize=2, alpha=0.5, zorder=2,
+                    )
+
+                ax.scatter(
+                    x, y,
+                    s=45,
+                    c=colors[ir],
+                    alpha=0.6,
+                    edgecolors="none",
+                    label=f"$r/a$ = {self.roa[ir]:.2f}" if (i == 0 and j == 0) else None,
+                )
+
+                slope, intercept = _linear_regression(x, y)
+                if slope is not None:
+                    xfit = np.array([x.min(), x.max()])
+                    ax.plot(xfit, slope * xfit + intercept, "--", c=colors[ir], lw=1.2, alpha=0.9, zorder=3)
+
+            GRAPHICStools.addDenseAxis(ax, n=5)
+
+            # Only the frame panels carry labels, otherwise the matrix is unreadable
+            if i == n - 1:
+                ax.set_xlabel(channel_info[c_grad]["grad_label"], fontsize=12)
+            else:
+                ax.set_xticklabels([])
+            if j == 0:
+                ax.set_ylabel(channel_info[c_flux]["label_gb" if normalized else "label"], fontsize=12)
+            else:
+                ax.tick_params(labelleft=False)
+
+            if i == j:
+                ax.set_facecolor("#f2f2f2")
+
+    fig.suptitle(f"PORTALS transport database: {name_flux} fluxes vs gradients "
+                 f"({len(self.powerstates)} evaluations, {len(self.rhos)} radii, "
+                 f"{'gyro-Bohm normalized' if normalized else 'real units'}). "
+                 f"Shaded diagonal = critical-gradient view")
+
+    fig.axes[0].legend(loc="best", prop={"size": 8})
+
+
 def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
     
     print("- Plotting PORTALS Simulations - Transport models")
@@ -2392,9 +2537,10 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
     try:
         _cgyro_read_cfg = self.powerstate.transport_options['options'][cgyro_key]['read']
         _read_kwargs = {k: v for k, v in _cgyro_read_cfg.items()
-                        if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear")}
-    except Exception:
+                        if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear", "averaging")}
+    except Exception as _e:
         _read_kwargs = {}
+        print(f"\t- Could not read the CGYRO 'read' settings (tmin/averaging) from the powerstate ({type(_e).__name__}); trace windows will be the full trace with method 'fixed', NOT what the run used", typeMsg='w')
 
     base_subfolder = f"base_{cgyro_key}"
 
@@ -2420,6 +2566,34 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
             getattr(self.powerstate, "predicted_channels", []) or [],
         )
 
+    live_drew_spectra = plot_cgyro_live_status(root_folder, fn, fn_color_start + 2, finished_cache=self._cgyro_traces_cache)
+
+    # Overview first: every evaluation in one figure (rows channels, columns radii), warm-start
+    # time on x and evaluation on the colorbar, plus the mean-vs-evaluation convergence view.
+    # The chunked per-radius / per-channel tabs below are the zoom-in on individual windows.
+    CGYROplot.plot_time_traces_overview(
+        fn,
+        fn_color_start,
+        self.rhos,
+        self._cgyro_traces_cache,
+        sources_per_iter=self._cgyro_sources_cache,
+        base_iter=0,
+        targets_per_iter=self._cgyro_targets_cache,
+    )
+    CGYROplot.plot_flux_convergence(
+        fn,
+        fn_color_start,
+        self.rhos,
+        self._cgyro_traces_cache,
+        base_iter=0,
+        targets_per_iter=self._cgyro_targets_cache,
+    )
+
+    if not live_drew_spectra:
+        CGYROplot.plot_flux_spectra(fn, fn_color_start, self.rhos, self._cgyro_traces_cache)
+
+    _plot_cgyro_near_best_and_last(self, fn, fn_color_start + 3)
+
     CGYROplot.plot_time_traces_per_radius(
         fn,
         fn_color_start,
@@ -2428,6 +2602,7 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         sources_per_iter=self._cgyro_sources_cache,
         base_iter=0,
         targets_per_iter=self._cgyro_targets_cache,
+        time_mode="local",
     )
     # Same data, pivoted: one figure per channel with rhos as rows.
     # Per-radius and per-channel tab groups now each use a single color
@@ -2441,7 +2616,141 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         sources_per_iter=self._cgyro_sources_cache,
         base_iter=0,
         targets_per_iter=self._cgyro_targets_cache,
+        time_mode="local",
     )
+
+
+_CHANNEL_GRADIENTS = {"te": ("aLte", "$a/L_{Te}$"), "ti": ("aLti", "$a/L_{Ti}$"), "ne": ("aLne", "$a/L_{ne}$"),
+                      "nZ": ("aLnZ", "$a/L_{nZ}$"), "w0": ("aLw0_n", "$-(a/c_s)\\,d\\omega_0/dr$")}
+
+
+def _plot_cgyro_near_best_and_last(self, fn, fn_color):
+    '''
+    "CGYRO near best" and "CGYRO near last" tabs (one when best == last): the evaluations whose
+    predicted gradients barely differ from the anchor's, traces back to back with the gradient
+    changes on top (CGYROplot.plot_time_traces_near). Needs the analyzer's per-evaluation
+    powerstates, so the initializer view (simple-relax only) draws nothing.
+    '''
+    from mitim_tools.gacode_tools.utils import CGYROplot
+
+    powerstates = getattr(self, "powerstates", None)
+    if not powerstates or getattr(self, "ibest", None) is None:
+        return
+    channels = [ch for ch in self.predicted_channels if ch in _CHANNEL_GRADIENTS]
+    gradients = {
+        i: {_CHANNEL_GRADIENTS[ch][1]: p.plasma[_CHANNEL_GRADIENTS[ch][0]][0, 1:].cpu().numpy() for ch in channels}
+        for i, p in enumerate(powerstates) if i in self._cgyro_traces_cache
+    }
+    if not gradients:
+        return
+    last = max(gradients)
+    anchors = [(self.ibest, "best")] + ([(last, "last")] if last != self.ibest else [])
+    for anchor, label in anchors:
+        CGYROplot.plot_time_traces_near(fn, fn_color, self.rhos, self._cgyro_traces_cache, gradients, anchor,
+                                        anchor_label=label, targets_per_iter=self._cgyro_targets_cache)
+
+
+def _find_running_cgyro_evaluation(iter_folders, base_subfolder):
+    '''
+    Where the evaluation still in flight is running: (iteration, scratch source) with the source as
+    CGYROplot.live_source_* returns it, or None. A submitted job is the latest evaluation whose
+    cgyro_submission.json exists (written at submit, deleted once its results are read); without one,
+    a bash-mode job of the LAST evaluation is found from its staged execution script (local scratch only).
+    '''
+    from mitim_tools.gacode_tools import CGYROtools
+    from mitim_tools.gacode_tools.utils import CGYROplot
+
+    for it, folder in reversed(iter_folders):
+        path = folder / base_subfolder / CGYROtools.CGYRO._submission_metadata_filename
+        if path.is_file():
+            return it, CGYROplot.live_source_from_submission(path)
+    if iter_folders:
+        it, folder = iter_folders[-1]
+        tmp = folder / "tmp_cgyro"
+        if tmp.is_dir():
+            source = CGYROplot.live_source_from_bash(tmp)
+            if source is not None:
+                return it, source
+    return None
+
+
+def locate_running_cgyro(root_folder):
+    '''
+    The CGYRO evaluation of a PORTALS run still in flight, or None: a dict with the iteration 'it',
+    'machine_settings', 'folder_execution' (scratch), 'pairs' [(subfolder, rho), ...], the run's
+    'read_kwargs' and 'base_subfolder', plus 'params' (namelist) and 'iter_folders'.
+    Settings come from the run's namelist.portals.yaml (the merged parameters prep() writes), not from
+    a powerstate, so this works before any evaluation has finished. Plain YAML load on purpose:
+    read_mitim_yaml would execute the run's import:: sidecar functions.
+    '''
+    import yaml
+    from pathlib import Path
+    from mitim_modules.portals.utils.PORTALSanalysis import _model_highest_fidelity, _resolve_code_from_options
+
+    root_folder = Path(root_folder)
+    try:
+        params = yaml.safe_load((root_folder / "namelist.portals.yaml").read_text())
+        transport = params["transport"]
+        cgyro_key = _model_highest_fidelity(transport["evaluator_instance_attributes"]["turbulence_model"])
+    except (OSError, KeyError, TypeError, yaml.YAMLError) as e:
+        print(f"\t- Could not read the run namelist ({type(e).__name__}: {e}) to locate the running CGYRO evaluation", typeMsg='w')
+        return None
+    if _resolve_code_from_options(transport, cgyro_key) != "cgyro":
+        return None
+    read_cfg = ((transport.get("options") or {}).get(cgyro_key) or {}).get("read") or {}
+    base_subfolder = f"base_{cgyro_key}"
+    iter_folders = list(_iterate_portals_evaluation_folders(root_folder))
+
+    found = _find_running_cgyro_evaluation(iter_folders, base_subfolder)
+    if found is None:
+        return None
+    it, (machine_settings, folder_execution, pairs) = found
+    return {
+        "it": it, "machine_settings": machine_settings, "folder_execution": folder_execution, "pairs": pairs,
+        "read_kwargs": {k: v for k, v in read_cfg.items() if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear", "averaging")},
+        "base_subfolder": base_subfolder, "params": params, "iter_folders": iter_folders,
+    }
+
+
+def plot_cgyro_live_status(root_folder, fn, fn_color, finished_cache=None):
+    '''
+    "CGYRO live" tab: pull the in-progress outputs of the running evaluation from its scratch into a
+    throwaway folder, read them with the run's own averaging settings, and plot per-radius traces +
+    timing (CGYROplot.plot_live_status), followed by the flux-spectra tab with the running evaluation
+    drawn alongside `finished_cache` (so resolution can be judged on the run in progress, and on runs
+    where nothing has finished yet). Returns True when it drew the spectra, so the caller does not
+    draw a second spectra tab. Nothing is written to the run folder or the scratch.
+    '''
+    import tempfile
+    from pathlib import Path
+    from mitim_tools.gacode_tools.utils import CGYROplot
+
+    run = locate_running_cgyro(root_folder)
+    if run is None:
+        print("\t- No CGYRO evaluation in flight; skipping the live-status tab")
+        return False
+    it, machine_settings, folder_execution = run["it"], run["machine_settings"], run["folder_execution"]
+    base_subfolder, iter_folders = run["base_subfolder"], run["iter_folders"]
+    print(f"\t- Adding live-status tab of CGYRO evaluation {it} ({machine_settings['machine']}:{folder_execution})")
+
+    with tempfile.TemporaryDirectory(prefix="mitim_cgyro_live_") as tmp:
+        base = Path(tmp) / base_subfolder
+        try:
+            info = CGYROplot.fetch_live_outputs(machine_settings, folder_execution, run["pairs"], base)
+        except Exception as e:
+            print(f"\t- Could not fetch the live CGYRO outputs ({type(e).__name__}: {e}); skipping the live-status tab", typeMsg='w')
+            return False
+        rhos = sorted(info)
+        tool = CGYROplot.load_tool_for_iteration(Path(tmp), rhos, read_kwargs=run["read_kwargs"], base_subfolder=base_subfolder)
+        targets = _load_turb_targets_for_iterations([(it, dict(iter_folders)[it])], (run["params"].get("solution") or {}).get("predicted_channels") or [])
+        CGYROplot.plot_live_status(fn, fn_color, rhos, tool, info, base,
+                                   label=f"CGYRO live (ev {it})", targets_per_iter=targets, it=it)
+
+        # Spectra of the running evaluation next to the finished ones, from the same fetched outputs
+        if tool is None:
+            return False
+        CGYROplot.plot_flux_spectra(fn, fn_color + 1, rhos, {**(finished_cache or {}), it: tool}, live_iteration=it)
+        return True
 
 
 def PORTALSanalyzer_plotModelComparison(

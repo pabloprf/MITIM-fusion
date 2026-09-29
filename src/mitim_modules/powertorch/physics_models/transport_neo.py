@@ -30,7 +30,7 @@ class neo_model:
             for i in range(len(self.powerstate.plasma["rho"][0, 1:]))
         ]
 
-        neo = NEOtools.NEO(rhos=rho_locations, in_process=in_process)
+        neo = self._harvest_attach(NEOtools.NEO(rhos=rho_locations, in_process=in_process))
 
         # list_of_states is the neo-side per-plasma states under split-postproc
         # (passed in from _evaluate_batched). Aliased to the canonical states
@@ -105,7 +105,7 @@ class neo_model:
 
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
 
-        neo = NEOtools.NEO(rhos=rho_locations, in_process=in_process)
+        neo = self._harvest_attach(NEOtools.NEO(rhos=rho_locations, in_process=in_process))
 
         _ = neo.prep(
             self._profiles_transport_for("neo"),

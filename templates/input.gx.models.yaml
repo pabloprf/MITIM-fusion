@@ -41,3 +41,48 @@
     nx: 192
     alpha: 0.0                # Field line label theta - iota*phi. alpha = 0.0 usually corresponds to a field line on the outboard side
     npol: 6                   # Number of poloidal turns. The field line goes from (-npol*PI, npol*PI]
+
+# ------------------------------------------------------------
+# GX analogues of CGYRO's Nonlinear_reduced2/3, same ky grid, box width and kx range:
+#   ky:  nky = 1 + (ny-1)/3 = N_TOROIDAL, ky_min*rho_s = 1/y0
+#   box: x0 = L_x/(2*pi) = 90/(2*pi); GX rounds it to the nearest twist-and-shift value (jtwist = round(2*pi*shat*x0/y0))
+#   kx:  GX nx counts real-space points with 2/3 dealiasing, so nx = 1.5*N_radial gives nkx ~ N_radial (CGYRO pads internally)
+#        nkx = 1 + 2*((nx-1)//3) must have no prime factor > 127: at low shear GX sets jtwist = 1 and links all nkx modes
+#        into one chain, and cuFFT callbacks abort on a chain length with a large prime (r/a 0.40 of ARC V3A, shat 0.06)
+# ntheta = N_THETA. nhermite/nlaguerre = 16/8 stands in for N_XI/N_ENERGY = 16/8 as a choice, not a convergence result.
+# Collisions are GX's own model with e-i collisions on, not CGYRO's Lorentz (reduced2) / diagonal Lorentz (reduced3).
+# ------------------------------------------------------------
+
+"Nonlinear_reduced2_analogue":
+  base: "Nonlinear Tokamak"
+  controls:
+    t_max: 1200.0
+    y0: 12.5                  # ky_min*rho_s = 0.08
+    ny: 46                    # nky = 16 (N_TOROIDAL 16) -> ky*rho_s = 0 ... 1.2
+    x0: 14.3239               # L_x = 90 rho_s before GX's twist-and-shift rounding
+    nx: 384                   # nkx = 255 (N_radial 256)
+    ntheta: 16
+    nperiod: 1
+    nhermite: 16
+    nlaguerre: 8
+    scheme: '"rk3"'
+    hyper: true
+    HB_hyper: true
+    hypercollisions: true
+    ei_colls: true
+    fapar: 1.0
+    fbpar: 1.0
+    # Output cadence as CGYRO's production runs (fluxes every 1 a/cs, checkpoint every 25 a/cs = RESTART_STEP 25).
+    # GX counts steps, not time: 750 steps = 1 a/cs at the linear-phase dt ~1.34e-3 (finer in time if dt drops).
+    nwrite: 750
+    nsave: 18750
+    # PORTALS reads only the fluxes (out.nc); 3D fields/moments are costly parallel-HDF5 writes on NFS
+    fields: false
+    moments: false
+
+"Nonlinear_reduced3_analogue":
+  base: "Nonlinear_reduced2_analogue"
+  controls:
+    y0: 10.0                  # ky_min*rho_s = 0.1
+    ny: 34                    # nky = 12 (N_TOROIDAL 12) -> ky*rho_s = 0 ... 1.1
+    nx: 294                   # nkx = 195 (N_radial 192); 288 gives nkx = 191, a prime (see nkx note above)

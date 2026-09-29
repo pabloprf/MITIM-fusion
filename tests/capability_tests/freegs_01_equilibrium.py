@@ -24,6 +24,7 @@ Key teaching points:
 
 from matplotlib import pyplot as plt
 from mitim_tools.gs_tools import GEQtools
+from mitim_tools.misc_tools import GUItools
 from mitim_tools import __mitimroot__
 
 # Working folder: the exported geqdsk and TRANSP inputs are written here
@@ -81,4 +82,4 @@ f.write(folder / "mitim_freegs.geqdsk")
 # Input files to start a TRANSP run from this equilibrium
 f.to_transp(folder=folder / "transp_input")
 
-plt.show()
+GUItools.show_figures("freegs_01_equilibrium")   # plt.show() with a display; saves PNGs to tests/figures/ when headless

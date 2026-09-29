@@ -184,7 +184,9 @@ def main():
         else:
             if not folder_save.exists():
                 folder_save.mkdir(parents=True)
-            GRAPHICStools.output_figure_papers(f"{folder_save}/figure", fig=fig, dpi=dpi_fig)
+            # Metrics-only mode: a single PNG (use --complete for the full set of tabs)
+            fig.savefig(folder_save / "figure_PORTALS_Metrics.png", dpi=dpi_fig, bbox_inches="tight")
+            print(f"\t- Saved {folder_save / 'figure_PORTALS_Metrics.png'} (metrics only; add --complete for all tabs)")
 
     # Drop into an interactive shell to poke at portals_total — but only when
     # showing figures. On a headless `--save` run this would print the IPython

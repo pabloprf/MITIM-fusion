@@ -59,6 +59,7 @@ def run_slurm(
         nameJob = None,
     # For job arrays:
         job_array = None,
+        dependency = None,   # job id(s): submit with --dependency=afterany:<id> (first chunk)
     # Lock file settings (to avoid multiple concurrent runs of the same array)
         lock_file = None,
         lock_file_timeout_hours = 12,
@@ -157,23 +158,24 @@ def run_slurm(
         # When wait=True we only apply --wait to the last chunk so the caller
         # blocks until the full chain finishes.
 
+        dep0 = f"--dependency=afterany:{dependency} " if dependency else ""
         if n_chunks == 1:
             if wait and wait_poll_minutes is None:
                 print('* Waiting for job to complete...')
-                command_execution = f"sbatch --wait {sbatch_files[0]}"
+                command_execution = f"sbatch --wait {dep0}{sbatch_files[0]}"
             elif wait:
                 print(f"* Waiting for job to complete with a {wait_poll_minutes} minute poll interval...")
                 command_execution = (
-                    f'JOBID=$(sbatch --parsable {sbatch_files[0]}) && '
+                    f'JOBID=$(sbatch --parsable {dep0}{sbatch_files[0]}) && '
                     f'echo "Submitted job $JOBID" && '
                     f'{_throttled_wait_snippet("$JOBID", wait_poll_minutes)}'
                 )
             else:
-                command_execution = f"sbatch {sbatch_files[0]}"
+                command_execution = f"sbatch {dep0}{sbatch_files[0]}"
         else:
             parts = []
             for i, f in enumerate(sbatch_files):
-                dep = f"--dependency=afterany:$JOBID{i-1} " if i > 0 else ""
+                dep = f"--dependency=afterany:$JOBID{i-1} " if i > 0 else dep0
                 wait_flag = "--wait " if (wait and wait_poll_minutes is None and i == n_chunks - 1) else ""
                 parts.append(f"JOBID{i}=$(sbatch --parsable {dep}{wait_flag}{f})")
                 parts.append(f"echo \"Submitted chunk {i+1}/{n_chunks} as job $JOBID{i}\"")

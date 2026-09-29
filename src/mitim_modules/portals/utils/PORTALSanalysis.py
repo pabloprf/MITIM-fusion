@@ -191,17 +191,24 @@ class PORTALSanalyzer:
 
         # Store indeces
         self.ibest = self.opt_fun.res.best_absolute_index
-        self.i0 = 0
 
         self.iextra = None if self.ilast == self.ibest else self.ilast
 
-        if self.mitim_runs[0] is None:
-            print("* Issue with reading mitim_run 0, likely due to a cold_start of PORTALS simulation that took values from optimization_data.csv but did not generate powerstates", typeMsg="w")
-            print("* This issue should be fixed in the future, have you contacted P. Rodriguez-Fernandez for help?", typeMsg="q")
+        # A resume that took its points from optimization_data.csv never re-runs those evaluations, so their
+        # powerstates are absent (None); use the first index that actually carries one. If none does
+        # (e.g. truncated optimization_extra.pkl), raise AttributeError so from_folder degrades to the
+        # initializer view instead of a TypeError
+        self.i0 = next((i for i in sorted(k for k in self.mitim_runs if isinstance(k, int))
+                        if isinstance(self.mitim_runs[i], dict)), None)
+        if self.i0 is None:
+            print("* No powerstate stored in optimization_extra.pkl (resume from csv, or truncated pickle)", typeMsg="w")
+            raise AttributeError("optimization_extra.pkl carries no powerstates")
+        if self.i0 != 0:
+            print(f"* mitim_run 0 has no powerstate (cold_start from optimization_data.csv); using run {self.i0} as the initial one", typeMsg="w")
 
         # Store setup of TGYRO run
-        self.rhos   = self.mitim_runs[0]['powerstate'].plasma['rho'][0,1:].cpu().numpy()
-        self.roa    = self.mitim_runs[0]['powerstate'].plasma['roa'][0,1:].cpu().numpy()
+        self.rhos   = self.mitim_runs[self.i0]['powerstate'].plasma['rho'][0,1:].cpu().numpy()
+        self.roa    = self.mitim_runs[self.i0]['powerstate'].plasma['roa'][0,1:].cpu().numpy()
 
         self.portals_parameters = self.opt_fun.mitim_model.optimization_object.portals_parameters
 
@@ -486,9 +493,10 @@ class PORTALSanalyzer:
             try:
                 _cgyro_read_cfg = self.powerstate.transport_options['options'][turb_key]['read']
                 cgyro_read_kwargs = {k: v for k, v in _cgyro_read_cfg.items()
-                                     if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear")}
-            except Exception:
+                                     if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear", "averaging")}
+            except Exception as _e:
                 cgyro_read_kwargs = {}
+                print(f"\t- Could not read the CGYRO 'read' settings (tmin/averaging) from the powerstate ({type(_e).__name__}); re-read windows will be the full trace with method 'fixed', NOT what the run used", typeMsg='w')
 
         for it in its:
             folder_execution = self.opt_fun.folder / "Execution" / f"Evaluation.{it}" / "transport_simulation_folder"
@@ -576,9 +584,10 @@ class PORTALSanalyzer:
         #   3  PROFILES Ranges
         #   4  PROFILES - * + PROFILES Comparison + Powerstate (shared, via plotSummary)
         #   5  PORTALS Debugger
-        #   6  Transport models start — plotTransportModels offsets internally
-        #      (for CGYRO this resolves to slot 7 for the per-radius group and
-        #       slot 8 for the per-channel group; each group is single-colored).
+        #   6  PORTALS Fluxes vs Gradients
+        #   7  Transport models start — plotTransportModels offsets internally
+        #      (for CGYRO this resolves to slot 8 for the per-radius group and
+        #       slot 9 for the per-channel group; each group is single-colored).
         # `tabs_colors_common` overrides this scheme with a single color for every
         # tab — used by callers that embed PORTALS plots inside a larger notebook
         # and want tabs to be visually grouped.
@@ -619,11 +628,14 @@ class PORTALSanalyzer:
         fig = self.fn.add_figure(label="PORTALS Debugger", tab_color=_c(5))
         self.plotDebug(fig=fig)
 
-        # Transport models: CGYRO traces use _c(6) (per-radius, all same)
-        # and _c(7) (per-channel, all same). Other backends (TGLF/NEO)
+        fig = self.fn.add_figure(label="PORTALS Fluxes vs Gradients", tab_color=_c(6))
+        self.plotFluxesVsGradients(fig=fig)
+
+        # Transport models: CGYRO traces use _c(7) (per-radius, all same)
+        # and _c(8) (per-channel, all same). Other backends (TGLF/NEO)
         # offset internally from fn_color.
         if plot_transport_models and len(self.transport_model_objects) > 0:
-            self.plotTransportModels(fn=self.fn, fn_color=_c(6))
+            self.plotTransportModels(fn=self.fn, fn_color=_c(7))
         
         # fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=tab_color_istart + 4 if tabs_colors_common is None else tabs_colors_common)
         # _, _ = self.plotModelComparison(fig=fig)
@@ -647,6 +659,9 @@ class PORTALSanalyzer:
 
     def plotDebug(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotDebug(self, **kwargs)
+
+    def plotFluxesVsGradients(self, **kwargs):
+        PORTALSplot.PORTALSanalyzer_plotFluxesVsGradients(self, **kwargs)
 
     def plotTransportModels(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotTransportModels(self, **kwargs)
@@ -1414,6 +1429,10 @@ class PORTALSinitializer:
         '''
         if len(self.powerstates) == 0:
             print("- No powerstates available to plot metrics", typeMsg="w")
+            # A CGYRO evaluation may still be running with nothing finished yet: that is when its live status matters most
+            if show_transport_models and self.fn is not None:
+                from mitim_modules.portals.utils.PORTALSplot import plot_cgyro_live_status
+                plot_cgyro_live_status(self.folder, self.fn, kwargs.get('fn_color', 2))
             return
 
         # Resolve per-tab labels. None -> auto from extra_lab. Explicit

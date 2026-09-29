@@ -48,7 +48,7 @@ class tglf_model:
             for i in range(len(self.powerstate.plasma["rho"][0, 1:]))
         ]
 
-        tglf = TGLFtools.TGLF(rhos=rho_locations, in_process=in_process)
+        tglf = self._harvest_attach(TGLFtools.TGLF(rhos=rho_locations, in_process=in_process))
 
         # Bootstrap FolderGACODE / NormalizationSets for the first plasma; run_over_plasmas
         # re-preps once per plasma and snapshots per-plasma state on self.results_per_plasma
@@ -209,7 +209,7 @@ class tglf_model:
 
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
 
-        tglf = TGLFtools.TGLF(rhos=rho_locations, in_process=in_process)
+        tglf = self._harvest_attach(TGLFtools.TGLF(rhos=rho_locations, in_process=in_process))
 
         _ = tglf.prep(
             self._profiles_transport_for("turb"),
@@ -426,6 +426,10 @@ def _run_tglf_uncertainty_model(
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
 
+    # Harvest: every scan member below is recorded as its own run, tagged scan_member=1 (skippable via harvest.scan_trick_members)
+    if getattr(tglf, 'harvest', None) is not None:
+        tglf.harvest = tglf.harvest.with_context(scan_member=1)
+
     ion_OI_position_in_total_padded_list = ion_OI_position_in_ion_list + 2 # Because in input.tglf 1 is electrons, and 2 is first ion, etc
 
     # Prepare scan (see _build_uncertainty_scan_setup for the channel -> variable
@@ -586,6 +590,10 @@ def _run_tglf_uncertainty_model_batched(
     '''
 
     print(f"\t- Running batched TGLF scans ({delta = }) for {len(plasma_labels)} plasmas in parallel")
+
+    # Harvest: scan members are tagged scan_member=1 (see _run_tglf_uncertainty_model)
+    if getattr(tglf, 'harvest', None) is not None:
+        tglf.harvest = tglf.harvest.with_context(scan_member=1)
 
     ion_OI_position_in_total_padded_list = ion_OI_position_in_ion_list + 2
 

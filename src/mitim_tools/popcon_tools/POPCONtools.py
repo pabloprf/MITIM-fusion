@@ -4,9 +4,28 @@ import cfspopcon
 from cfspopcon.unit_handling import ureg
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import GRAPHICStools
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 
 import matplotlib.pyplot as plt
+
+# Atomic number of each cfspopcon AtomicSpecies. The enum itself is ordinal (auto()), so
+# AtomicSpecies(Z) returns the WRONG element; it has to be looked up by name.
+CFSPOPCON_SPECIES_Z = {
+    "Helium": 2, "Lithium": 3, "Beryllium": 4, "Boron": 5, "Carbon": 6, "Nitrogen": 7,
+    "Oxygen": 8, "Neon": 10, "Argon": 18, "Krypton": 36, "Xenon": 54, "Tungsten": 74,
+}
+
+
+def closest_cfspopcon_species(z):
+    """cfspopcon AtomicSpecies with the atomic number closest to z, and that atomic number."""
+    name = min(CFSPOPCON_SPECIES_Z, key=lambda k: abs(CFSPOPCON_SPECIES_Z[k] - z))
+    z_used = CFSPOPCON_SPECIES_Z[name]
+    if abs(z_used - z) > 0.5:
+        print(f"\t- Z={z:.2f} has no cfspopcon species: using {name} (Z={z_used}) and rescaling its "
+              "concentration to preserve n_z*Z. Radiation from this specie is approximate", typeMsg="w")
+    return cfspopcon.named_options.AtomicSpecies[name], z_used
+
 
 class MITIMpopcon:
     def __init__(self, filename):
@@ -33,7 +52,7 @@ class MITIMpopcon:
         rmaj = gacode_state.profiles["rmaj(m)"][-1]
         self.dataset["inverse_aspect_ratio"].data =  (rmin / rmaj) * ureg.dimensionless
 
-        kappa_a = 1.5 #gacode_state.derived["kappa_a"]
+        kappa_a = gacode_state.derived["kappa_a"]
         kappa_sep = gacode_state.profiles["kappa(-)"][-1]
         self.dataset["areal_elongation"].data = kappa_a * ureg.dimensionless
         self.dataset["elongation_ratio_sep_to_areal"].data = (kappa_sep / kappa_a) * ureg.dimensionless
@@ -59,21 +78,12 @@ class MITIMpopcon:
         imputity_fs = gacode_state.derived["fi_vol"][np.where(gacode_state.profiles["z"] > 1)]
         impurities = []
         concentrations = []
-        named_options_array = [1,2,3,4,6,7,8,10,18,36,54,74] # atomicspecies built into cfspopcon
 
         for i in range(impurity_zs.size):
-            try:
-                impurities.append(cfspopcon.named_options.AtomicSpecies(int(impurity_zs[i])))
-                concentrations.append(imputity_fs[i])
-            except:
-                print(f"Could not find atomic number {impurity_zs[i]} in list of named quantities.")
-                print(f"Z={impurity_zs[i]}")
-            
-                closest_element = min(named_options_array, key=lambda x: abs(x - impurity_zs[i]))
-                print(f"Attempting to lump impurity content using Z={closest_element} while preserving quasineutrality.")
-                print(f"May produce inaccurate results from radiation model.")
-                impurities.append(cfspopcon.named_options.AtomicSpecies(int(closest_element)))
-                concentrations.append((imputity_fs[i] * impurity_zs[i]) / closest_element)
+            species, z_used = closest_cfspopcon_species(impurity_zs[i])
+            impurities.append(species)
+            # rescale to preserve the electron content the specie carries (n_z*Z)
+            concentrations.append(imputity_fs[i] * impurity_zs[i] / z_used)
 
         self.dataset = self.dataset.assign_coords(dim_species=np.array(impurities))
         #from .formulas.impurities.impurity_array_helpers import make_impurity_concentration_array
@@ -95,7 +105,9 @@ class MITIMpopcon:
         aLTe = gacode_state.derived["aLTe"][arg_min_rho:arg_max_rho].mean()
         self.dataset["normalized_inverse_temp_scale_length"].data = aLTe * ureg.dimensionless
 
-        nu_ne_offset = (nu_n_scaling - gacode_state.derived["ne_peaking"])
+        # cfspopcon builds its peaking as (Angioni scaling) + offset, so the offset that reproduces
+        # this state's peaking is measured minus scaling, not the other way around
+        nu_ne_offset = (gacode_state.derived["ne_peaking"] - nu_n_scaling)
         self.dataset["electron_density_peaking_offset"].data = nu_ne_offset * ureg.dimensionless
         self.dataset["ion_density_peaking_offset"].data = nu_ne_offset * ureg.dimensionless
 

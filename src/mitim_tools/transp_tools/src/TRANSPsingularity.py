@@ -5,7 +5,7 @@ import datetime
 import time
 import numpy as np
 from mitim_tools.transp_tools import TRANSPtools, NMLtools
-from mitim_tools.misc_tools import IOtools, FARMINGtools
+from mitim_tools.misc_tools import IOtools, FARMINGtools, LOGtools
 from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.transp_tools.utils import TRANSPhelpers, TRANSPdebug
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -20,8 +20,15 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
         self.job_id, self.job_name = None, None
 
     def defineRunParameters(
-        self, *args, minutesAllocation=60 * 8, ensureMPIcompatibility=True, tokamak_name = None, **kwargs
+        self, *args, minutesAllocation=60 * 8, ensureMPIcompatibility=True, tokamak_name = None, cpus_per_task = None, **kwargs
     ):
+        # cpus_per_task: SLURM --cpus-per-task for the TRANSP job (None = SLURM default, 1 CPU/task).
+        # Set to 2 on hyperthreaded partitions (ThreadsPerCore=2, e.g. engaging sched_mit_psfc_r8)
+        # when running MPI decks (ICRF/NUBEAM parallel servers): there --ntasks N buys N
+        # hyperthreads = N/2 physical cores, but the container's runscript does
+        # `mpirun -n N -machinefile "localhost slots=N"`, which binds one rank per PHYSICAL core
+        # and aborts with "no available cpus in the allocation". 2 hyperthreads/task makes the
+        # allocation N full cores. Serial decks (nparallel=1) never invoke mpirun and don't care.
         super().defineRunParameters(*args, **kwargs)
 
         self.job_name = f"transp_{self.tok}_{self.runid}"
@@ -57,6 +64,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
             slurm_settings={
                 "minutes": minutesAllocation,
                 "ntasks": self.nparallel,
+                "cpus-per-task": cpus_per_task,     # None -> no line in the sbatch header (see comment above)
                 "name": self.job_name,
                 "mem": 0,                       # All memory available, since TRANSP manages a lot of in-memory operations
             },
@@ -338,11 +346,17 @@ def runSINGULARITY(
             IOtools.shutil_rmtree(folder_inputs)
         
         IOtools.askNewFolder(folder_inputs, force=True)
-        for item in folderWork.glob('*'):
-            if item.is_file():
-                shutil.copy2(item, folder_inputs)
-            elif item.is_dir():
-                shutil.copytree(item, folder_inputs / item.name)
+        # Stage ONLY the known TRANSP inputs (ufiles + namelist). A restarted beat's
+        # folder may still hold outputs of a previous dead attempt (<runid>PH.CDF,
+        # TF.PLN, TR.INF, ex.for, logs); blanket-copying those into the TRANSP working
+        # directory makes it try to resume from the stale state (e.g. transp_rplot_read
+        # on the old PH.CDF -> 'profile "SCEAL" not found' -> abort at NSTEP 1).
+        # ufile prefix is the literal 'MIT<shot>' (TRANSPhelpers), NOT the tokamak id
+        # in `tok`; MIT[0-9]* also covers the MIT12345.* structure files
+        for pattern in ("MIT[0-9]*.*", f"{runid}TR.DAT"):
+            for item in folderWork.glob(pattern):
+                if item.is_file():
+                    shutil.copy2(item, folder_inputs)
 
         inputFolders = [folderWork / "tmp_inputs"]
 
@@ -535,6 +549,7 @@ def interpretRun(infoSLURM, log_file):
         elif rdma_failure:
             status = -1
             info["info"]["status"] = "stopped"
+            info["info"]["rdma_failure"] = True   # enables the bounded relaunch in checkUntilFinished
             print("\t- TRANSP's MPI layer failed to bring up the InfiniBand device (mlx5); the container was denied the RDMA queue-pair and mpirun segfaulted. Flagging run as stopped (infrastructure, not physics)",typeMsg="w",)
         elif hard_failure:
             status = -1
@@ -697,7 +712,23 @@ rsync -av{extra_commands} {folderTRANSP}/* . &&  singularity run {txt_bind}--app
         else:
             print(f"Singularity look failed (.CDF file not found), trying again ({i+1}/3)", typeMsg="w")
     if not (folderWork / f"{runid}.CDF").exists():
-        print(f"Singularity look failed (.CDF file not found) after {times_retry_look} attempts, please check what's going on", typeMsg="q")
+        # If the tr.log made it back, diagnose the actual cause of death so the batch
+        # error carries it. Previously this was only a typeMsg='q' prompt, which in
+        # batch surfaced as a contentless InteractiveTerminalError.
+        diag = ""
+        log_file = folderWork / f"{runid}tr.log"
+        if log_file.exists():
+            try:
+                diag = " Likely cause from the log: " + TRANSPdebug.diagnose_transp_failure(
+                    log_file.read_text(errors="ignore"), logname=log_file.name)["message"]
+            except Exception:
+                pass
+        try:
+            print(f"Singularity look failed (.CDF file not found) after {times_retry_look} attempts, please check what's going on.{diag}", typeMsg="q")
+        except LOGtools.InteractiveTerminalError:
+            raise Exception(
+                f"[MITIM] TRANSP look retrieved no {runid}.CDF after {times_retry_look} "
+                f"attempts — the run likely died mid-step.{diag}")
 
 
 def organizeACfiles(

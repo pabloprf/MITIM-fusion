@@ -56,6 +56,7 @@ ones you will use most:
 | `mitim_run_maestro <folder> --namelist namelist.maestro.yaml` | Launch a MAESTRO multi-beat run |
 | `mitim_plot_maestro <folder> [--beats N] [--only transp]` | Plot MAESTRO results |
 | `mitim_check_maestro` | Inspect MAESTRO state / progress |
+| **`mitim_kill_cgyro <folder> [--rho r \| --all]`** | **Stop running CGYRO radii of a PORTALS evaluation at their next restart write, keeping the fluxes simulated so far** |
 | `mitim_plot_gacode / _tglf / _neo / _cgyro / _gx / _eq / _eped / _transp / _vgen` | Read+plot per-code outputs |
 | `mitim_run_tglf` / `mitim_run_transp` | Run a single code instance |
 | `mitim_slurm` | Submit a wrapper job to SLURM |
@@ -209,6 +210,7 @@ ignored.
     optimization_results.out    # human-readable summary
     timing.jsonl                # per-iter wallclock
     portals_profiles/           # input.gacode.<iter> snapshots
+    harvest/                    # (harvest.enabled) staged <code>.jsonl records, pushed at the end (§5.7)
   Initialization/
     initialization_simple_relax/portals_sr_ev_<i>/  # SR seed evaluations
   Execution/
@@ -255,6 +257,10 @@ pa.plotPORTALS(...)        # full FigureNotebook with all tabs
 - **fluxes_turb.json / fluxes_neoc.json**: per-iteration JSON blobs with the
   GB-normalized turbulent and neoclassical fluxes per channel/rho. These are
   what `restart_from_cases: "best"` uses to pick parents.
+- **Babysitting a live PORTALS-CGYRO run: the shipped agent `.claude/agents/portals-cgyro.md` (per-radius cost and
+  saturation, graceful `mitim_kill_cgyro` stops under a written rule, holds of failing chains, one line per action in
+  `Outputs/agent_actions.log`). For a days-long watch run it as the main session:
+  `claude --bg --agent portals-cgyro "Watch <run folder> on <ssh alias>"`.**
 
 ---
 
@@ -340,7 +346,7 @@ mitim_run_maestro <folder> --namelist nl.yaml \
 Re-running with the same folder is idempotent: each beat checks for its output
 file and skips when present. The *first* beat that needs to run forces every
 later beat to cold-start (state has changed). To force a particular beat to
-re-run, delete its `Beats/<n>_*/beat_results/` output file.
+re-run, delete its `Beats/Beat_<n>/beat_results/` output file.
 
 ### 4.4 Folder layout produced
 
@@ -351,12 +357,13 @@ re-run, delete its `Beats/<n>_*/beat_results/` output file.
     warnings.log
     Logs/                       # per-beat stdout
     Performance/                # per-beat timing
+    harvest/                    # (maestro.harvest.enabled) staged EPED records; pushed with all beats at finalize (§5.7)
   Beats/
-    1_transp/                   # ufiles, namelist.dat, run_transp/, beat_results/
-    2_eped/                     # eped run + beat_results/input.gacode
-    3_portals/                  # full PORTALS run subtree (see §3.4) + beat_results/
-    4_eped/
-    5_portals/
+    Beat_1/                     # transp: ufiles, namelist.dat, run_transp/, beat_results/
+    Beat_2/                     # eped: run_eped/ + beat_results/input.gacode
+    Beat_3/                     # portals: run_portals/ (full PORTALS subtree, see §3.4) + beat_results/
+    Beat_4/
+    Beat_5/
   maestro.namelist.actual.yaml  # exact namelist used (post-preprocess)
 ```
 
@@ -372,7 +379,7 @@ mitim_check_maestro <folder>                    # quick textual progress check
 ```
 
 The interesting per-beat output for downstream beats and external use is
-`Beats/<n>_<type>/beat_results/input.gacode` (PORTALS, EPED) or
+`Beats/Beat_<n>/beat_results/input.gacode` (PORTALS, EPED) or
 `run_transp/*.cdf` (TRANSP).
 
 ---
@@ -427,6 +434,62 @@ and GX have their own multi-task allocators (`slurm_array` for one element
 per rho on GPU partitions; `slurm_standard` for a single allocation with `&`
 parallelism). Per-iteration overrides (`extraOptions_special`,
 `allocation_special`) accept selectors like `"0"`, `">5"`, `"<=10"`.
+
+### 5.7 Harvest (archiving every code evaluation)
+
+`harvest: {enabled, file, scan_trick_members}` in the PORTALS namelist (or
+`maestro.harvest`; **`enabled` defaults to true, so a run harvests whenever a file is set**) records every individual TGLF/NEO/CGYRO/GX/QuaLiKiz
+evaluation (base point AND each member of the TGLF std scan trick unless
+`scan_trick_members: false`) and every full-EPED evaluation. A record is only
+`in_<KEY>` (full input file) -> `out_<name>` (scalar fluxes) plus `run` and
+`hash`; provenance (folder, user, MITIM commit, machine, modules, code version,
+and for CGYRO/GX the flux-averaging method) lives once per run and code in the
+`runs` group, joined on load. Averaged codes also store per record the window
+(`avg_tmin`, `avg_tmax`, `avg_npoints`, `avg_dt`), the std, and per flux the
+effective sample count and autocorrelation time (`<flux>_ncorr`, `<flux>_icor`). Staged as
+`Outputs/harvest/<code>.<host>-<pid>.jsonl` (one file per writer process; legacy `<code>.jsonl` still read) with rolling gzip compression (a run never holds
+more than a few MB) and appended at the end of the outermost driver into a
+per-user netCDF-4 file (one group per code) under an NFS-safe mkdir lock.
+**File: namelist `harvest.file`, else config_user.json `preferences.harvest_file`; there is NO default, so with neither
+set the run is not harvested (warning at launch).**
+Pushed archives are kept, so `mitim_harvester --rebuild` can regenerate the file.
+Implementation: `mitim_tools/harvest_tools/HARVESTtools.py` (`harvest_recorder`
+attached to simulation objects by `power_transport._harvest_attach`; the
+per-code extraction is `harvest_records` / `harvest_outputs` on the
+simulation/output classes; `harvest_database` loads, interprets, plots and
+pushes). CGYRO records store the parsed `input.cgyro` (schema 5; older CGYRO records hold only pygacode
+`params1D` and are refused by `harvest_database.input_file`), derived norms as `out_derived_*`.
+**EPED records rebuild as eped.input + eped.config; runs pushed without a per-run type map borrow the types all other runs agree on;
+`harvest_database.drop(code, hashes)` rewrites the file without superseded records (previous file kept aside).**
+CLIs: **`mitim_harvester <run folder> [--file F]`** (push a dead run, `--rebuild`),
+`mitim_plot_harvest [file]`.
+**`mitim_harvester --from-disk <run(s) or parent folder> [--file F] [--dry-run] [--stage DIR]` (`HARVESTrecover.py`) rebuilds from disk the
+TGLF/NEO/CGYRO/full-EPED records of MAESTRO/PORTALS runs made WITHOUT harvest (only what pruning left: PORTALS run folders, EPED
+`output_run1.nc`), with MITIM's own readers/recorder, a stable per-run id, and skips every (run, hash) already in the file.**
+**CGYRO radii are read with the `transport.options.cgyro.read` of each PORTALS folder's own `namelist.portals.yaml` (the hash does
+not cover the averaging); runs with CGYRO `keep_files: "pickle"` are not recoverable (their outputs were unlinked).**
+
+### 5.8 Impurity lumping vs. the radiation target
+
+**Lump impurities ONLY inside `profiles_postprocessing_fun` (the copy handed to TGLF/NEO/CGYRO). The targets
+(`targets_analytic`) are evaluated on the PORTALS state itself, and the radiation model looks each thermal ion up by
+name in `radiation_chebyshev.csv`: a species called `LUMPED` (or `B`) is not there, so it radiates pure bremsstrahlung
+and no line radiation (before 249bd9c9 its bremsstrahlung was even dropped from the total). Never seed a PORTALS run with an already-lumped
+`input.gacode` (e.g. a published `D,T,LUMPED` state); if that is all you have, graft the real species back first
+(`STUDIES/.../00_orientation/arc_v3a_paper_case/build_unlumped_seed.py` does it so that `lumpImpurities()` returns the
+same LUMPED ion). Symptom of the trap: P_rad ~half of the reference, P_fus inflated.**
+
+### 5.9 Re-evaluating an existing PORTALS run without redoing transport
+
+**To recompute the targets (new seed species, changed target options) while keeping the transport results of N
+finished evaluations: (1) blank every output column (`*_tr_*`, `*_tar_*`, `*_std`, `maximization_objective`) of those
+rows in `Outputs/optimization_data.csv`, keeping the DV columns; (2) set
+`optimization_options.initialization_options.initial_training = N`; (3) re-run with `cold_start=False`. MITIM_BO reads
+the N DVs as the training set (type_initialization 3, no LHS/SR), `EVALUATORtools.mitimRun` sees NaN outputs and
+re-runs each evaluation in its existing `Execution/Evaluation.i/` folder, and `SIMtools.cold_start_checker` skips every
+radius whose output files are complete on disk (CGYRO: `out.cgyro.info` with EXIT), so only the targets change. An
+evaluation interrupted in the scratch folder is continued by `rescue_interrupted: true` only if its regenerated
+`input.cgyro` is md5-identical (MAX_TIME excluded). Back up `Outputs/` first.**
 
 ### 5.6 Logging conventions
 

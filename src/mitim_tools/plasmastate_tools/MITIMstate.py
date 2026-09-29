@@ -818,6 +818,16 @@ class mitim_state:
             self.derived["ni_vol20"]
         )
 
+        # Thermal D-D neutron rate, D(d,n)3He branch on the thermal deuterium population (n/s)
+        nD19 = np.zeros(r.shape[0])
+        for i in range(len(self.profiles["name"])):
+            if self.profiles["name"][i] == "D" and "therm" in self.profiles["type"][i]:
+                nD19 += self.profiles["ni(10^19/m^3)"][:, i]
+        self.derived["ndd_thermal"] = CALCtools.volume_integration(
+            0.5 * (nD19 * 1e13) ** 2 * PLASMAtools.sigmav_dd_neutron(self.profiles["ti(keV)"][:, 0]) * 1e6,
+            r, volp,
+        )[-1]  # 1e13: 1e19 m^-3 -> cm^-3; 1e6: cm^-3 s^-1 -> m^-3 s^-1
+
         self.derived["ne_peaking"] = (
             self.profiles["ne(10^19/m^3)"][0] * 0.1 / self.derived["ne_vol20"]
         )
@@ -1064,26 +1074,7 @@ class mitim_state:
         # Separatrix estimations
         # -------------------------------------------------------
 
-        # ~~~~ Estimate lambda_q
-        pressure_atm = self.derived["ptot_manual_vol"] * 1e6 / 101325.0
-        Lambda_q = PLASMAtools.calculateHeatFluxWidth_Brunner(pressure_atm)
-
-        # ~~~~ Estimate upstream temperature
-        Bt = self.profiles["bcentr(T)"][0]
-        Bp = self.derived["eps"] * Bt / self.derived["q95"] #TODO: VERY ROUGH APPROXIMATION!!!!
-
-        self.derived['Te_lcfs_estimate'] = PLASMAtools.calculateUpstreamTemperature(
-                Lambda_q, 
-                self.derived["q95"], 
-                self.derived["ne_vol20"], 
-                self.derived["Psol"], 
-                self.profiles["rcentr(m)"][0], 
-                Bp, 
-                Bt
-                )[0]
-                
-        # ~~~~ Estimate upstream density
-        self.derived['ne_lcfs_estimate'] = self.derived["ne_vol20"] * 0.6
+        self.calculate_sol()
 
         # -------------------------------------------------------
         # Transport parameters
@@ -1118,6 +1109,133 @@ class mitim_state:
         self.derived['s_q'][0] = 0.0 # infinite in first location
 
     # Derivate function
+    def calculate_sol(self, lengyel=False, lengyel_folder=None, **lengyel_kwargs):
+        '''
+        All SOL / separatrix estimates, collapsed in one place.
+
+        Always computes (cheap, analytic):
+          - derived['Te_lcfs_estimate'] [keV]: legacy 2-point model (Brunner lambda_q,
+            Bp = eps*Bt/q95 -- a very rough AVERAGED poloidal field, ~2.4x below the
+            true outboard-midplane value on typical shaped plasmas).
+            DEPRECATED: kept only for backwards compatibility, will be removed in the
+            future -- use Te_lcfs_2pt instead (no in-repo consumers as of 2026-08).
+          - derived['Bpol_omp'] [T]: outboard-midplane poloidal field from the
+            poloidal-flux gradient (exact, no approximation).
+          - derived['Te_lcfs_2pt'] [keV]: same 2-point model with Bp = Bpol_omp
+            (the rough-Bp error is the dominant term it removes; Te shifts ~x0.78
+            through the 2/7 root).
+          - derived['ne_lcfs_estimate'] [1e20 m^-3]: 0.6 * <ne>_vol.
+
+        With lengyel=True, also runs the extended-Lengyel model (optional dependency)
+        via calculate_sol_lengyel(folder=lengyel_folder, **lengyel_kwargs).
+        '''
+
+        # ~~~~ Estimate lambda_q
+        pressure_atm = self.derived["ptot_manual_vol"] * 1e6 / 101325.0
+        Lambda_q = PLASMAtools.calculateHeatFluxWidth_Brunner(pressure_atm)
+
+        Bt = self.profiles["bcentr(T)"][0]
+
+        # ~~~~ Legacy upstream temperature (DEPRECATED, see docstring)
+        Bp_rough = self.derived["eps"] * Bt / self.derived["q95"]
+
+        self.derived['Te_lcfs_estimate'] = PLASMAtools.calculateUpstreamTemperature(
+                Lambda_q,
+                self.derived["q95"],
+                self.derived["ne_vol20"],
+                self.derived["Psol"],
+                self.profiles["rcentr(m)"][0],
+                Bp_rough,
+                Bt
+                )[0]
+
+        # ~~~~ Outboard-midplane Bp from the poloidal-flux gradient
+        Rout = self.profiles["rmaj(m)"] + self.profiles["rmin(m)"]
+        self.derived['Bpol_omp'] = np.abs(np.gradient(self.profiles["polflux(Wb/radian)"], Rout))[-1] / Rout[-1]
+
+        # ~~~~ Upstream temperature with the real OMP Bp
+        # (Bpol_omp is unsigned; |Bt| keeps Bp/Bt positive under gacode's signed-field convention)
+        self.derived['Te_lcfs_2pt'] = PLASMAtools.calculateUpstreamTemperature(
+                Lambda_q,
+                np.abs(self.derived["q95"]),
+                self.derived["ne_vol20"],
+                self.derived["Psol"],
+                self.profiles["rcentr(m)"][0],
+                self.derived['Bpol_omp'],
+                np.abs(Bt)
+                )[0]
+
+        # ~~~~ Estimate upstream density
+        self.derived['ne_lcfs_estimate'] = self.derived["ne_vol20"] * 0.6
+
+        if lengyel:
+            self.calculate_sol_lengyel(folder=lengyel_folder, **lengyel_kwargs)
+
+    def calculate_sol_lengyel(self, folder=None, radas_dir=None, cold_start=False, mode="seeded", **kwargs):
+        '''
+        Extended-Lengyel separatrix estimate (optional dependency: pip install -e .[lengyel],
+        plus a radas atomic-data directory, passed here or via the RADAS_DIR env variable).
+
+        Machine/plasma inputs are auto-populated from this state (LENGYELtools.prep);
+        the connection length defaults to the SAME L = pi*R*q95 the 2-point model uses,
+        with a 0.441*L divertor leg (the package's default 10 m divertor leg over the
+        SPARC-anchor pi*R*q95 = 22.7 m -- a plausibility convention, not derived; a real
+        value needs field-line tracing of the actual divertor). Both overridable through
+        kwargs (any input.lengyel.controls.yaml key, e.g. seed_impurity_species).
+
+        mode:
+          'seeded' -- the package's standard driver: the impurity concentration is
+            SOLVED to detach the divertor at target_electron_temp, and Tsep is
+            conditional on that seeding through the Zeff-corrected conductivity
+            (at low separatrix density the solved seeding can be enormous).
+            Appropriate for seeded / detached operation.
+          'clean'  -- unseeded plasmas: pure Spitzer-Haerm conduction with the
+            package's Zeff-corrected conductivity at the STATE's own volume-average
+            Zeff, run entirely with registered package algorithms via
+            Lengyel.run_forward() (algorithm list + modeling notes:
+            templates/input.lengyel_clean.controls.yaml). No detachment root-find,
+            no impurity seeding, no atomic data. NOTE the lambda_q convention
+            differs from 'seeded' (Brunner vs Eich2020H(alpha_t)) -- see the
+            template header.
+
+        Stores derived['Te_lcfs_lengyel'] [keV] and ['Te_lcfs_lengyel_mode'] (np.nan on
+        any failure -- the model is an optional extra and must never break
+        deriveQuantities) and keeps the full run in self.lengyel (results dict in
+        self.lengyel.results).
+        '''
+        try:
+            import os
+            import tempfile
+            from pathlib import Path
+            from mitim_tools import __mitimroot__
+            from mitim_tools.simulation_tools.physics.LENGYELtools import Lengyel
+
+            folder = Path(folder) if folder is not None else Path(tempfile.mkdtemp(prefix="mitim_lengyel_"))
+
+            L_par = np.pi * self.profiles["rcentr(m)"][0] * np.abs(self.derived["q95"])
+            kwargs.setdefault("parallel_connection_length", f"{L_par:.2f}m")
+            kwargs.setdefault("divertor_parallel_length", f"{0.441 * L_par:.2f}m")
+
+            if mode == "clean":
+                self.lengyel = Lengyel(namelist_location=__mitimroot__ / 'templates' / 'input.lengyel_clean.controls.yaml')
+                self.lengyel.prep(input_gacode=self)
+                self.lengyel.run_forward(folder, cold_start=cold_start, **kwargs)
+            else:
+                radas_dir = radas_dir if radas_dir is not None else os.environ.get("RADAS_DIR")
+                self.lengyel = Lengyel()
+                self.lengyel.prep(radas_dir, self)
+                self.lengyel.run(folder, cold_start=cold_start, **kwargs)
+
+            Tsep_eV = float(str(self.lengyel.results['separatrix_electron_temp']).split()[0])
+
+            self.derived['Te_lcfs_lengyel'] = Tsep_eV * 1e-3
+            self.derived['Te_lcfs_lengyel_mode'] = mode
+
+        except Exception as e:
+            print(f"\t- Extended-Lengyel SOL estimate not available ({e}); derived['Te_lcfs_lengyel'] = NaN", typeMsg='w')
+            self.derived['Te_lcfs_lengyel'] = np.nan
+            self.derived['Te_lcfs_lengyel_mode'] = mode
+
     def _deriv_gacode(self,y):
         return grad(self.derived["r"],y)
 
@@ -1357,6 +1475,73 @@ class mitim_state:
         self.derive_quantities()
 
         print(f"\t\t- Resolution of profiles changed to {n} points with function {interpolation_function}")
+
+    def continue_edge_constant_aLx(self, rho_bc, variables=None):
+        """
+        Replace the profiles OUTSIDE rho_bc by a C1 continuation of the core: beyond
+        rho_bc each kinetic profile decays with its log-gradient a/Lx frozen at its
+        value at rho_bc, anchored at the rho_bc value. Profiles at rho <= rho_bc are
+        untouched, so the gradient is continuous across rho_bc (no kink).
+
+        Purpose: build a kink-free copy of the state before a NEO-VGEN Er run. The
+        confinement/BC beat writes a steep, prescribed (linear-in-psi_n) edge beyond
+        the last predicted radius; that corner makes the neoclassical Er — and, one
+        derivative further, VEXB_SHEAR — spike at the boundary control point. VGEN only
+        needs a smooth profile inside the predicted band, so the prescribed outer edge
+        is replaced here by the physics-agnostic continuation and only the resulting w0
+        inside the band is kept by the caller. Operate on a COPY (never the real state).
+
+        Parameters
+        ----------
+        rho_bc : float
+            rho_tor beyond which the continuation is applied (the last predicted radius).
+        variables : list of str, optional
+            Profile keys to continue. Defaults to Te, Ti, ne, ni.
+        """
+        from scipy.integrate import cumulative_trapezoid
+
+        if variables is None:
+            variables = ["te(keV)", "ti(keV)", "ne(10^19/m^3)", "ni(10^19/m^3)"]
+
+        rho = self.profiles["rho(-)"]
+        r   = self.derived["r"]
+        a   = float(self.derived["a"])
+        ibc = int(np.argmin(np.abs(rho - rho_bc)))
+        _grad_map = {"te(keV)": "aLTe", "ti(keV)": "aLTi",
+                     "ne(10^19/m^3)": "aLne", "ni(10^19/m^3)": "aLni"}
+
+        def _continue_1d(X, aLX):
+            # d(ln X)/dr = -aLX/a; freeze aLX at its rho_bc value beyond rho_bc,
+            # integrate outward from the (kept) rho_bc value.
+            aLX_c = aLX.copy()
+            aLX_c[ibc + 1:] = aLX[ibc]
+            dlnX_dr = -aLX_c / a
+            cum = cumulative_trapezoid(dlnX_dr, r, initial=0.0)
+            lnX = np.log(np.maximum(X[ibc], 1e-30)) + (cum - cum[ibc])
+            Xn = X.copy()
+            Xn[ibc + 1:] = np.exp(lnX[ibc + 1:])
+            return Xn
+
+        for key in variables:
+            if key not in self.profiles:
+                continue
+            grad_key = _grad_map.get(key)
+            if grad_key is None or grad_key not in self.derived:
+                continue
+            arr  = self.profiles[key]
+            aLXX = self.derived[grad_key]
+            if arr.ndim == 1:
+                self.profiles[key] = _continue_1d(arr, aLXX)
+            else:
+                out = arr.copy()
+                for col in range(arr.shape[1]):
+                    aLXX_col = aLXX[:, col] if np.ndim(aLXX) == 2 else aLXX
+                    out[:, col] = _continue_1d(arr[:, col], aLXX_col)
+                self.profiles[key] = out
+
+        self.derive_quantities()
+        print(f"\t\t- Edge continued with constant a/Lx beyond rho={rho_bc:.3f} "
+              f"(kink-free copy for VGEN): {variables}", typeMsg="i")
 
     def smooth_profiles(self, variables=None, relative_smoothing=0.005):
         """
@@ -2829,6 +3014,15 @@ class mitim_state:
 
         self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
 
+        # With zero rotation everywhere, ROTATION_MODEL=2 gives fluxes identical to model 1
+        # but its sonic quasineutrality Newton solve dies SILENTLY (exit 0, empty transport
+        # files) for Ti/Te <~ 1e-2, which extreme optimizer candidates can reach. Downgrade
+        # to model 1 in that case; an explicit extraOptions ROTATION_MODEL still wins (it is
+        # applied downstream, on top of these controls).
+        zero_rotation = bool(np.all(self.profiles["w0(rad/s)"] == 0.0))
+        if zero_rotation:
+            print("\t- w0 = 0 everywhere: using NEO ROTATION_MODEL=1 (identical fluxes, robust at extreme Ti/Te)", typeMsg='i')
+
         input_parameters = {}
         for roa, rho_label in zip(r, r_labels):
 
@@ -2932,6 +3126,9 @@ class mitim_state:
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             input_dict = controls | plasma
+
+            if zero_rotation and input_dict.get('ROTATION_MODEL') == 2:
+                input_dict['ROTATION_MODEL'] = 1
 
             for i in range(len(species)):
                 for k in species[i+1]:
@@ -3380,7 +3577,7 @@ class mitim_state:
             "Bo": float(abs(p.profiles["bcentr(T)"][-1])),
         }
 
-    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5, boundary_surface_psin = 1.0, boundary_override = None):
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5, boundary_surface_psin = 1.0, boundary_override = None, equilibrium_mode = 'evolve'):
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
@@ -3389,9 +3586,9 @@ class mitim_state:
         from mitim_tools.transp_tools.utils import TRANSPhelpers
         transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:
-            transp.populate_time.from_profiles(time,self, Vsurf = Vsurf, boundary_surface_psin = boundary_surface_psin, boundary_override = boundary_override)
+            transp.populate_time.from_profiles(time,self, Vsurf = Vsurf, boundary_surface_psin = boundary_surface_psin, boundary_override = boundary_override, equilibrium_mode = equilibrium_mode)
 
-        transp.write_ufiles(mxh_coeffs_smooth = mxh_coeffs_smooth)
+        transp.write_ufiles(mxh_coeffs_smooth = mxh_coeffs_smooth, equilibrium_mode = equilibrium_mode)
 
         return transp
 

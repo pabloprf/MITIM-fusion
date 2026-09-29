@@ -130,6 +130,9 @@ def RicciMetric(y1, y2, y1_std, y2_std, h=None, d0=2.0, l=1.0):
 
 
 def LHthreshold_nmin(Ip, Bt, a, Rmajor):
+    '''
+    From Ryter NF 2014
+    '''
     nLH_min = (
         0.07 * Ip**0.34 * Bt**0.62 * a ** (-0.95) * (Rmajor / a) ** 0.4
     )  # in 1E20 m^-3
@@ -470,6 +473,23 @@ def conduction(n19, TkeV, chi, aLT, a):
 # --------------------------------------------------------------------------------------------------------------------------------
 # Collisions
 # --------------------------------------------------------------------------------------------------------------------------------
+
+
+def sigmav_dd_neutron(Ti_keV):
+    """
+    D(d,n)3He fusion reactivity <sigma*v> (cm^3/s) from Ti (keV), Bosch-Hale parametrization
+    [H.-S. Bosch and G.M. Hale, Nucl. Fusion 32 (1992) 611, Table VII].
+    Validity range 0.2-4800 keV; inputs are clipped to it.
+    """
+    bg, er = 31.3970, 937814.0  # B_G (keV^0.5) and m_r*c^2 (keV) for D+D
+    c1, c2, c3, c4, c5, c6, c7 = 5.43360e-12, 5.85778e-3, 7.68222e-3, 0.0, -2.96400e-6, 0.0, 0.0
+
+    ti = np.clip(Ti_keV, 0.2, 4800.0)
+    r0 = ti * (c2 + ti * (c4 + ti * c6)) / (1.0 + ti * (c3 + ti * (c5 + ti * c7)))
+    theta = ti / (1.0 - r0)
+    xi = (bg**2 / (4.0 * theta)) ** (1.0 / 3.0)
+
+    return c1 * theta * (xi / (er * ti**3)) ** 0.5 * np.exp(-3.0 * xi)
 
 
 def loglam(Te_keV, ne_20):
@@ -1082,6 +1102,31 @@ def tau89p(Ip, Rmajor, kappa, ne, epsilon, Bt, mbg, ptot, tauE=None):
     return tau_scaling, tauE / tau_scaling if tauE is not None else None
 
 
+def BetaN_from_confinement_scaling(Ip, Rmajor, kappa, ne, epsilon, Bt, mbg, ptot, H=1.0, scaling="tau98y2"):
+    """
+    Invert an energy-confinement scaling into an engineering BetaN estimate:
+
+            W_MJ    = H * tau_scaling * ptot        (thermal stored energy)
+            <p>_MPa = (2/3) * W_MJ / V,  V = 2*pi^2 * Rmajor * a^2 * kappa
+            BetaN   = BetaN_engineering(<p>, Bt, a, Ip)
+
+    Arguments follow the tau98y2/tau89p signature (Ip in MA, ne line-averaged in 1E20,
+    ptot in MW, kappa areal). Notes:
+            - ptot should be the loss power; if only Paux is available (no alphas, no
+              ohmic, radiation not subtracted) the estimate is biased low, which is
+              the safe direction for an initialization seed.
+    """
+
+    tau_scaling = {"tau98y2": tau98y2, "tau89p": tau89p}[scaling](Ip, Rmajor, kappa, ne, epsilon, Bt, mbg, ptot)[0]
+
+    a = epsilon * Rmajor
+    W_MJ = H * tau_scaling * ptot
+    volume = 2 * np.pi**2 * Rmajor * a**2 * kappa
+    pvol_MPa = (2 / 3) * W_MJ / volume
+
+    return BetaN_engineering(pvol_MPa, Bt, a, Ip)
+
+
 def tau97L(Ip, Rmajor, kappa, ne, epsilon, Bt, mbg, ptot, tauE=None):
     """
     As specified in Kaye NF 1997:
@@ -1171,6 +1216,15 @@ def calculatePlasmaFrequency(ne):
 
 
 def calculateKappaLimit(epsilon, delta, inductance, betap, feedback=2.25, wallrad=0.1):
+    """
+    Equation is from Lee et al., NF, 2017
+    Wallrad (or DELTA_0 in the paper) is the outer gap between the plasma and the wall normalized by minor radius. (b/a = 1 + DELTA_0). 
+    This seems to be between ~0.05 and ~0.2 in present day experiments, so 0.1 is a good baseline.
+    Feedback is  highly machine, and triangularity dependent. Generally feedback increases with triangularity. The value of this parameter
+    represents a decision about the capability of the vertical instability constrol system. Adjusting this would be a good place to start 
+    if trying to match higher fidelity results. For the machiens in the paper, these vary between 1.0 and 3.25. 
+    The paper gives an expression for delta = 0, delta = 0.33, delta = 0.50, and delta = 0.70 so the thresholds are put these in the middle of their respective ranges.
+    """
     k0, k1 = 0, 0
 
     if delta < 0.25:
@@ -1204,7 +1258,7 @@ def calculateKappaLimit(epsilon, delta, inductance, betap, feedback=2.25, wallra
         k1 = (
             0.41
             * (inductance) ** (-1.21)
-            * (betap) ** (-0.06)
+            * (betap) ** (0.06)
             * (feedback) ** (-0.18)
             * (1 + wallrad) ** (0.68)
         )

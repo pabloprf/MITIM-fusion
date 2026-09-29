@@ -288,6 +288,15 @@ class TRANSPgeneric:
             status = info["info"]["status"]
 
             if status == "stopped":
+                # Bounded relaunch on the transient RDMA/mlx5 container-launch denial
+                # (TRANSPdebug.RDMA_LAUNCH_ERRORS): infrastructure, usually succeeds on retry.
+                # Safe because interpretRun only parses the log once the job left the queue,
+                # and run() re-stages inputs from scratch (no stale-attempt state).
+                if info["info"].get("rdma_failure") and getattr(self, "_rdma_relaunches", 0) < 2:
+                    self._rdma_relaunches = getattr(self, "_rdma_relaunches", 0) + 1
+                    print(f"\t- Transient RDMA/mlx5 launch failure: relaunching TRANSP (attempt {self._rdma_relaunches}/2)", typeMsg="w")
+                    self.run()
+                    continue
                 self._grab_intermediate_besteffort(label, retrieveAC)
                 # interpretRun attaches a human-readable cause (TRANSPdebug.diagnose_transp_failure);
                 # surface it so the run is killed WITH the reason, not a bare "TRANSP stopped".

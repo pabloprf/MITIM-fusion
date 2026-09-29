@@ -3,6 +3,7 @@ import copy
 import datetime
 import array
 import traceback
+import re
 from sympy import EX
 import torch
 from pathlib import Path
@@ -265,9 +266,16 @@ class opt_evaluator:
         pointsEvaluateEachGPdimension=50,
         rangesPlot=None,
         save_folder=None,
-        tabs_colors=0,
+        tabs_colors=None,
         noshow=False,
     ):
+        '''
+        tabs_colors: if not None, paint EVERY tab produced by this call with that
+        single color (index into GRAPHICStools color list, or a color name),
+        instead of the per-plot color scheme of each plotting routine. Used when
+        several runs/beats share one notebook and tabs need to be grouped visually.
+        '''
+
         time1 = datetime.datetime.now()
 
         if analysis_level < 0:
@@ -286,6 +294,15 @@ class opt_evaluator:
         if plotYN and (analysis_level >= 0):
             if "fn" not in self.__dict__:
                 self.fn = GUItools.FigureNotebook("MITIM Optimization Results", show=not noshow)
+
+            # Force one color for all tabs of this call (see docstring). The
+            # notebook may be shared, so this is restored at the end.
+            if tabs_colors is not None:
+                self.fn.tab_color_forced = tabs_colors
+
+        # Tabs already in the (possibly shared) notebook when this call started:
+        # this call's tabs must stay together after them
+        _n_tabs_at_entry = self.fn.tabs.count() if (plotYN and (analysis_level >= 0) and not getattr(self.fn, "_headless", False)) else 0
 
         self.read_optimization_results(
             plotFN=self.fn if (plotYN and (analysis_level >= 0)) else None,
@@ -341,7 +358,9 @@ class opt_evaluator:
             if not getattr(self.fn, "_headless", False):
                 _n_portals = self.fn.tabs.count() - _n_tabs_before_analyze
                 if _n_portals > 0:
-                    self.fn.move_tabs_block_to_front(_n_tabs_before_analyze, _n_portals)
+                    self.fn.move_tabs_block_to_front(_n_tabs_before_analyze, _n_portals, destination=_n_tabs_at_entry)
+
+            self.fn.tab_color_forced = None
 
             print(f"\n- Plotting took {IOtools.getTimeDifference(time1)}")
 
@@ -419,15 +438,17 @@ class MITIM_BO:
                     exists = False
                     print('Problem loading "optimization_extra.pkl"',typeMsg="w")
             
-            # nans if not
+            # None if not (consumers test `is None`; a float sentinel becomes a TypeError deep inside the analyzer)
             if not exists:
                 dictStore = {}
                 for i in range(200):
-                    dictStore[i] = np.nan
+                    dictStore[i] = None
 
-            # Write
-            with open(self.optimization_extra, "wb") as handle:
+            # Write atomically: a kill mid-write (e.g. SLURM wall) must not leave a truncated pickle
+            file_tmp = self.optimization_extra.with_name(self.optimization_extra.name + "_tmp")
+            with open(file_tmp, "wb") as handle:
                 pickle_dill.dump(dictStore, handle, protocol=4)
+            file_tmp.replace(self.optimization_extra)
 
             # Write the class into the optimization_object
             optimization_object.optimization_extra = self.optimization_extra
@@ -648,6 +669,7 @@ class MITIM_BO:
                 "n_from_training": 32,
                 "min_distance": 0.1,
                 "diversity_algorithm": "greedy_max_min_distance",
+                "seed": None,
             }
             user_lo = self.optimization_options.get("local_optima_options", {})
             self.local_optima_options = {**_lo_defaults, **(user_lo if user_lo else {})}
@@ -671,6 +693,7 @@ class MITIM_BO:
 
         # Has the problem reached convergence in the training?
         converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
+        self.converged = bool(converged)
         if converged:
             print("- Optimization has converged in training!",typeMsg="i")
             self.numIterations = 0
@@ -718,14 +741,15 @@ class MITIM_BO:
                 # Local optima mining round (if enabled and on the right cycle)
                 # ------------------------------------------------------------------
                 lo = self.local_optima_options
+                required_acq_points = self.best_points_sequence * lo["n_acq_batches_per_cycle"]
                 if (
-                    lo["apply"]
+                    self._is_local_optima_enabled()
                     and not self.hard_finish
                     and self.currentIteration >= lo["min_iteration"]
-                    and self.currentIteration % lo["n_acq_batches_per_cycle"] == 0
+                    and self._acquisition_points_since_last_local_optima() >= required_acq_points
                 ):
                     print(
-                        f"\n--- Local optima mining round at iteration {self.currentIteration} ---",
+                        f"\n--- Local optima mining round after {required_acq_points} acquisition evaluations ---",
                         typeMsg="i",
                     )
                     try:
@@ -741,6 +765,7 @@ class MITIM_BO:
                             n_from_training=lo["n_from_training"],
                             min_distance=lo["min_distance"],
                             diversity_algorithm=lo["diversity_algorithm"],
+                            seed=lo["seed"],
                         )
                         self._inject_and_evaluate_extra(x_extra)
                     except Exception as _exc:
@@ -789,7 +814,9 @@ class MITIM_BO:
 
                 if current_step is None:
                     print("\t* Because reading pkl step had problems, disabling cold_starting-from-previous from this point on",typeMsg="w")
-                    print("\t* Are you aware of the consequences of continuing?",typeMsg="q")
+                    # The answer is not used (cold_start is forced either way); in a batch job (askQuestions=False)
+                    # the interactive prompt would kill the run
+                    print("\t* Are you aware of the consequences of continuing?",typeMsg="q" if self.askQuestions else "w")
 
                     self.cold_start = True
 
@@ -1001,9 +1028,11 @@ class MITIM_BO:
         The current x_next (acquisition candidates) is preserved and restored
         after injection so the BO loop can continue normally.
         """
+        self.local_optima_round += 1
         _saved_x_next = self.x_next
         self.x_next = X_torch
         try:
+            source_label = f"local_optima_round_{self.local_optima_round}"
             self.updateSet(
                 self.strategy_options_use,
                 isThisCorrected=True,
@@ -1012,10 +1041,42 @@ class MITIM_BO:
                     f"Local optima mining round at iteration {self.currentIteration}, "
                     f"comprised of {len(X_torch)} points"
                 ),
-                source="local_optima",
+                source=source_label,
             )
         finally:
             self.x_next = _saved_x_next
+
+    def _acquisition_points_since_last_local_optima(self):
+        if self.optimization_data is None or "source" not in self.optimization_data.data.columns:
+            return 0
+
+        sources = self.optimization_data.data["source"].fillna("").astype(str).tolist()
+        last_local_optima = -1
+        for idx, source in enumerate(sources):
+            if source.startswith("local_optima"):
+                last_local_optima = idx
+
+        return sum(1 for source in sources[last_local_optima + 1 :] if source == "acquisition")
+
+    def _is_local_optima_enabled(self):
+        return bool(getattr(self, "local_optima_options", {}).get("apply", False))
+
+    @staticmethod
+    def _parse_local_optima_round_from_source(source_value):
+        """Return round index if source matches local_optima_round_N, else None.
+
+        This parser is intentionally tolerant to legacy CSV values where source may
+        be NaN/float or other non-string dtypes.
+        """
+        if source_value is None:
+            return None
+
+        if isinstance(source_value, float) and np.isnan(source_value):
+            return None
+
+        source_text = source_value if isinstance(source_value, str) else str(source_value)
+        match = re.match(r"^local_optima_round_(\d+)$", source_text)
+        return int(match.group(1)) if match else None
 
     @mitim_timer(lambda self: f'Eval @ {self.currentIteration}', log_file=lambda self: self.timings_file)
     def _evaluate(self):
@@ -1233,6 +1294,8 @@ class MITIM_BO:
 
         converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
 
+        self.converged = bool(converged)   # last verdict; read by MAESTRO to count unconverged PORTALS beats
+
         if converged:
             self.hard_finish = self.hard_finish or True
             print("- * Optimization considered converged *", typeMsg="i")
@@ -1276,6 +1339,16 @@ class MITIM_BO:
         # --------------------------------------------------------------------------------------------------
 
         self.Originalinitial_training = copy.deepcopy(self.initial_training)
+        self.local_optima_round = 0
+        if (
+            self._is_local_optima_enabled()
+            and self.optimization_data is not None
+            and "source" in self.optimization_data.data.columns
+        ):
+            for source_value in self.optimization_data.data["source"].tolist():
+                round_num = self._parse_local_optima_round_from_source(source_value)
+                if round_num is not None:
+                    self.local_optima_round = max(self.local_optima_round, round_num)
 
         # -----------------------------------------------------------------
         # Force certain optimizations depending on existence of folders
@@ -1903,6 +1976,7 @@ class MITIM_BO:
         axR = [axs[-1]]
 
         axislabels = [i for i in boundsRaw]
+        boundsThis = None
 
         # ----------------------------------------------------------------------
         # Plot DVs and OFs - Training
@@ -2039,7 +2113,11 @@ def stopping_criteria_default(mitim_bo, parameters = {}):
         converged_by_value, yvals = stopping_criteria_by_value(mitim_bo, maximum_value)
     else:
         converged_by_value = False
-        yvals = None
+        if yvals is None:
+            # No default criterion active (e.g. Ricci-only stop): still hand back the residuals,
+            # otherwise getBest() has nothing to argmin and the LAST evaluation is carried forward
+            _, _, maximization_value = mitim_bo.scalarized_objective(torch.from_numpy(mitim_bo.train_Y).to(mitim_bo.dfT))
+            yvals = -maximization_value.cpu().numpy()
 
     converged = converged_by_value or converged_by_dvs
     

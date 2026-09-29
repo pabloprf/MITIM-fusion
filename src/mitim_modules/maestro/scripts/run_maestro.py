@@ -1,11 +1,23 @@
 import argparse
 import copy
 import json
+import os
+import sys
+
+# Headless Linux (no DISPLAY, e.g. SLURM nodes): force the Agg backend before any
+# pyplot import. Otherwise matplotlib may pick Qt/xcb, which SIGABRTs the whole run
+# during --save report generation on nodes missing libxcb-cursor0 — killing a case
+# whose physics already completed. An explicit MPLBACKEND still wins; macOS (native
+# backend, no DISPLAY var) is untouched.
+if sys.platform != "darwin" and not os.environ.get("DISPLAY") and not os.environ.get("MPLBACKEND"):
+    import matplotlib
+    matplotlib.use("Agg")
+
 import numpy as np
 from pathlib import Path
 from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools import IOtools, GUItools, PLASMAtools
-from mitim_modules.maestro.MAESTROmain import maestro
+from mitim_modules.maestro.MAESTROmain import maestro, _resolve_prune_level, MAESTROStop
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools.opt_tools.scripts.slurm import run_slurm
@@ -66,6 +78,66 @@ def check_unrecognized_namelist_keys(maestro_namelist):
     return unknown
 
 
+def estimate_BetaN_from_scaling(betan_string, parameters_initialize, parameters_engineering, geometry, maestro_namelist):
+    '''
+    Resolve BetaN given as a confinement-quality string ("H98y2" or "H89p", optionally with an
+    explicit target like "H98y2=1.1") into a numeric BetaN, by inverting the corresponding tau_E
+    scaling with the engineering parameters. BetaN is an outcome, not an engineering knob: a fixed
+    guess (e.g. 2.0) becomes unreachable at low Ip and breaks the initialization, whereas a fixed
+    H-factor scans gracefully. Loss power here is Paux only (alphas/ohmic unknown at this stage),
+    so the estimate is biased low on purpose.
+    '''
+    name, _, value = betan_string.partition("=")
+    # Default targets chosen to correspond to standard H-mode confinement in each scaling
+    scalings = {"h98y2": ("tau98y2", 1.0), "h98": ("tau98y2", 1.0), "h89p": ("tau89p", 2.0), "h89": ("tau89p", 2.0)}
+    if name.strip().lower() not in scalings:
+        raise Exception(f'[MAESTRO] BetaN string "{betan_string}" not recognized (use "H98y2" or "H89p", optionally e.g. "H98y2=1.1")')
+    tau_name, H = scalings[name.strip().lower()]
+    if value:
+        H = float(value)
+
+    Ip_MA, B_T = parameters_engineering['Ip_MA'], parameters_engineering['B_T']
+
+    # Geometry from the separatrix parameterization, or from the geqdsk boundary otherwise
+    if 'R' in geometry:
+        R, a, kappa = geometry['R'], geometry['a'], geometry['kappa_sep']
+    elif 'geqdsk_file' in geometry:
+        from mitim_tools.gs_tools import GEQtools
+        g_eq = GEQtools.MITIMgeqdsk(geometry['geqdsk_file'])
+        Rb, Zb = np.array(g_eq.g.raw["rbbbs"]), np.array(g_eq.g.raw["zbbbs"])
+        R, a = (np.nanmax(Rb) + np.nanmin(Rb)) / 2, (np.nanmax(Rb) - np.nanmin(Rb)) / 2
+        kappa = (np.nanmax(Zb) - np.nanmin(Zb)) / (2 * a)
+        if Ip_MA is None:
+            Ip_MA = abs(float(g_eq.g.raw["current"])) * 1E-6
+        if B_T is None:
+            B_T = abs(float(g_eq.g.raw["bcentr"]))
+    else:
+        raise Exception('[MAESTRO] BetaN estimation from a confinement scaling requires separatrix, freegs, fibe or geqdsk initialization geometry')
+
+    # Line-averaged density from neped and the density-peaking target (nu_ne = ne(0.2)/<ne>_vol),
+    # assuming a profile linear in rho: n0 = 2*nu*neped/(3-nu), nbar = (n0 + neped)/2
+    nu_ne = min(parameters_initialize.get("nu_ne", None) or 1.3, 2.5)
+    neped_20 = parameters_engineering['neped_20']
+    n0_20 = 2 * nu_ne * neped_20 / (3 - nu_ne)
+    nbar_20 = (n0_20 + neped_20) / 2
+
+    mbg = np.mean([{'H': 1.0, 'D': 2.0, 'T': 3.0}[i] for i in maestro_namelist["plasma"]["species"]["fuel"]])
+
+    # kappa_sep slightly overestimates the areal elongation the scalings were fitted with (mild, ^0.78 at most)
+    BetaN = PLASMAtools.BetaN_from_confinement_scaling(
+        Ip_MA, R, kappa, nbar_20, a / R, B_T, mbg, parameters_engineering['Paux_MW'], H=H, scaling=tau_name)
+
+    print(f'[MAESTRO] BetaN = "{betan_string}" -> {tau_name} with H = {H:.2f}, using Ip = {Ip_MA:.2f} MA, Bt = {B_T:.2f} T, '
+          f'R = {R:.2f} m, a = {a:.2f} m, kappa = {kappa:.2f}, nbar_20 = {nbar_20:.2f}, M = {mbg:.1f}, Paux = {parameters_engineering["Paux_MW"]:.1f} MW '
+          f'(loss power = Paux only, no alphas): BetaN = {BetaN:.2f}', typeMsg='i')
+
+    BetaN_clipped = float(np.clip(BetaN, 0.5, 3.5))
+    if BetaN_clipped != BetaN:
+        print(f'\t- Estimated BetaN = {BetaN:.2f} outside sanity range [0.5, 3.5], clipping to {BetaN_clipped:.2f}', typeMsg='w')
+
+    return BetaN_clipped
+
+
 @mitim_timer('MAESTRO')
 def run_maestro_local(
         file_path,
@@ -73,7 +145,7 @@ def run_maestro_local(
         terminal_outputs    = False,
         force_cold_start    = False,
         cpus                = 8,
-        keep_all_files      = None,   # None -> read from YAML (`maestro.keep_all_files`); else explicit override
+        prune_level         = None,   # None -> read from YAML (`maestro.prune_level`); else explicit override
         ):
 
     maestro_namelist = IOtools.read_mitim_yaml(file_path)
@@ -81,10 +153,12 @@ def run_maestro_local(
     # Warn about misplaced/misspelled keys that would otherwise be silently ignored
     check_unrecognized_namelist_keys(maestro_namelist)
 
-    # If the caller didn't explicitly set keep_all_files, take it from the YAML
-    # (templates/namelist.maestro.yaml documents `maestro.keep_all_files`).
-    if keep_all_files is None:
-        keep_all_files = maestro_namelist.get("maestro", {}).get("keep_all_files", True)
+    # If the caller didn't explicitly set prune_level, take it from the YAML
+    # (templates/namelist.maestro.yaml documents `maestro.prune_level`), honoring the
+    # deprecated `maestro.keep_all_files` boolean when prune_level is absent.
+    if prune_level is None:
+        prune_level = maestro_namelist.get("maestro", {}).get("prune_level", None)
+        prune_level = _resolve_prune_level(prune_level, maestro_namelist.get("maestro", {}).get("keep_all_files", None))
     
     # In case a beat requests this information (e.g. EPED initializer)
     maestro_namelist['maestro']['master_cpus'] = cpus
@@ -111,11 +185,24 @@ def run_maestro_local(
 
     if "fGped" in maestro_namelist["plasma"]["parameters"] and maestro_namelist["plasma"]["parameters"]["fGped"] is not None:
         print('[MAESTRO] Using fGped to determine neped_20. This will override the neped_20 value provided in the namelist', typeMsg='i')
-        try:
-            Ip = maestro_namelist["plasma"]["parameters"]["Ip"]
-            a = maestro_namelist["plasma"]["parameters"]["separatrix"]["a"]
-        except:
-            raise Exception("To use fGped, you must provide both Ip and a in the namelist")
+        Ip = maestro_namelist["plasma"]["parameters"].get("Ip", None)
+        a = maestro_namelist["plasma"]["parameters"]["separatrix"].get("a", None)
+        # geqdsk initialization: whatever is not explicitly given is read from the equilibrium
+        # file itself, so fGped does not force redundant (and potentially inconsistent with the
+        # geqdsk) Ip/a namelist entries. Explicit values still take precedence.
+        if (Ip is None or a is None) and maestro_namelist["plasma"]["profiles_initialization"]["initialization_type"] == "geqdsk":
+            from mitim_tools.gs_tools import GEQtools
+            g_eq = GEQtools.MITIMgeqdsk(maestro_namelist["plasma"]["parameters"]["separatrix"]["geqdsk_file"])
+            if Ip is None:
+                Ip = abs(float(g_eq.g.raw["current"])) * 1E-6
+            if a is None:
+                Rb = np.array(g_eq.g.raw["rbbbs"])
+                a = (np.nanmax(Rb) - np.nanmin(Rb)) / 2
+            print(f'\t- fGped conversion sourced from the geqdsk: Ip = {Ip:.3f} MA, '
+                  f'a = {a:.4f} m (separatrix half-width)', typeMsg='i')
+        if Ip is None or a is None:
+            raise Exception("To use fGped, you must provide both Ip and a in the namelist "
+                            "(only initialization_type=geqdsk can source them from the equilibrium file)")
         neped_20 = maestro_namelist["plasma"]["parameters"]["fGped"] * PLASMAtools.Greenwald_density(Ip, a)
         print(f'\t- Calculated neped_20 from fGped: {neped_20 = :.2f}')
     else:
@@ -170,7 +257,13 @@ def run_maestro_local(
     
     else:
         geometry = {}
-        
+
+    # BetaN given as a confinement-quality string -> resolve to a number here, so every
+    # downstream consumer (creator, equilibrium p0 seed, EPED) sees the same estimate
+    if isinstance(parameters_initialize.get("BetaN", None), str):
+        parameters_initialize["BetaN"] = estimate_BetaN_from_scaling(
+            parameters_initialize["BetaN"], parameters_initialize, parameters_engineering, geometry, maestro_namelist)
+
     # ---------------------------------------------------------------------------------------
     # Read user settings and default namelists for individual Beats
     # ---------------------------------------------------------------------------------------
@@ -255,8 +348,9 @@ def run_maestro_local(
         terminal_outputs = terminal_outputs,
         overall_log_file = True,
         master_cold_start = force_cold_start,
-        keep_all_files = keep_all_files,
-        maestro_namelist = maestro_namelist
+        prune_level = prune_level,
+        maestro_namelist = maestro_namelist,
+        max_unconverged_portals_beats = maestro_namelist.get("maestro", {}).get("max_unconverged_portals_beats", None),
         )
 
     # -------------------------------------------------------------------------
@@ -281,6 +375,11 @@ def run_maestro_local(
         m.define_beat(
             beat_parameters["beat_type"],
             initializer = initialize_this_beat_with,
+            prune_level = beat_parameters.get("prune_level", None),
+            count_unconverged = beat_parameters.get("count_unconverged", True),
+            # 'bc' beats need the method at construction time (it names the run folder);
+            # read from the MERGED prepare namelist so base_module inheritance works
+            method = beat_prepare_namelists[beat].get("method") if beat_parameters["beat_type"] == 'bc' else None,
             )
 
         # ****************************************************************************
@@ -328,7 +427,12 @@ def run_maestro_local(
         # Run beat
         # ****************************************************************************
         
-        m.run(**beat_run_namelists[beat])
+        try:
+            m.run(**beat_run_namelists[beat])
+        except MAESTROStop as e:
+            print(f'\t- MAESTRO chain stopped early: {e}', typeMsg='w')
+            m.interpret()
+            break
         
         # ****************************************************************************
         # Post-process beat
@@ -375,8 +479,12 @@ def main():
     parser.add_argument('--terminal', action='store_true', help='Print terminal outputs')
     parser.add_argument('--save', required=False, default=False, action='store_true')
     parser.add_argument('--coldstart',action='store_true', help='force cold start')
+    parser.add_argument('--prune-level', dest='prune_level', type=int, default=None, choices=[0, 1, 2, 3],
+                        help='How much to discard as the run proceeds: 0 keep everything, 1 drop execution '
+                             'scratch, 2 wipe run_<name>/, 3 also prune outputs+initializers. '
+                             'Overrides YAML maestro.prune_level.')
     parser.add_argument('--no-keep-all-files', dest='no_keep_all_files', action='store_true',
-                        help='Wipe per-beat run_<name>/ folders after each beat (overrides YAML maestro.keep_all_files).')
+                        help='DEPRECATED alias of --prune-level 3.')
 
     # Slurm option must be or None or a list wiht [partition, enviroment, hours, memory]
     parser.add_argument('--slurm', nargs=4, metavar=('PARTITION', 'ENVIRONMENT', 'HOURS', 'MEMORY'), help='Submit to SLURM with given parameters')
@@ -392,8 +500,10 @@ def main():
     terminal_outputs = args.terminal
     save_figs = args.save
     force_cold_start = args.coldstart
-    # None -> let run_maestro_local fall back to the YAML; False -> CLI override.
-    keep_all_files = False if args.no_keep_all_files else None
+    # None -> let run_maestro_local fall back to the YAML; an int -> CLI override.
+    prune_level = args.prune_level
+    if prune_level is None and args.no_keep_all_files:
+        prune_level = _resolve_prune_level(None, keep_all_files=False)
 
     slurm = args.slurm
 
@@ -402,7 +512,7 @@ def main():
         optional_flags = "--save" if save_figs else ""
         optional_flags += " --coldstart" if force_cold_start else ""
         optional_flags += " --terminal" if terminal_outputs else ""
-        optional_flags += " --no-keep-all-files" if args.no_keep_all_files else ""
+        optional_flags += f" --prune-level {prune_level}" if prune_level is not None else ""
 
         partition, environment, hours, memory = slurm
 
@@ -417,7 +527,7 @@ def main():
         run_maestro_local(maestro_namelist, folder=folder, cpus=cpus,
                           terminal_outputs=terminal_outputs,
                           force_cold_start=force_cold_start,
-                          keep_all_files=keep_all_files)
+                          prune_level=prune_level)
 
         if save_figs:
             

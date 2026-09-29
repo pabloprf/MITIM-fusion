@@ -8,18 +8,535 @@ DESCRIPTION
 
 *   🔬 **DIII-D `DIIIDExperiment` analysis class**: new `experiment_tools/diiid/experiment.py` adds an object-oriented layer on top of the retrieval — `DIIIDExperiment(shot, time, …)` with `overview`/`plot_cer_coverage`/`plot_cer_profiles`, QUICKFIT (Tomas Odstrcil's map2grid) profile fits `fit_te/ne/ti/omega/nimp`, `impurity_concentration()` from Zeff, and `to_gacode()` translating the fits into an `input.gacode` (`gacode_state`). QUICKFIT is an OPTIONAL, lazily-imported capability (`pip install mitim-fusion[quickfit]` → scikit-sparse; the quickfit clone is auto-located at `../quickfit` or `$QUICKFIT_PATH`), so retrieval/plotting still work without it. `DIIIDExperiment.multishot(…)` returns a `DIIIDMultiShot` group (one shared tunnel) with `overview`/`load_fits`/`merged_fits`/`to_gacode` across shots. See `tests/capability_tests/diiid_02_experiment_class.py`.
 
+*   💥 **`mitim_kill_cgyro`: stop hopeless CGYRO radii of a running PORTALS evaluation and use what they
+    simulated.** `mitim_kill_cgyro <portals folder>` lists each radius of the evaluation in flight (time,
+    end time, last write, status); `--rho ...` or `--all` asks the chosen radii to stop. Each one ends
+    right after its next restart write (so later iterations can still warm-start from it), is accepted as
+    finished, and its fluxes are averaged over the simulated trace. Every CGYRO launch now runs inside the
+    stop watchdog, which also waits for every MPI rank to exit before returning (OpenMPI launchers put ranks
+    in their own process groups). Works for bash/in-allocation and submitted runs, local or over SFTP.
+
+*   💥 **Claude Code agent `portals-cgyro` shipped in `.claude/agents/`: an operator for live PORTALS-CGYRO
+    runs.** It checks each radius' cost per a/cs, time step and saturation, stops hopeless radii with
+    `mitim_kill_cgyro` only under a written rule, and holds chains whose links keep failing. It never changes
+    physics or grids and never deletes data, and it writes one line per action to `Outputs/agent_actions.log`.
+    For a watch lasting days: `claude --bg --agent portals-cgyro "Watch <run folder> on <ssh alias>"`.
+
+*   💥 **Live view of the CGYRO evaluation still running, in `mitim_plot_portals --complete`.** A new
+    "CGYRO live" tab reads the in-progress outputs of the evaluation in flight and plots one column per
+    radius: Qe/Qi/Ge traces with the run's own averaging window (mean +/- sigma) and turbulence-only
+    target, plus a wall-clock row with the cost of 1 a/cs and the two most expensive CGYRO sections.
+    Titles carry the last simulated time, the age of the last output (stalls), the time left to
+    `MAX_TIME` per radius and, for the evaluation, when its slowest radius finishes; the time axis runs
+    out to `MAX_TIME`. The scratch folder comes from `cgyro_submission.json` (submitted runs) or the
+    staged execution script (bash runs, local scratch); remote scratch is pulled over SFTP into a
+    temporary folder, and neither the run folder nor the scratch is written to. Also rendered when no
+    evaluation has finished yet, which is when it is most useful. New "CGYRO near best" / "CGYRO near last" tabs
+    draw the evaluations whose gradients sit within 10% of the best (last) one back to back per radius, under
+    the gradient changes and against its target: do near-identical gradients give consistent fluxes?
+
+*   💥 **CGYRO `TOROIDALS_PER_PROC` is now chosen for communication locality on multi-node radial
+    calls.** CGYRO's grid is `n_proc = n_proc_1 x n_toroidal_procs`, and `n_toroidal_procs =
+    N_TOROIDAL/TOROIDALS_PER_PROC` is the size of the nonlinear all-to-all communicator, which
+    `MPI_RANK_ORDER=2` (CGYRO's default) lays out rank-contiguously. MITIM previously picked the
+    smallest valid value, maximizing that communicator and spreading the all-to-all across nodes.
+    It now picks the smallest valid value whose toroidal group count fits within one node's ranks,
+    guarded by CGYRO's requirement that `n_proc_1` divide `nv` and `nc`. Single-node radial calls
+    are provably unaffected (validity already forces the group count below the rank count there),
+    and an explicit `TOROIDALS_PER_PROC` in `extraOptions` is still respected. Measured on
+    Perlmutter (ARC V3A, `Nonlinear_reduced2`, 8 A100 over 2 nodes): `nl_comm` 37.2 -> 5.2 s and
+    total step time 129.1 -> 101.6 s at identical GPU memory and node count.
+
+*   💥 **Harvest: archive every code evaluation of PORTALS/MAESTRO runs into a per-user database**
+    (`harvest: {enabled, file, scan_trick_members}` in the PORTALS namelist or `maestro.harvest`; `enabled` defaults
+    to true, so every run harvests as soon as a file is set).
+    Every individual TGLF/NEO/CGYRO/GX/QuaLiKiz run (base points AND each TGLF std scan-trick member)
+    and every full-EPED evaluation is stored as an input -> output record (full input file, scalar
+    fluxes, for CGYRO/GX the averaging window and uncertainty diagnostics; for EPED the eped.input as
+    run, NMODES/WIDTHS/TEPED_BOUND and the stability rule) with its provenance (machine, modules, code
+    version, MITIM commit, averaging method) once per run and code. Staged per run with rolling gzip
+    compression and pushed once at the end (MAESTRO: all beats share `Outputs/harvest`, records tagged
+    with `maestro_beat`, one push at finalize) into a netCDF-4 file
+    (`harvest.file` or `preferences.harvest_file`; with neither set the run is not harvested) under an NFS-safe lock.
+    `mitim_harvester <folder>` pushes a dead run or rebuilds the file; `mitim_plot_harvest` and
+    `HARVESTtools.harvest_database` load, interpret and plot it. Capability tests
+    `portals_04_harvest.py` and `maestro_02_harvest.py`. Every TGLF/NEO/CGYRO/EPED record can be written back as its exact
+    input file (`harvest_database.input_file` / `write_input_file`, EPED as eped.input + eped.config, types from a
+    per-run map); `harvest_database.drop` removes superseded records; CGYRO
+    records also carry restart provenance (warm start, source iteration, inherited time), whether
+    `MAX_TIME` was reached, and cost per a/cs with MPI/OMP/nodes. Staging files are per process.
+    `mitim_harvester --from-disk <run(s) or parent folder> [--dry-run]` backfills runs made WITHOUT harvest:
+    it rebuilds their TGLF/NEO/CGYRO/QuaLiKiz/full-EPED records from whatever is left on disk (never EPED-NN), marks them
+    `recovered_by`, and skips records already in the file (capability test `maestro_03_harvester.py`).
+
+*   💥 **Selectable time-averaging of nonlinear CGYRO/GX fluxes**: new `read.averaging` block
+    (`transport.options.{cgyro,gx}.read.averaging`) with `method: fixed | quends | howard_gkav` (classic
+    `tmin` window, Sandia QUENDS transient trim, or N.T. Howard's stationarity scan) and
+    `uncertainty: acf | quends` (autocorrelation vs block-mean standard error). Implemented by the
+    reusable `GKaverager` (`simulation_tools/utils/GKaveraging.py`), with per-rho window/flag/provenance
+    written to `fluxes_turb.json`, an "Averaging" tab in the CGYRO/GX notebooks, `mitim_plot_cgyro --averaging`,
+    the optional `mitim[quends]` extra and `tests/capability_tests/cgyro_07_flux_averaging_methods.py`.
+
+*   💥 **Thermal D-D neutron rate**: new `PLASMAtools.sigmav_dd_neutron` (Bosch-Hale
+    D(d,n)3He parametrization [Bosch & Hale, Nucl. Fusion 32 (1992) 611, Table VII]) and
+    `mitim_state.derived['ndd_thermal']` — volume-integrated thermal D(d,n)3He neutron rate (n/s)
+    from the thermal deuterium population. Validated against interpretive-TRANSP THNTX_DD on
+    DIII-D runs (agreement 0.94-1.04). MITIM's fusion power remains DT-only.
+
+*   💥 **Separatrix initializer from `rz_boundary_file` now shape-faithful**: the boundary fitted
+    from the R,Z file carries its FULL MXH moments into the initial state (`shape_cos0+`/`shape_sin3+`,
+    previously zeroed), and the `delta`/`zeta` scalars are written in the GACODE-MXH convention
+    (delta = sin(s1), zeta = -s2) instead of the geometric squareness — which could differ in sign
+    and magnitude (an ARC pointed double-null boundary was over-rounded by +24% in cross-section
+    area; now +0.2%). The internal freegs correction also works when the namelist shape scalars are
+    left null with a boundary file. Analytic (scalar) separatrix initialization is unchanged.
+
+*   💥 **MAESTRO boundary-condition beats unified into a single `bc` beat**: `beat_type: bc` with
+    `method: confinement | sharpness` replaces the separate `sharpness`/`confinement` beat types —
+    common knobs (location, servo/relaxation, density treatment) at the `parameters_prepare` top
+    level, method-specific ones in `confinement_parameters`/`sharpness_parameters` sub-dicts
+    (misplaced or unknown keys now raise). Run folders/artifacts become `run_bc_<method>`/
+    `bc_results.npy`. Numerics are bit-identical to the old beats; future BC methods drop in
+    as a single metric module. First new method: `betap` — closed-form Te_bc from a prescribed
+    edge poloidal-beta gradient d(beta_p)/d(psi_N) (engineering norm Bpa = mu0*Ip/L_pol, thermal
+    pressure, density a spectator; default 2.0, grounded in L-H edge-gradient literature —
+    Rogers/Drake/Zeiler PRL 1998, Eich & Manz NF 2021). The betap edge is built linear in
+    thermal PRESSURE (constant d(beta_p)/d(psi_N) across the edge, Te derived pointwise from
+    the standing density); its plot tab shows the edge beta_p gradient explicitly.
+
+*   💥 **SOL / separatrix estimates collapsed into `mitim_state.calculate_sol()`**: always computes
+    the legacy 2-point `Te_lcfs_estimate` (now DEPRECATED — its `Bp = eps*Bt/q95` is a rough averaged
+    poloidal field, ~2.4x below the true outboard-midplane value; it will be removed in the future),
+    the new `Te_lcfs_2pt` (same model with the exact `Bpol_omp` from the poloidal-flux gradient, also
+    stored) and, optionally (`lengyel=True`), the extended-Lengyel model via `calculate_sol_lengyel()`
+    (`Te_lcfs_lengyel`; optional `[lengyel]` extra — degrades gracefully to NaN if missing; `mode='seeded'` = the package's detachment-seeded driver, `mode='clean'` = unseeded upstream leg, pure conduction at the state's own Zeff). The clean mode is fully package-native
+    (`Lengyel.run_forward()`: registered extended-lengyel/cfspopcon algorithms composed per
+    `templates/input.lengyel_clean.controls.yaml` — no detachment solve, no seeding, no radas data
+    needed; Brunner lambda_q convention, documented in the template header). Teaching
+    script: `tests/capability_tests/profiles_02_sol_estimates.py`.
+
+*   💥 **MAESTRO scan interpretation** (`mitim_modules.maestro.utils.MAESTROscan` + new
+    `mitim_plot_maestro_scan` CLI): scan-level analysis of a folder of `case_*` MAESTRO runs —
+    seed-spread violin panels of performance scalars (seed-only spread; deterministic scan inputs
+    split into x-axis/color series, benchmark runs overlaid at interpolated positions), per-seed
+    profile-spread figures with per-seed Pfus readouts, per-beat evolution traces, cumulative
+    beat timing (wall time or CPU-hours) with a reference run's chain, and a per-case PDF report.
+
+*   💥 **fGped with geqdsk initialization no longer requires explicit Ip/a**: when
+    `initialization_type: geqdsk`, any of the two left `null` is read from the equilibrium file
+    itself (|CURRENT| in MA; a = separatrix half-width) for the fGped -> neped conversion —
+    removing namelist entries that were redundant with (and could silently disagree with) the
+    geqdsk. Explicit values still take precedence; other initialization types are unchanged.
+
+
+*   💥 **MAESTRO BetaN can be a confinement-quality string**: `profiles_initialization.parameters.BetaN`
+    now accepts `"H98y2"` or `"H89p"` (optionally with a target, e.g. `"H98y2=1.1"`) instead of a fixed
+    number: an achievable BetaN is estimated by inverting the corresponding tau_E scaling with the
+    engineering parameters (loss power = Paux only, so deliberately on the low side), so engineering
+    scans (e.g. in Ip) no longer need a per-case guess that can break initialization when unreachable.
+    Also fixed a crash in the initializer pressure guess when neither profiles nor BetaN were provided
+    (now falls back to 1.0 MPa with a warning), and de-duplicated the FiBE copy of that formula.
+
+*   💥 **MAESTRO bc beat (method: confinement): invertible isothermal-edge guard** (`sep_max_frac`): instead of
+    flooring the H-servo at `Te_bc >= 1.2*Tesep`, the beat can now let `Te_bc` go arbitrarily low and
+    cap the APPLIED separatrix Te/Ti at `sep_max_frac * Te_bc` (edge stays monotone, TRANSP-safe),
+    with `Te_bc_min_Tesep_factor: null` disabling the dynamic floor. An H-target that demands an edge
+    at/below the physical (e.g. Lengyel) Tesep then shows up as a result, not a rail.
+
+*   💥 **EPED physics-based stability rule** (`postprocess_eped` rule `'W'`, exposed in `EPED.read()`
+    and the MAESTRO eped-beat knob `stability_rule`): the pedestal can now be selected with the EPED1
+    diamagnetic criterion gamma > C*omega_*pi(n)/2, with omega_*pi the HALF-maximum of the ion
+    diamagnetic frequency across the barrier (Snyder PoP 2009 / NF 2011) so that C = 1 is EPED1 as
+    published — the threshold grows ~linearly with toroidal mode number and the answer converges in
+    the mode-set ceiling, unlike the flat gamma/omega_A > 0.03 cut in deeply ballooning-limited
+    pedestals. `stability_threshold = None` now resolves per-rule (flat: 0.03; 'W': C = 1), a
+    flat-like C warns, the companion gacode state is sanity-checked against the EPED scalars, and an
+    optional `consecutive_heights` knob (default 1 = plain first crossing) can reject selections
+    carried by isolated unconverged-ELITE spikes. EPED runs also keep per-height TOQ/ELITE work
+    directories by default for post-mortems (`clean_intermediate_files=True` restores the old
+    cleanup), and a launch whose num_heights x num_modes would overflow the EPED runner's silent
+    1024-job table (excess ELITE jobs never run, gamma = -1 everywhere with exit code 0) now asks
+    for confirmation at submission instead of failing undetectably.
+
+*   💥 **MAESTRO transp beat: prescribed equilibrium and frozen-field (heating-only) mode**:
+    `machine_initialization: null` now hands TRANSP the state's own nested flux surfaces as
+    data (LEVGEO=8) — no TEQ seed machine, no shape morph, so any target shape works from t=0.
+    The new `frozen_field: true` knob additionally pins q verbatim to the input (no GS solve,
+    no current diffusion), turning the beat into a pure source calculator (TORIC/NUBEAM) for
+    downstream beats. Validated end-to-end by `tests/dev_tests/test_transp_prescribed_eq.py`,
+    which can execute a real transp+portals chain (`--full`).
+
+*   💥 **MAESTRO transp beat can seed from ITER** (`machine_initialization: ITER`): TEQ warm-starts
+    its first solve from a stored per-device equilibrium keyed to the tokamak label, with a tight
+    (~1.3x) convergence basin — so reactor-scale targets (ARC-class) should morph from ITER rather
+    than a ~7x walk from CMOD. The namelist comment now documents the pick-the-nearest-machine rule.
+
+*   💥 **MAESTRO lengyel beat `mode: 'clean'`**: non-detached forward-conduction separatrix
+    temperature (the package-native clean-Lengyel mode above) applied to the profiles WITHOUT
+    touching densities/impurities — no detachment solve, no seeding, no radas. Gives BC-setting
+    beats (the bc beat) a physics-based Tsep scale instead of the namelist constant;
+    PORTALS surrogate data stays reusable. Test chain: `tests/dev_tests/test_lengyel_clean_beat.py`.
+
+*   💥 **MAESTRO lengyel beat supports multiple diluting impurities**: `parameters_prepare`
+    now accepts list-valued `dilution_impurity_species`, `dilution_impurity_charges`,
+    `dilution_impurity_masses`, and `dilution_impurity_min_concentrations` (same length required).
+    Each species is checked independently, added as thermal if missing, and floored to its
+    per-species minimum concentration; `dilution_impurity_species: null` keeps dilution disabled.
+
+*   💥 **BC beats support Te_bc under-relaxation** (`relaxation` knob in the bc beat's
+    `parameters_prepare`, default 1.0 = previous behavior): the applied boundary temperature
+    is blended with the value applied by the previous bc beat (shared trans-beat
+    memory `Te_bc_applied`, so mixed-method chains relax coherently), damping beat-to-beat oscillations of
+    the BC servo. The first incarnation takes the full step; with `relaxation < 1` the target
+    (H-factor / xi) converges across beat iterations and the applied effective xi is reported as
+    `xi_eff`. The confinement beat also gained an isothermal-edge guard (`Te_bc_min_Tesep_factor`,
+    default 1.2): the effective Te_bc floor is `max(bound, factor * Tesep)` of the incoming state,
+    so the H-servo can never apply a sub-separatrix boundary temperature (which SIGFPEs TRANSP);
+    pinned optima are flagged `Te_bc_at_floor` in the beat results instead of crashing the chain
+    (a pin with H below the target — a Nelder-Mead bound-clipping artifact — is re-solved exactly
+    by a bracketed root find). Both beats can now also run a measured-response servo
+    (`servo_mode: response_fit` + `servo_*` knobs): every incarnation records the delivered
+    (post-transport) H or xi at the previously applied Te_bc into a persistent trans-beat history,
+    and the step comes from a local linear fit of that measured response (fallback secant → seeded
+    step, trust-clamped) instead of a fixed relaxation of the frozen-shape solve — which is ~2.5×
+    too stiff (delivered dlnH/dlnTe_bc ≈ 0.4 vs ~1.0 frozen), the cause of slow cross-beat
+    convergence in confinement↔PORTALS chains. Default remains the previous relaxation behavior.
+    Test chains: `tests/dev_tests/test_bc_relaxation.py`, `tests/dev_tests/test_bc_servo_response_fit.py`.
+
+*   💥 **New PORTALS tab "Fluxes vs Gradients"** (`mitim_plot_portals --complete`, or
+    `PORTALSanalyzer.plotFluxesVsGradients()`): an NxN matrix over the predicted channels
+    scattering every evaluated flux against every evolved gradient, one color per radius,
+    with 1-sigma transport-model error bars and a per-radius least-squares line. The diagonal
+    panels (flux vs its own drive) expose the critical-gradient / stiffness behavior of the
+    transport model across the whole run, with the vertical spread at fixed gradient showing
+    the effect of everything else that moved (Ti/Te, nu_ei, beta_e, ...). Fluxes are gyro-Bohm
+    normalized by default; `flux_type` selects turbulent (default), neoclassical or the sum.
+
+*   💥 **MAESTRO graded pruning** (`maestro.prune_level`, 0-3, replacing the `keep_all_files`
+    boolean): 0 keeps everything; 1 drops per-beat execution scratch nothing reads back (TRANSP
+    `results/` CDF duplicate + PH.CDF, EPED per-height TOQ/ELITE dirs, PORTALS `Execution/`
+    trees) with every plot tab intact; 2 also wipes `run_<name>/`; 3 adds the PORTALS output
+    prune and the initializer prune (incl. the nested `initializer_eped/run_eped/` tree that
+    the old cleanup never reached). Overridable per beat (`maestro.<beat>.prune_level`), and
+    `mitim_prune_maestro --level N` applies any level post-hoc to a finished run, importing the
+    same per-beat tables so the two cannot drift. `mitim_plot_maestro` degrades gracefully on
+    pruned runs (placeholder tabs + an aggregated "skipped" report instead of failures).
+    The EPED beat now has EPED delete its per-height TOQ/ELITE work dirs on the runner as it
+    goes, at every level; `eped.keep_eped_intermediate_files: true` retains them for
+    post-mortems and is honored at level 0 only.
+
+*   💥 **MAESTRO fixed thermal helium-ash support with explicit gates**: `plasma.species.mix`
+    now accepts `fixed_helium_ash` with `fHe/ZHe/AHe`, and TRANSP applies helium as a separate
+    impurity contribution in the same low-Z closure flow as other impurities only when the gate is
+    enabled. Lengyel adds optional `parameters_prepare.lengyel_fixed_helium_ash` (bool): when true,
+    helium is added as a second fixed impurity species; defaults preserve legacy behavior.
+
+*   🎯 **MAESTRO PORTALS beats seed from the previous beat's best solution**: new `first_point`
+    knob in the portals beat (`previous_best` default, `flux_match`, `namelist`). The flux-match
+    seed against the previous surrogate landed subcritical (zero TGLF edge flux) in nearly every
+    unconverged lmodes_v6 chain; the incoming state already carries the previous best gradients,
+    so the beat now starts there with a single training point.
+    `try_flux_match_only_for_first_point` is kept as a retired alias.
+
+*   🛑 **`maestro.max_unconverged_portals_beats`**: stop a MAESTRO chain (skip the remaining
+    beats, still finalize, `Outputs/maestro_stopped.txt`) once that many PORTALS beats ended
+    without meeting their convergence criteria (`null` = never). The verdict of every PORTALS
+    beat is recorded in `parameters_trans_beat['portals_converged_history']` and in
+    `beat_results/portals_converged.txt`, so a re-run of a stopped case stops at the same beat.
+    Beats with `count_unconverged: false` (set on the template's `portals_soft`) are not counted.
+
+*   💥 **PORTALS-GX runs end to end, on 1-N GPUs per radius.** GX as PORTALS turbulence model now completes
+    evaluations (flux collection, Qie from GX's electron turbulent heating, harvest), with presets
+    `Nonlinear_reduced2_analogue` / `Nonlinear_reduced3_analogue` matched to CGYRO's ky grid, box and kx range,
+    `restart_from_cases` warm starts (t_max is added time, as CGYRO's MAX_TIME), resume of preempted array
+    elements from their own checkpoint, and multi-GPU radii that scale ~ideally (2.06x/4.07x on 2/4 A100).
 
 ### Bug Fixes
 
-*   🐛 **NEW BUG FIX**, description
+*   🐛 **PORTALS-CGYRO submission robustness fixes** (found by a code audit of the reattach / stall-rescue /
+    in-place-rescue paths): batched CGYRO evaluations no longer raise `TypeError` on the shipped namelist
+    (`run_over_plasmas` now accepts `rescue_interrupted` and `load_balance`); a status poll no longer drops
+    into an IPython prompt on SLURM states such as `REQUEUED` or `CONFIGURING` (they keep polling), no longer
+    runs the `bin.cgyro.restart.old` prune on the remote, and no longer re-queries `sacct` every poll for a
+    task already flagged `TERMINAL_NO_RESCUE`; a second `InteractiveTerminalError` in a run is re-raised
+    instead of being read as success; a file missing from a retrieval no longer deletes the previous good
+    result nor the staging folder; an interrupted run without a readable resume time is discarded instead
+    of silently running the full `MAX_TIME` on top of its checkpoint; the SLURM script builder no longer
+    writes defaults into the global machine config; the allocation counts every pending (subfolder, rho)
+    unit instead of only the last subfolder's. The status poll now also waits for auto-resubmit rescue
+    jobs (the parent array draining used to end the poll and fetch the rescued radius half-done), the
+    completion gate (`EXIT` in `out.cgyro.info` or `mitim_budget.tag`) now applies to the submit/fetch and
+    re-attach paths as it did to `run_type: normal`, and an in-place rescued radius re-derives
+    `RESTART_STEP` for its shortened run so it keeps writing checkpoints (before, a rescue with less time
+    left than one restart period never checkpointed, and `mitim_kill_cgyro` could not stop it). In bash mode,
+    several radial calls sharing one node (e.g. 1 GPU per radius on a 4-GPU node) now each own their GPU(s)
+    exclusively per srun step; before, every call landed on the node's first GPU. A radius whose CGYRO
+    crashed (e.g. disk quota exceeded) now ends with a non-zero exit code: gacode's `cgyro` script exits 0
+    regardless, so SLURM recorded such array elements as `COMPLETED 0:0`. A status poll or re-attach whose
+    remote scratch folder was deleted now reads the job as gone and resubmits, instead of polling it as
+    pending until the driver's wall time. With `load_balance: extra_points`,
+    a relaunch that re-runs only the unfinished radii now gives the nodes it leaves idle extras built from
+    the radii that already finished (before, only nodes freed during the job got one).
+    A radius that SLURM requeues (preemption) now runs only the time it had left, rounded up to whole
+    restart periods; before, CGYRO resumed from its checkpoint and ran the full `MAX_TIME` again.
+    The stall rescue no longer cancels a preempted radius right after SLURM restarts it (its
+    `out.cgyro.timing` still predated the preemption): a radius SLURM started less than the kill threshold
+    ago is left alone, and the node is excluded only when the radius hung there past the threshold.
+    **A re-run evaluation no longer relaunches radii that already finished in the scratch folder (EXIT or
+    `mitim_budget.tag`): they are collected as they are and their nodes go to extras; before, each was
+    continued for ~1 a/cs, and a radius stopped by `mitim_kill_cgyro` was continued for its remaining time.**
+
+*   🐛 **PORTALS radiation target: a thermal species missing from `radiation_chebyshev.csv` (e.g. `B`, or a
+    `LUMPED` ion) no longer removes its own bremsstrahlung from the total.** The line term was
+    `Pcool(table species) - brems(all species)`, so an absent species turned its bremsstrahlung into negative
+    line radiation (ARC V3A with boron: -10 MW; with a lumped impurity: -12 MW). The subtraction now covers only
+    the species in the table; absent species radiate pure bremsstrahlung. Runs with every species in the table
+    are unchanged.
+
+*   🐛 **`load_balance: extra_points` no longer throws away extra cases that ran to `MAX_TIME`.** Only
+    extras stopped by the watchdog (`mitim_budget.tag`) were kept, so the ones that finished on their own,
+    the best converged, were discarded and never reached `Outputs/extra_points.csv`. An extra is now kept
+    if CGYRO wrote its `EXIT` line or it was stopped past `min_time`.
+
+*   🐛 **MITIM-launched CGYRO no longer dies at startup on OpenMPI 5 builds** (`MPI_FILE_WRITE_AT in
+    cgyro_write_hosts failed`, e.g. laptop pixi and Perlmutter CPU builds). The MPI-IO backend was forced
+    to `romio321`, which only OpenMPI 4 ships; it is now `OMPI_MCA_io=^ompio`, which keeps ROMIO (fast on
+    NFS) under any OpenMPI version and is ignored by MPICH.
+
+*   🐛 **Truncated CGYRO runs are no longer accepted as finished evaluations in bash/in-allocation mode.**
+    CGYRO writes all its output files from the first step, so a step killed mid-run (preemption, crash,
+    GPU OOM, node failure) passed the retrieval check, and the scheduler logged it as `rc=0` because the
+    call script's status was its trailing cleanup's. A run now raises unless every radius carries CGYRO's
+    completion marker (`EXIT` in `out.cgyro.info`, or the wall-budget watchdog's tag), and the call body
+    returns CGYRO's real exit status. Test: `tests/dev_tests/test_cgyro_completion_gate.py`.
+
+*   🐛 **POPCON initialization from a plasma state was silently wrong in three places**:
+    `MITIMpopcon.update_from_gacode` hardcoded `areal_elongation = 1.5` (so the popcon volume did
+    not follow the state), built the density-peaking offset with the wrong sign (cfspopcon forms
+    `nu_n = Angioni_scaling + offset`, so reproducing a state needs `ne_peaking - scaling`, not the
+    reverse — on an ARC case that alone made the peaking 44% too high and P_fus 47% too high), and
+    picked impurity species with `AtomicSpecies(int(Z))` although that enum is ordinal, mapping a
+    lumped Z = 5.3 impurity to Lithium. Species are now looked up by atomic number
+    (`closest_cfspopcon_species`) with the concentration rescaled to preserve n_z*Z.
+
+*   🐛 **NEO-VGEN ExB shear no longer spikes at the last predicted radius**: when
+    `transport.options.neo.vgen_exb_shear` was active, VGEN ran on the full state whose
+    prescribed (linear-in-psi_n) edge, written by the BC beat beyond the outermost predicted
+    radius, put a gradient kink one grid point out. The neoclassical Er — and, one derivative
+    further, the `VEXB_SHEAR` handed to TGLF — spiked at the boundary control point (O(0.3-1)
+    c_s/a vs O(1e-3) in the core), suppressing the boundary turbulent flux several-fold and
+    biasing the flux-matched edge gradient; the pre-VGEN smoothing spline amplified it further.
+    New MITIM-side knobs in `vgen_exb_shear`: `edge_treatment: continue_core` runs VGEN on a copy
+    whose edge beyond the last predicted radius is a C1 continuation of the core
+    (`mitim_state.continue_edge_constant_aLx`), and `smooth_profiles` (null -> on for
+    `prescribed`, off for `continue_core`) controls the pre-VGEN spline; a warning fires if
+    `|gamma_exb|` at the last predicted radius still exceeds 10x the median over the others.
+    The default `edge_treatment: prescribed` keeps the previous behavior. Only affects runs
+    using `vgen_exb_shear` (default off).
+
+*   🐛 **TRANSP `to_profiles` now carries the NBI fast ions and thermal hydrogen**: `getSpecies`
+    built no beam species at all (only fusion products and ICRF minorities were `[fast]`) and skipped
+    NH, so NBI-heated extractions lost the beam dilution and pressure and the H fraction (JET DT
+    42847V04: quasineutrality off by 1.6% at mid-radius, ~12% of the pressure missing). One `[fast]`
+    species per injected isotope (BDENS_D/T/H) is now written, each with its own pressure-consistent
+    T = 2/3 (W_perp+W_par)/n from UBPRP_X/UBPAR_X (fast alphas likewise from UFPRP_4/UFPAR_4), so the
+    state's fast pressure reproduces TRANSP's PMHDF_IN. Tests: `tests/dev_tests/test_transp_fast_ions_time_averaging.py`.
+
+*   🐛 **TRANSP `to_profiles` now carries the particle sources**: `qpar_beam` (from SBTH,
+    fast-ion thermalization) and `qpar_wall` (from SWD, wall/recycled neutrals) were previously
+    left at zero in the extracted `input.gacode`, so downstream PORTALS density predictions ran
+    against a Gamma=0 target. Also fixed the impurity-mass namelist lookup, which could not parse
+    multi-valued `AIMPS = 12.0, 40.0` lines and silently fell back to `2*Zave` (Ar came out A~36
+    instead of 40). Tests: `tests/dev_tests/test_transp_particle_sources.py`.
+
+*   🐛 **TRANSP `to_profiles` power channels (radiation, RF, charge exchange)**: total radiation is
+    now pinned to TRANSP's `PRAD` instead of the internally-computed `PRAD_BR/CY/LI` split — on decks
+    that prescribe measured radiation (`.QRA` ufile) that split is only 5-20% of `PRAD`, so every
+    extracted state under-radiated and biased the electron target flux high (the remainder goes into
+    `qline`; where `PRAD` sits below brems+sync those two are rescaled instead, and it is reported).
+    `qrfe`/`qrfi` now sum ICRH+ECH+LH rather than ICRH alone, and `qioni` carries `-P0NET` (a loss in
+    TRANSP, but gacode sums `qioni` into `qi`), worth ~2% of `qHeat` on these DIII-D runs.
+
+*   🐛 **Headless MAESTRO `--save` no longer killed by matplotlib's Qt backend**: on SLURM
+    nodes without a display, matplotlib could pick Qt/xcb and SIGABRT the whole process
+    during summary-report generation (nodes missing `libxcb-cursor0`), marking a
+    physics-complete run as FAILED. `mitim_run_maestro` now forces the Agg backend on
+    headless Linux (explicit `MPLBACKEND` still wins; macOS untouched).
+
+*   🐛 **TRANSP runs no longer die on the transient InfiniBand/RDMA container-launch failure**:
+    when the apptainer container is denied the mlx5 queue-pair at mpirun startup (a known
+    node/config-dependent infrastructure hiccup that MITIM already fingerprints via
+    `TRANSPdebug.RDMA_LAUNCH_ERRORS`), `checkUntilFinished` now relaunches the run (up to 2
+    attempts) instead of stopping the whole chain; genuine TRANSP aborts still stop immediately.
+
+*   🐛 **Every NEO retrieval waited 60 s for a file NEO never writes**: `out.neo.rotation` was
+    listed as a mandatory output, but NEO only produces it for the rotation models that solve
+    for the poloidal potential (never with `ROTATION_MODEL=1`). Each retrieval therefore
+    reported it missing, slept 60 s and re-pulled every output of every radius once more —
+    ~224 times (~3.7 h of pure sleep) in a 14-beat MAESTRO chain, enough to push long chains
+    past their wall clock. It is now declared optional: still retrieved whenever NEO does
+    write it, its absence only warns.
+
+*   🐛 **TRANSP beat wrote a negative ICRF antenna frequency for negative-`bcentr` states**:
+    `frqicha` was derived from the signed field, so any state stored with the opposite sign
+    convention (legitimate in gacode) got `frqicha < 0` in the deck; the resonance condition
+    only involves |B| (field direction reaches TRANSP via `nlbccw`), so |bcentr| is now used.
+
+*   🐛 **MAESTRO Transition tabs showed spurious flux-surface offsets between beats with
+    different radial grids**: the equilibria overlay picked surfaces by nearest-grid-point
+    snap, so two states with different rho grids drew rings at different surfaces — up to
+    half a grid spacing (~5 mm) of fake geometry "drift". Surfaces (and the psi_N=0.995
+    curve) are now interpolated at the requested coordinate; only real differences remain.
+
+*   🐛 **MPI TRANSP (ICRF/NUBEAM parallel servers) crashed at startup when submitted via sbatch on
+    hyperthreaded partitions** ("mpirun ... no available cpus in the allocation"): `--ntasks N` buys
+    N hyperthreads = N/2 physical cores, but the container binds one rank per core. New
+    `cpus_per_task` argument in `defineRunParameters()` (also reachable via `transp_run.run()` and
+    the transp-beat run kwargs; default None = previous behavior) — set to 2 on such partitions.
+
+*   🐛 **MAESTRO separatrix initializer delivered less auxiliary power than requested when
+    the freegs profile correction ran**: sources were volume-normalized on the solved freegs
+    flux surfaces, but the geometry was then overwritten with the analytic shaping guess without
+    renormalizing — delivered/requested fell to ~0.96/0.88/0.83 at kappa_sep 1.5/1.735/1.97
+    (elongation-dependent, R-independent). The aux channels are now renormalized against the
+    written geometry. Also fixed: `BetaN: null` crashed the initializer pressure guess (presence
+    test instead of a None check); the freegs-correction failure was swallowed silently — it
+    now logs the exception; and the renormalization initially double-applied because
+    `equilibrium_to_profiles` aliased the e/i aux channels to the same array (now copied,
+    and the renormalization is non-in-place).
+
+*   🐛 **NEO silent failure at extreme Ti/Te fixed and made self-describing**: with zero
+    rotation, the Sonic preset's `ROTATION_MODEL=2` quasineutrality solve could fail to
+    converge for Ti/Te ≲ 1e-2 (reachable by optimizer excursion candidates) and exit 0 with
+    empty transport files; `to_neo` now auto-selects model 1 when w0≡0 (identical fluxes,
+    robust), and the empty-output error now includes the reason NEO wrote to `out.neo.run`.
+
+*   🐛 **MAESTRO robustness: TRANSP beats restart cleanly and failures are self-describing**:
+    a restarted TRANSP beat used to stage the *previous attempt's outputs* into the new run
+    (TRANSP tried to resume from the stale state and aborted at NSTEP 1) — staging is now a
+    whitelist of the actual inputs (ufiles + namelist), so re-running a MAESTRO folder needs no
+    manual cleanup. Batch runs no longer die with a blank "interactive response required":
+    the TRDAT and CDF-retrieval paths raise with the diagnosed cause, and the failure classifier
+    reports the true one (infra launch/binding failures only claimed when the run never advanced,
+    MPI_ABORT and geometry-update categories added, the routine complaint preceding the trap
+    takes precedence). A `plfhe4` namelist knob (fusion-product MC source-power gate) is also exposed.
+
+*   🐛 **TGLF `processDominated` returned TEM values under the ETG keys**: `g_ETG_max`/
+    `k_ETG_max`/`f_ETG_max` were copies of the TEM maxima (so `eta_ITGETG` always equalled
+    `eta_ITGTEM`); the ETG-range values computed in the same function are now returned.
+
+*   🐛 **TRANSP fast-model alphas no longer lost when NUBEAM is off**: the `nalpha=1`
+    analytic fast-alpha model writes the alpha population under different CDF variables
+    than NUBEAM (`NALPHA`/`UALPHPP`-`UALPHPA`/`PALE`-`PALI` vs `NFI`,`FDENS_4`/`UFIPP`-`UFIPA`/
+    `PFE`-`PFI`); the CDF reader only knew the NUBEAM names and silently zero-filled, so
+    NUBEAM-free runs (e.g. MAESTRO with `useNUBEAMforAlphas: false` and no ICRH/NBI) dropped
+    the fast-alpha species AND its heating from the extracted state. The reader now falls
+    back to the fast-model names (validated against a burning-plasma CDF: 275 MW alpha
+    heating and a 1 MeV, 0.03e20 m^-3 alpha species recovered). NUBEAM runs are unaffected.
+
+*   🐛 **MAESTRO initializer: BetaN auto-lowering when the seed profiles would break TRANSP**:
+    the profile initializer matches a target BetaN by scanning the temperature gradient; at
+    low density the target can be unreachable and the seed saturates above TRANSP's 100 keV
+    input ceiling, killing the first TRANSP beat (TRDAT `CKDRNG` rejection). The BetaN target
+    is now lowered by 25% and re-solved (repeatedly, with warnings) until the on-axis
+    temperature is TRANSP-safe.
+
+*   🐛 **MAESTRO EPED beat: teped-lowering retries now also fire on NaN returns**: full EPED can
+    complete but return NaN when the marginal point falls outside the explored `TEPED_BOUND`
+    window (e.g. low-shaping/low-Ip cases unstable already at the window floor); this bypassed the
+    retry loop and killed the beat on the first attempt. Such returns now get the same
+    floor-lowering retries as the exception path, and the final error reports the EPED inputs.
+
+*   🐛 **MAESTRO frozen TRANSP boundary crash on the 2nd TRANSP beat**: reusing the frozen boundary
+    disabled the MXH projection for *all* time slices, so the machine-initialization curve (different
+    point count) made `write_ufiles` fail with a ragged-array `ValueError` in any chain with two or
+    more TRANSP beats. The frozen curve is now tagged per time slice and used verbatim while other
+    slices are still projected onto the common theta grid; also fixed swapped `delta/zeta/z0`
+    arguments when building machine structures from an overridden boundary, and the freeze now
+    stores the *plasma* boundary (last time slice) instead of the machine-initialization
+    equilibrium (earliest slice) — previously later beats could inherit the startup machine's
+    tiny boundary — with a loud guard refusing to freeze a curve inconsistent with the plasma
+    minor radius.
+
+*   🐛 **MAESTRO PORTALS beats hand forward the best evaluation when only the Ricci stop is active**:
+    with `maximum_value: null` and `minimum_inputs_variation: null` the default stopping criteria
+    returned no per-evaluation values, `getBest()` failed silently (`Problem retrieving best
+    evaluation`) and the LAST evaluation of an unconverged beat was carried to the next beat
+    (median 1.17x worse residual than the best point over the lmodes_v6 campaign). The default
+    criteria now always return the residuals, so the min-residual point is the one handed forward.
+
+*   🐛 **`optimization_data.csv` no longer corrupts after a re-evaluated point**: rows were
+    addressed by their `Iteration` value through a DataFrame label, and a candidate coincident
+    with an earlier evaluation got no row, after which every later write landed on the wrong row
+    (blank-y rows, y under the wrong x, missing evaluations; 388 of 535 lmodes_v6 beats). The table
+    now keeps one row per evaluation (`Iteration` = index in the training set) and the evaluator
+    writes y by evaluation index.
+
+*   🐛 **`use_previous_ranges` in MAESTRO PORTALS beats now actually freezes the exploration
+    ranges**: the frozen ranges were written to a key PORTALS never reads, so every beat silently
+    re-boxed relative to its own seed gradients (up to a/LT ~ 1700 at rho=0.9 for ITER-size cases,
+    letting `sr` walk to negative a/LTe and crash the chain); and on `predicted_roa` grids they
+    were built over the template's `predicted_rho`, giving misaligned bounds. Ranges now go into
+    the portals namelist overlay, expanded on the active grid and validated (`_expand_range`) so a
+    mismatch raises instead of falling back.
+
+*   🐛 **MAESTRO PORTALS beats no longer die on resume after a mid-write SLURM kill**:
+    `optimization_extra.pkl` is written atomically (a truncated pickle broke the resume of that
+    beat), a missing/unreadable `optimization_object.pkl` warns instead of raising an interactive
+    prompt in batch mode, and the analyzer/handoff degrade to the surrogate-data-only path when
+    the stored powerstates are gone (previously `TypeError`/`AttributeError` killed the chain).
+
+*   🐛 **Blocking SLURM job arrays no longer lose their slowest tasks**: `sbatch --wait` on an array returns when
+    the last-started task ends (seen on engaging), after which MITIM retrieved and deleted the scratch folder
+    under the tasks still running. The execution script now waits until no task of the array is queued.
+    Multi-rank GX also writes its parallel-HDF5 output without Open MPI's NFS locks, which stalled it.
 
 ### Changes for developers (internal execution)
+
+*   🔎 **PORTALS-CGYRO submission stack reorganized into named objects (behaviour-preserving).**
+    `FARMINGtools`: `RetryPolicy`, `mitim_job.session()`, `RetrievalSpec`, `SlurmState`/`SqueueRecord`,
+    `SbatchScript`. `SIMtools`: `RadialCall`/`WorkPlan` (the one place the `rho_<r>` naming lives),
+    `CompletionSpec`, `JobScript` builders, `SubmissionRecord` (owns `cgyro_submission.json`, same schema),
+    `RunType`/`SubmissionType`/`JobStatus`, and `_run` as named steps. `CGYROtools`: `CgyroLaunchBody`,
+    `Watchdog` (bash in `templates/cgyro_watchdog.sh` / `cgyro_probe.sh`), `RadiusStatus`/`CgyroProbe`,
+    `StallRescuer`, `_ResolvedControls`. `transport_cgyro` (1970 → 700 lines) drives single-plasma, batched and
+    GX evaluations through one `GKSubmission` engine, with `RestartChain`, `PerIterOverrides` and
+    `ExtraPointHarvester` in `physics_models/utils/`. Generated scripts and resolved inputs are tested
+    byte-identical to the previous code.
 
 *   🔎 **NEW CHANGE**, description
 
 ### Back-compatibility considerations and defaults
 
-*   🔮 **NEW CONSIDERATION**, description
+*   🔮 **`beat_type: sharpness` and `beat_type: confinement` are REMOVED** (no aliases): namelists
+    must use `beat_type: bc` with `method:`. Pre-existing run folders (`run_sharpness/`,
+    `run_confinement/`) are still read by `mitim_plot_maestro`/`mitim_check_maestro` with a
+    deprecation notice.
+
+*   🔮 **`maestro.keep_all_files` is deprecated** in favor of `prune_level` (true -> 0, false -> 3).
+    The boolean still works everywhere it did (YAML, `maestro(keep_all_files=...)`,
+    `--no-keep-all-files`) with a deprecation notice; the default remains keep-everything.
+
+*   🔮 **MAESTRO PORTALS beats default to `first_point: previous_best`**: a PORTALS beat that follows
+    another one now starts from the previous beat's best solution instead of a flux match against
+    the previous surrogate (`try_flux_match_only_for_first_point: true`); set
+    `first_point: flux_match` to recover the old seed. The old key is still accepted with a notice
+    (true -> `flux_match`, false -> `namelist`).
+
+*   🔮 **MAESTRO template PORTALS exploration ranges widened**: `portals_parameters.solution.
+    exploration_ranges` in `namelist.maestro.yaml` now defaults to `ymax: 4.0`,
+    `yminymax_atleast: [null, 4]` (previously inheriting the PORTALS defaults 3.0 / [0, 2]),
+    matching what the ARC MAESTRO scans have been overriding successfully. Standalone PORTALS
+    (`namelist.portals.yaml`) is unchanged.
+
+*   🔮 **TRANSP `to_profiles(time_window>0)` is now a true time average**: `time_window` is the
+    HALF-width (slices with |t - time_extraction| <= time_window), averages are trapezoidal in time
+    over the CDF output slices (the plain mean over-weighted densely sampled stretches), fast-ion
+    temperatures come from the window-averaged energy and density (2/3 <W>/<n>, not <T>), and the
+    flux surfaces are averaged slice by slice before the MXH fit instead of taken at the slice nearest
+    the mean time. `time_window=0` (the default) is unchanged. Any CDF with a thermal H population
+    above 1e15 m^-3 now also gets an `H` thermal species in the extracted state, and `ptot(Pa)`
+    (previously left at zero) is now the kinetic thermal + fast pressure of the written species.
 
 ---
 

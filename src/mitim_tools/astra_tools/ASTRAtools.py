@@ -1,3 +1,4 @@
+import os
 import shutil
 import tarfile
 import numpy as np
@@ -17,12 +18,12 @@ class ASTRA():
 
         pass
 
-    def prep(self,folder,file_repo = __mitimroot__ / 'templates' / 'ASTRA8_REPO.tar.gz'): 
+    def prep(self,folder,file_repo = None):
 
         # Folder is the local folder where ASTRA things are, e.g. ~/scratch/testAstra/
 
         self.folder = IOtools.expandPath(folder)
-        self.file_repo = IOtools.expandPath(file_repo)
+        self.file_repo = self._resolve_astra_repo(file_repo)
 
         # Create folder
         IOtools.askNewFolder(self.folder)
@@ -41,6 +42,27 @@ class ASTRA():
         # Define basic controls
         self.equfile = 'fluxes'
         self.expfile = 'aug34954'
+
+    def _resolve_astra_repo(self, file_repo):
+        '''
+        Locate the ASTRA source tarball.
+
+        ASTRA (G. Pereverzev, P. N. Yushmanov) is NOT redistributed with MITIM: it is
+        obtained from IPP Garching at https://gitlab.mpcdf.mpg.de/git/astra.git, which is
+        access-controlled. Clone it, tar the clone, and point MITIM at the tarball with
+        either the ASTRA_REPO environment variable or the file_repo argument.
+        '''
+
+        file_repo = file_repo if file_repo is not None else os.environ.get('ASTRA_REPO')
+
+        if file_repo is None:
+            raise FileNotFoundError(
+                'ASTRA repository tarball not found. MITIM does not ship the ASTRA sources; '
+                'clone https://gitlab.mpcdf.mpg.de/git/astra.git, tar the clone, and set the '
+                'ASTRA_REPO environment variable (or pass prep(..., file_repo=<path>)).'
+            )
+
+        return IOtools.expandPath(file_repo)
 
     def run(self,
             t_ini,

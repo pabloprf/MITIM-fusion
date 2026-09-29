@@ -18,6 +18,8 @@ def main():
                         help=f"Folder to save the figures. If flag given without a value, defaults to '<dir of first file>/{IOtools.SAVE_FOLDER_DEFAULT_SUBDIR}'. Implies --noshow.")
     parser.add_argument("--dpi", type=int, required=False, default=120,
                         help="DPI to save the figures.")
+    parser.add_argument("--time", type=float, required=False, default=None,
+                        help="Time to plot.")
     parser.add_argument("--noshow", required=False, default=False, action="store_true",
                         help="If set, it will not show the figures on screen.")
     args = parser.parse_args()
@@ -35,6 +37,7 @@ def main():
     folder_save = IOtools.resolve_save_folder(args.save, Path(expl[0]).parent if expl else None)
     noshow = args.noshow
     dpi_fig = args.dpi
+    time = args.time
 
     cdfs = []
 
@@ -74,7 +77,7 @@ def main():
 
         fn = FigureNotebook("TRANSP run", show=not noshow)
         for i in range(len(cdfs)):
-            cdfs[i].plot(fn=fn, tab_color=i)
+            cdfs[i].plot(fn=fn, tab_color=i, time=time)
 
         if not noshow:
             fn.show()

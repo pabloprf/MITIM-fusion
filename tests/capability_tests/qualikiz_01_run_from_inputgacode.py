@@ -30,6 +30,7 @@ Key teaching points:
 
 import matplotlib.pyplot as plt
 from mitim_tools.qualikiz_tools import QLKtools
+from mitim_tools.misc_tools import GUItools
 from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools import IOtools
 
@@ -98,4 +99,4 @@ for ax in axs:
     ax.legend()
 
 plt.tight_layout()
-plt.show()
+GUItools.show_figures("qualikiz_01_run_from_inputgacode")   # plt.show() with a display; saves PNGs to tests/figures/ when headless

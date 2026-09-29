@@ -79,7 +79,7 @@ solution:
   # If provided, using fZ0_as_weight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
   fZ0_as_weight: 1.0 # if null, it will not be used
 
-  # [Qe,Qi,Ge,Mt,GZ] multipliers to calculate scalarized function
+  # [Qe,Qi,Ge,GZ,Mt] multipliers to calculate scalarized function (Ge is the convective flux Ce)
   scalar_multipliers: [1.0, 1.0, 1.0, 1.0, 1.0]
 
   # Physics-informed parameters to fit surrogates (numbers are the last iteration to consider that line; keys are the physics-informed parameters
@@ -310,6 +310,19 @@ transport:
       #     vel: 1         # Velocity method: 1 = NEO weak rotation limit
       #     nth: "17,39"   # Min,max poloidal theta resolution
       #     matched_ion: 1 # Ion species index to match (1-indexed)
+      #     # MITIM-side knobs (not passed to VGEN): what VGEN sees beyond the last predicted radius, where
+      #     # the prescribed edge (e.g. linear-in-psi_n from the BC beat) makes a/Lx jump. Since Er ~ dp_i/dr
+      #     # and VEXB_SHEAR ~ d(Er)/dr, that jump is a shear at the boundary control point whose size scales
+      #     # with 1/(grid spacing).
+      #     edge_treatment: prescribed    # 'prescribed' (default): state as is, the jump enters the shear at
+      #                                   #   the last predicted radius (resolved over one grid cell).
+      #                                   # 'continue_core': copy whose edge beyond the last predicted radius
+      #                                   #   is a C1 continuation of the core (a/Lx frozen there); the shear
+      #                                   #   at the boundary is the smooth core-like value, edge steepening
+      #                                   #   does not enter. Warns if the boundary shear still spikes.
+      #     smooth_profiles: null         # Pre-VGEN smoothing spline on Te/Ti/ne/ni (removes gradient kinks
+      #                                   #   at ALL control points). null -> true for 'prescribed', false for
+      #                                   #   'continue_core' (the spline rings on the edge corner).
       vgen_exb_shear: null
 
     # *********************************************************************************************************
@@ -325,7 +338,7 @@ transport:
       profiles_postprocessing_fun: null
 
       run:
-        code_settings: "Nonlinear"
+        code_settings: "Nonlinear_reduced1"
         extraOptions: {}
 
         # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
@@ -369,6 +382,10 @@ transport:
         #              (target_GB - current_neoc_GB). Different rhos can pick
         #              different source iterations. Tie-broken in favor of the
         #              higher iteration index (more representative profile).
+        #              The L2 distance is taken in RAW GB units, NOT per-channel
+        #              relative: QiGB is typically one to two orders of magnitude
+        #              larger than GeGB, so the heat channels decide the pick and
+        #              the particle/momentum channels barely contribute.
         #              If a rho has no prior iteration with both fluxes_turb.json
         #              and bin.cgyro.restart_<rho:.4f>, that rho is cold-started
         #              with a warning (NON-fatal — different from "first"/"all").
@@ -378,6 +395,10 @@ transport:
         # or, during the simple-relax initializer:
         #   Initialization/initialization_simple_relax/portals_sr_ev_{src}/
         #     transport_simulation_folder/base_cgyro
+        # In batched mode (powerstate.batch_size > 1, the parallel simple-relax
+        # initializer) the source is base_cgyro_plasma0 instead: the per-plasma
+        # folder is a SIBLING of base_cgyro, not nested under it, and every
+        # plasma of the batch warm-starts from that plasma-0 reference.
         # IMPORTANT:
         #   - You MUST configure RESTART_STEP (and any related CGYRO restart
         #     settings) in extraOptions so the source iteration writes
@@ -397,6 +418,16 @@ transport:
         #     require for the binary restart files.
         #   - If restart_from_folder is also set, it takes precedence and
         #     this option is ignored (with a warning).
+        #   - For "first"/"all" a missing source folder, or a missing
+        #     bin.cgyro.restart_<rho:.4f> for ANY predicted radius, raises
+        #     FileNotFoundError and stops the run: a partial restart would mix
+        #     cold and warm radii in one ensemble, which cannot be diagnosed
+        #     downstream. Clear restart_from_cases to run without restart.
+        #   - "all" takes iteration N-1 as the source and requires it to have
+        #     FINISHED. PORTALS can submit several evaluations per BO step
+        #     (AllowedExcursions / batch acquisition); if N-1 belongs to the
+        #     same batch and is still running, iteration N hard-fails as above.
+        #     Use "best", which falls back per-rho instead, when that can happen.
         # DEPRECATED: the older `restart_from_first: true` still works as an
         # alias for restart_from_cases: "first" but prints a notice.
         restart_from_cases: null
@@ -463,6 +494,11 @@ transport:
         # flaps. Defaults below match the historical 5 s / 3-attempt cap.
         ssh_retry_wait_seconds: 5
         ssh_retry_attempts: 3
+        # When an evaluation is re-run (driver killed, allocation expired), radii left in the
+        # scratch folder with the same input.cgyro are continued from their last restart
+        # instead of starting over; radii that already finished there are just collected.
+        # Needs the scratch folder to survive between launches.
+        rescue_interrupted: True
 
         # Auto stall-detect-and-resubmit. The custom checker classifies each
         # rho on every poll; when a rho has been STALLED (no out.cgyro.timing
@@ -492,16 +528,53 @@ transport:
         #                        both the cgyro MPI layout (1 rank + 1 NUMA per GPU,
         #                        mpinuma=1, nomp = cores_per_mpi hint) and the sbatch
         #                        --gpus-per-node / --ntasks-per-node counts
-        #   minutes            : slurm --time in minutes. 300 = 5h, the usual cap for
-        #                        CGYRO nonlinear runs.
+        #   minutes            : slurm --time in minutes of every submitted element. REQUIRED
+        #                        when run_type is "submit" (MITIM refuses to submit without it;
+        #                        it used to fall back to 5 minutes and time every radius out);
+        #                        10 minutes otherwise. Size it for one radius at MAX_TIME
+        #                        (e.g. 480 for a 750 a/cs reduced run); in bash mode the
+        #                        enclosing job's wall clock applies and this is ignored.
         #   mem                : per-node memory string passed to sbatch --mem
         #                        (e.g. "500GB" ≈ whole node on engaging GPU nodes).
         #   submission_type    : "slurm_array" (default on GPU machines: one array
         #                        element per rho, whole node per element on
         #                        OverSubscribe=NO partitions) or "slurm_standard"
         #                        (single allocation, parallel '&' body).
+        #   max_concurrent_calls : (slurm_array only) at most N radii running at once
+        #                        (sbatch --array=...%N); the rest queue behind them.
         #   exclusive          : force sbatch --exclusive. Omit/null to defer to
         #                        the machine config's slurm.exclusive.
+
+        # Radii finish at different times inside one allocation (bash mode: the driver waits for
+        # the slowest one while the other nodes idle). What to do with that gap:
+        #   strategy: null           -> wait for the slowest radius
+        #             "wall_budget"  -> a watchdog around every radial call stops CGYRO once BOTH
+        #                               minutes_per_call has elapsed AND the run reached min_time
+        #                               a/cs (never before min_time, so a budget-cut run is always
+        #                               usable), right after a restart write so the blob the next
+        #                               iteration warm-starts from is whole. The run gets no EXIT
+        #                               line but a mitim_budget.tag, and counts as complete. The
+        #                               flux window is whatever averaging.method makes of the
+        #                               shorter trace. Works in every submission mode; in slurm
+        #                               modes keep allocation.minutes above minutes_per_call.
+        #             "extra_points" -> (bash mode) a radius that finishes while the slowest one
+        #                               still has enough time left runs ONE extra case on its
+        #                               idle node: same radius, the gradient of the channel with
+        #                               the largest residual scaled by (1 -/+ perturbation)
+        #                               toward reducing it, warm-started from the finished run.
+        #                               It is stopped (after a restart write) when the last main
+        #                               radius ends; if it reached min_time its GB fluxes are
+        #                               appended to Outputs/extra_points.csv, which the
+        #                               per-radius surrogates read as extra training points
+        #                               (surrogate_options.extrapointsFile); otherwise discarded.
+        #                               Results live under transport_simulation_folder/extra_cgyro/.
+        #   min_time is the shared physics floor: the shortest saturated run you accept.
+        load_balance:
+          strategy: null
+          minutes_per_call: 240
+          min_time: 300
+          extra_points:
+            perturbation: 0.15
 
       read:
         # tmin: left edge of the signal-analysis window.
@@ -512,6 +585,39 @@ transport:
         #                                  (e.g. tmin: -200 -> last 200 a/cs of the run).
         tmin: -0.3
         tmin_is_rel: true
+        # averaging: how the saturated window and the flux uncertainties are obtained
+        #   (src/mitim_tools/simulation_tools/utils/GKaveraging.py). The window is chosen
+        #   from Qi, Qe, Ge (GB) and then applied to every signal of the run. In all
+        #   methods the reported std is the 1-sigma standard error of the mean.
+        #   method: "fixed"       -> the tmin/tmin_is_rel window above; ACF-based standard error
+        #                            (1/e decorrelation lag, one independent sample per 3 lags).
+        #           "quends"      -> Sandia QUENDS (pip install mitim[quends]): trims the transient
+        #                            per channel (window starts when ALL of Qi/Qe/Ge are stationary)
+        #                            and uses block-mean statistics with an autotuned block size.
+        #                            Falls back to the fixed window (flag "fallback") if no steady
+        #                            state is found or the package is missing.
+        #           "howard_gkav" -> N.T. Howard's stationarity scan (trend + hump tests on block
+        #                            medians, thresholds tuned for a/cs time units): earliest start
+        #                            from which the three traces are stationary. If none is found
+        #                            it proceeds with the second half of the run and flags
+        #                            "fallback"/"failure"; nothing else is inflated.
+        #   uncertainty: "acf"    -> ACF standard error (default for fixed / howard_gkav)
+        #                "quends" -> QUENDS block-mean standard error over the selected window
+        #                            (default for method "quends"; usable with any method)
+        #   The per-rho window, flag and provenance are written to fluxes_turb.json.
+        #   Caveat (local CGYRO tests, Sep 2026): QUENDS's trim strategies rarely accept bursty
+        #   local fluxes as steady state, so method "quends" often ends in "fallback"; its
+        #   block-mean uncertainty, however, works with any window.
+        averaging:
+          method: "fixed"
+          uncertainty: null            # null -> method default (see above)
+          # quends options (trim strategy of method "quends"; statistics block size for uncertainty "quends")
+          quends:
+            trim_method: "std"         # std | threshold | rolling_variance | self_consistent | iqr | mean_variation
+            window_size: 10            # samples (trim window / minimum remaining length)
+            threshold: null            # threshold / rolling_variance / iqr strategies only
+            start_time: "onset"        # ignore data before this time (a/cs); "onset" = turbulence onset of each trace
+            stats_window_size: null    # block size for the statistics; null = autotune (Ljung-Box)
 
       # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable.
       # Set to null to disable the stable-flux check entirely (no std inflation).
@@ -543,11 +649,31 @@ transport:
 
       run:
 
-        code_settings: "Nonlinear"
+        code_settings: "Nonlinear Tokamak"
         extraOptions: {}
 
         # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
+
+        # Warm start across PORTALS iterations: same knobs and semantics as in the CGYRO block
+        # (restart_from_folder, restart_from_cases: null | "first" | "all" | "best"). GX specifics:
+        #   - The restart file is gxplasma.restart.nc, written every nsave steps (save_for_restart
+        #     and restart_if_exists are on in input.gx.controls), kept per radius as
+        #     gxplasma.restart.nc_<rho:.4f>. With restart_from_cases set it comes back under every
+        #     keep_files (150 MB per radius on the reduced3 analogue grid); without it, only
+        #     keep_files "all" brings it back.
+        #   - t_max (extraOptions or preset) is the ADDITIONAL time on a warm start, as CGYRO's
+        #     MAX_TIME. GX continues the clock of the saved state and stops at an absolute t_max,
+        #     so MITIM writes t_max = t_saved + t_max for every warm-started radius.
+        #   - The warm-started gxplasma.out.nc starts at t_saved, not at 0 as CGYRO's: a negative
+        #     tmin (see read) picks the same window as for CGYRO, an absolute tmin >= 0 does not.
+        #   - A preempted array element that SLURM requeues resumes from its own checkpoint and
+        #     runs only the remaining time (templates/gx_requeue_resume.sh), whatever this knob says.
+        restart_from_cases: null
+
+        # If True (and run_type=="submit"), a restarted PORTALS driver re-attaches to the slurm job
+        # recorded in <base_gx>/gx_submission.json instead of resubmitting.
+        check_existing_runs: False
 
       read:
         # tmin: left edge of the signal-analysis window.
@@ -558,6 +684,14 @@ transport:
         #                                  (e.g. tmin: -200 -> last 200 a/cs of the run).
         tmin: -0.3
         tmin_is_rel: true
+        # averaging: same options as for CGYRO ("fixed" | "quends" | "howard_gkav", see above).
+        #   GX time is in a/cs as for CGYRO (T_ref=Te, m_ref=m_D), but its output cadence differs
+        #   (nwrite timesteps): check the howard_gkav window on the trace plots.
+        # The electron TurbulentHeating GX writes (fluxes = true) is passed as QieGB_turb, as CGYRO's
+        # turbulent exchange moment (same definition, sign and GB unit Q_GB/a); PORTALS uses it only
+        # with solution.turbulent_exchange_as_surrogate.
+        averaging:
+          method: "fixed"
 
       # Files to keep from simulation
       #     none: all runs will only keep minimal files
@@ -623,6 +757,24 @@ target:
 
     # (%) Error (std, in percent) of model evaluation
     percent_error: 1
+
+# -----------------------------------------------------------------
+# Harvest: archive every individual transport-code evaluation
+# -----------------------------------------------------------------
+
+harvest:
+  # If true, every TGLF/NEO/CGYRO/GX/QuaLiKiz evaluation of this run (base point AND each member of the
+  # TGLF std scan trick, one record per radius: full input file + scalar fluxes + code version) is staged
+  # under Outputs/harvest/ and appended to the central per-user netCDF file when the run ends
+  # (`mitim_harvester <folder>` pushes a run that died; `mitim_plot_harvest` inspects the file).
+  # On by default: a run harvests whenever a file is set (below or in config_user.json), and does nothing otherwise
+  enabled: true
+  # Central netCDF-4 file, one group per code. null -> config_user.json preferences.harvest_file;
+  # if neither is set, the run is NOT harvested (one line at launch)
+  file: null
+  # Also record the perturbed members of the TGLF std scan trick (~16 extra runs per radius and
+  # evaluation, i.e. most of the volume); false keeps only the base point of each evaluation
+  scan_trick_members: true
 
 # -----------------------------------------------------------------
 # Optimization options namelist

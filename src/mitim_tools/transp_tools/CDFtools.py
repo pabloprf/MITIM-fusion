@@ -1,4 +1,5 @@
 import os
+import re
 import tarfile
 import shutil
 import pickle
@@ -1393,23 +1394,36 @@ class transp_output:
             self.fmini_avolAVE = copy.deepcopy(self.ne_avol) * 0.0 + self.eps00
 
     def getFusionIons(self):
+        # NUBEAM (nalpha=0) writes the fusion-product population as NFI/FDENS_*; the
+        # nalpha=1 analytic fast-alpha model writes it as NALPHA instead (alphas only),
+        # with energies in UALPHPP/UALPHPA and heating in PALE/PALI. Same units.
         try:
             self.nfus = self.f["NFI"][:] * 1e6 * 1e-20  # in 10^20m^-3
             self.nfus_avol = volumeAverage(self.f, "NFI") * 1e6 * 1e-20  # in 10^20m^-3
 
-        except:
-            print("\t- This plasma had no fusion ions")
-            self.nfus = self.nD * 0.0 + self.eps00
-            self.nfus_avol = self.nD_avol * 0.0 + self.eps00
+        except (KeyError, IndexError):
+            try:
+                self.nfus = self.f["NALPHA"][:] * 1e6 * 1e-20  # in 10^20m^-3
+                self.nfus_avol = volumeAverage(self.f, "NALPHA") * 1e6 * 1e-20  # in 10^20m^-3
+            except (KeyError, IndexError):
+                print("\t- This plasma had no fusion ions")
+                self.nfus = self.nD * 0.0 + self.eps00
+                self.nfus_avol = self.nD_avol * 0.0 + self.eps00
 
         try:
             self.nfusHe4 = self.f["FDENS_4"][:] * 1e6 * 1e-20  # in 10^20m^-3
             self.nfusHe4_avol = (
                 volumeAverage(self.f, "FDENS_4") * 1e6 * 1e-20
             )  # in 10^20m^-3
-        except:
-            self.nfusHe4 = self.nD * 0.0 + self.eps00
-            self.nfusHe4_avol = self.nD_avol * 0.0 + self.eps00
+        except (KeyError, IndexError):
+            try:
+                self.nfusHe4 = self.f["NALPHA"][:] * 1e6 * 1e-20  # in 10^20m^-3
+                self.nfusHe4_avol = (
+                    volumeAverage(self.f, "NALPHA") * 1e6 * 1e-20
+                )  # in 10^20m^-3
+            except (KeyError, IndexError):
+                self.nfusHe4 = self.nD * 0.0 + self.eps00
+                self.nfusHe4_avol = self.nD_avol * 0.0 + self.eps00
 
         try:
             self.nfusHe3 = self.f["FDENS_3"][:] * 1e6 * 1e-20  # in 10^20m^-3
@@ -1584,6 +1598,25 @@ class transp_output:
             self.fb_avolAVE_Z = copy.deepcopy(self.ne_avol) * 0.0 + self.eps00
             self.fb_avolAVE = copy.deepcopy(self.ne_avol) * 0.0 + self.eps00
 
+    def _read_energy_pair(self, key_perp, key_par):
+        # Perpendicular and parallel energy densities in MJ/m^3 (TRANSP J/cm^3 == MJ/m^3, no conversion);
+        # eps00 floor when the CDF does not have them
+        try:
+            return self.f[key_perp][:], self.f[key_par][:]
+        except (KeyError, IndexError):
+            floor = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
+            return floor, copy.deepcopy(floor)
+
+    def _fast_temperature(self, Wperp, Wpar, n, fallback):
+        # T = 2/3 (Wperp+Wpar)/n in keV, with W in MJ/m^3 and n in 10^20 m^-3. Falls back (per zone)
+        # where the energies are missing from the CDF or the density is zero, to avoid 0/0 at the edge
+        if np.all(Wperp + Wpar <= 2 * self.eps00):
+            return copy.deepcopy(fallback)
+        T = copy.deepcopy(fallback)
+        valid = n > self.eps00
+        T[valid] = 2.0 / 3.0 * (Wperp[valid] + Wpar[valid]) * 1e6 / (n[valid] * 1e20) / self.e_J * 1e-3
+        return T
+
     def getFastIons(self):
         # ~~~~~~~~~~~~~~~~~~~~~ Densities ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1648,9 +1681,14 @@ class transp_output:
         try:
             self.Wperpx_fus = self.f["UFIPP"][:]  # In MJ/m^3
             self.Wparx_fus = self.f["UFIPA"][:]  # In MJ/m^3
-        except:
-            self.Wperpx_fus = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
-            self.Wparx_fus = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
+        except (KeyError, IndexError):
+            try:
+                # nalpha=1 fast-alpha model naming (J/cm^3 == MJ/m^3, no conversion)
+                self.Wperpx_fus = self.f["UALPHPP"][:]  # In MJ/m^3
+                self.Wparx_fus = self.f["UALPHPA"][:]  # In MJ/m^3
+            except (KeyError, IndexError):
+                self.Wperpx_fus = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
+                self.Wparx_fus = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
         self.pFast_fus = 1 / 2 * self.Wperpx_fus + self.Wparx_fus
         self.pFast_fus_avol = volumeAverage_var(self.f, self.pFast_fus)
 
@@ -1661,9 +1699,14 @@ class transp_output:
         try:
             self.Wperpx_fusHe4 = self.f["UFPRP_4"][:]  # In MJ/m^3
             self.Wparx_fusHe4 = self.f["UFPAR_4"][:]  # In MJ/m^3
-        except:
-            self.Wperpx_fusHe4 = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
-            self.Wparx_fusHe4 = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
+        except (KeyError, IndexError):
+            try:
+                # fast-alpha model: alphas are the only fusion fast species
+                self.Wperpx_fusHe4 = self.f["UALPHPP"][:]  # In MJ/m^3
+                self.Wparx_fusHe4 = self.f["UALPHPA"][:]  # In MJ/m^3
+            except (KeyError, IndexError):
+                self.Wperpx_fusHe4 = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
+                self.Wparx_fusHe4 = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
         self.pFast_fusHe4 = 1 / 2 * self.Wperpx_fusHe4 + self.Wparx_fusHe4
 
         try:
@@ -1693,6 +1736,12 @@ class transp_output:
         self.Wfast_b = (
             volumeIntegralTot_var(self.f, self.Wperpx_b + self.Wparx_b) * 1e-6
         )
+
+        # Per-isotope beam energy densities (UBPRP_D/UBPAR_D, ...), so that each beam species in
+        # getSpecies() carries its own pressure-consistent temperature rather than the species-averaged Tb
+        self.Wperpx_bD, self.Wparx_bD = self._read_energy_pair("UBPRP_D", "UBPAR_D")
+        self.Wperpx_bT, self.Wparx_bT = self._read_energy_pair("UBPRP_T", "UBPAR_T")
+        self.Wperpx_bH, self.Wparx_bH = self._read_energy_pair("UBPRP_H", "UBPAR_H")
 
         # ~~~~~~~~~~~~~~~~~~~~~ Temperatures ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1768,6 +1817,14 @@ class transp_output:
         self.Tfus_avol = volumeAverage_var(self.f, self.Tfus)
         self.Tb_avol = volumeAverage_var(self.f, self.Tb)
         self.Tfast_avol = volumeAverage_var(self.f, self.Tfast)
+
+        # Per-species fast temperatures (same 2/3*(Wperp+Wpar)/n definition as Tb/Tfus, i.e. the
+        # Maxwellian-equivalent temperature that reproduces the stored fast pressure). Where TRANSP did
+        # not write the per-species energies, the population-averaged Tb/Tfus is used instead
+        self.TbD = self._fast_temperature(self.Wperpx_bD, self.Wparx_bD, self.nbD, self.Tb)
+        self.TbT = self._fast_temperature(self.Wperpx_bT, self.Wparx_bT, self.nbT, self.Tb)
+        self.TbH = self._fast_temperature(self.Wperpx_bH, self.Wparx_bH, self.nbH, self.Tb)
+        self.TfusHe4 = self._fast_temperature(self.Wperpx_fusHe4, self.Wparx_fusHe4, self.nfusHe4, self.Tfus)
 
         # ~~~~~~ Average energy (ends up being 3/2*Tfast) ~~~~~~~~~~~
 
@@ -2388,12 +2445,13 @@ class transp_output:
         # NBI
         self.getNBIinfo()
 
-        # Alpha
+        # Alpha (PFE/PFI = NUBEAM naming; PALE/PALI = nalpha=1 fast-alpha model, same units)
         try:
-            self.Pfuse = self.f["PFE"][:]  # MW/m^3
-            self.Pfusi = self.f["PFI"][:]  # MW/m^3
-            self.PfuseT = volumeIntegralTot(self.f, "PFE") * 1e-6  # MW
-            self.PfusiT = volumeIntegralTot(self.f, "PFI") * 1e-6  # MW
+            var_e, var_i = ("PFE", "PFI") if "PFE" in self.f else ("PALE", "PALI")
+            self.Pfuse = self.f[var_e][:]  # MW/m^3
+            self.Pfusi = self.f[var_i][:]  # MW/m^3
+            self.PfuseT = volumeIntegralTot(self.f, var_e) * 1e-6  # MW
+            self.PfusiT = volumeIntegralTot(self.f, var_i) * 1e-6  # MW
             if np.sum(self.PfuseT + self.PfusiT) > 0.0 + self.eps00 * (len(self.t) + 1):
                 self.Pfuse_frac = np.array(
                     [
@@ -2407,8 +2465,8 @@ class transp_output:
                 self.Pfusi_frac = 0.0
 
             # Cumulative power
-            self.Pfuse_cum = volumeMultiplication(self.f, "PFE") * 1e-6  # in MW
-            self.Pfusi_cum = volumeMultiplication(self.f, "PFI") * 1e-6  # in MW
+            self.Pfuse_cum = volumeMultiplication(self.f, var_e) * 1e-6  # in MW
+            self.Pfusi_cum = volumeMultiplication(self.f, var_i) * 1e-6  # in MW
 
         except:
             self.Pfuse = copy.deepcopy(self.Poh) * 0.0 + self.eps00
@@ -3059,6 +3117,12 @@ class transp_output:
             # Info about sources of particles
             self.nD_source_beams = copy.deepcopy(self.Poh) * 0.0 + self.eps00
             self.nD_source_halo = copy.deepcopy(self.Poh) * 0.0 + self.eps00
+
+        try:
+            # Total beam thermalization source, all thermal species (SBTH = sum of SBTH_D, SBTH_T, ...)
+            self.ni_source_beams = self.f["SBTH"][:] * 1e6 * 1e-20  # in 10^20m^-3/s
+        except:
+            self.ni_source_beams = copy.deepcopy(self.Poh) * 0.0 + self.eps00
 
     def getFusionPower(self):
         self.FusTT = self.f["TOT2TT"][:] * (11.3) * 1e6
@@ -3878,11 +3942,11 @@ class transp_output:
             self.x_saw_mix = self.t * 0.0 + self.eps00
 
         for i in range(len(self.t)):
-            self.x_saw_inv[it] = np.interp(
-                self.x_saw_inv[it], self.roa[it], self.xb[it]
+            self.x_saw_inv[i] = np.interp(
+                self.x_saw_inv[i], self.roa[i], self.xb[i]
             )
-            self.x_saw_mix[it] = np.interp(
-                self.x_saw_mix[it], self.roa[it], self.xb[it]
+            self.x_saw_mix[i] = np.interp(
+                self.x_saw_mix[i], self.roa[i], self.xb[i]
             )
 
         self.q0 = self.q[:, 0]
@@ -11777,6 +11841,14 @@ class transp_output:
         )
         ax.plot(
             self.x_lw,
+            self.ni_source_beams[it],
+            lw=1,
+            c="m",
+            ls=":",
+            label="$S_{i,vol,beam}$ (all species)",
+        )
+        ax.plot(
+            self.x_lw,
             self.nD_source_halo[it],
             lw=1,
             c="c",
@@ -13576,6 +13648,17 @@ class transp_output:
     # Additional analysis
     # --------------------------------------
 
+    def _impurity_mass_from_namelist(self, index):
+        # AIMPS appears either indexed (AIMPS(2) = 40.0) or multi-valued (AIMPS = 12.0, 40.0); index is 0-based
+        with open(self.LocationNML, "r", errors="ignore") as f:
+            txt = f.read()
+        m = re.search(rf"^\s*AIMPS\s*\(\s*{index+1}\s*\)\s*=\s*([\d.Ee+-]+)", txt, re.I | re.M)
+        if m is not None:
+            return float(m.group(1))
+        m = re.search(r"^\s*AIMPS\s*=\s*([^!\n]+)", txt, re.I | re.M)
+        vals = [v for v in re.split(r"[,\s]+", m.group(1).strip()) if v]
+        return float(vals[index])
+
     def getSpecies(self):
 
         self.Species = {
@@ -13608,6 +13691,15 @@ class transp_output:
                 "n": self.nT,
                 "T": self.Ti,
             }
+        if self.nH_avol.max() > 1e-5:
+            self.Species["H"] = {
+                "name": "H",
+                "type": "thermal",
+                "m": self.mH,
+                "Z": 1*np.ones(len(self.t)),
+                "n": self.nH,
+                "T": self.Ti,
+            }
         if self.nHe4_avol.max() > 1e-5:
             self.Species["He4_ash"] = {
                 "name": "He",
@@ -13624,7 +13716,7 @@ class transp_output:
             foundImpurity = False
             if self.LocationNML is not None:
                 try:
-                    mass = IOtools.findValue(self.LocationNML, f"aimps({cont+1})", "=")
+                    mass = self._impurity_mass_from_namelist(cont)
                     foundImpurity = True
                 except:
                     pass
@@ -13651,6 +13743,8 @@ class transp_output:
                 "Z": 1*np.ones(len(self.t)),
                 "n": self.nminiH,
                 "T": self.Tmini,
+                "Wperp": None,  # UMINPP/UMINPA are the whole minority population, not per isotope
+                "Wpar": None,
             }
         if self.nminiHe3.max() > 1e-5:
             self.Species["He3_mini"] = {
@@ -13660,7 +13754,29 @@ class transp_output:
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nminiHe3,
                 "T": self.Tmini,
+                "Wperp": None,
+                "Wpar": None,
             }
+
+        # ~~~~~~ Beams (one fast species per injected isotope)
+        for key, name, mass, n, n_avol, T, Wperp, Wpar in [
+            ("D_beam", "D", self.mD, self.nbD, self.nbD_avol, self.TbD, self.Wperpx_bD, self.Wparx_bD),
+            ("T_beam", "T", self.mT, self.nbT, self.nbT_avol, self.TbT, self.Wperpx_bT, self.Wparx_bT),
+            ("H_beam", "H", self.mH, self.nbH, self.nbH_avol, self.TbH, self.Wperpx_bH, self.Wparx_bH),
+        ]:
+            if n_avol.max() > 1e-5:
+                self.Species[key] = {
+                    "name": name,
+                    "type": "fast",
+                    "m": mass,
+                    "Z": 1*np.ones(len(self.t)),
+                    "n": n,
+                    "T": T,
+                    "Wperp": Wperp,
+                    "Wpar": Wpar,
+                }
+        if (self.nb_avol.max() > 1e-5) and not any(k.endswith("_beam") for k in self.Species):
+            print("\t- Beam ions present (BDENS) but no per-isotope BDENS_D/T/H in CDF: beam species NOT added to Species", typeMsg="w")
 
         # ~~~~~~ Fusion
         if self.nfusT.max() > 1e-5:
@@ -13671,6 +13787,8 @@ class transp_output:
                 "Z": 1*np.ones(len(self.t)),
                 "n": self.nfusT,
                 "T": self.Tfus,
+                "Wperp": None,  # UFIPP/UFIPA are all fusion products together
+                "Wpar": None,
             }
         if self.nfusHe4.max() > 1e-5:
             self.Species["He4_fus"] = {
@@ -13679,7 +13797,9 @@ class transp_output:
                 "m": self.mHe4,
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nfusHe4,
-                "T": self.Tfus,
+                "T": self.TfusHe4,
+                "Wperp": self.Wperpx_fusHe4,
+                "Wpar": self.Wparx_fusHe4,
             }
         if self.nfusHe3.max() > 1e-5:
             self.Species["He3_fus"] = {
@@ -13689,6 +13809,8 @@ class transp_output:
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nfusHe3,
                 "T": self.Tfus,
+                "Wperp": None,
+                "Wpar": None,
             }
 
     # --------------------------- Convergence ------------------
@@ -15208,42 +15330,111 @@ class transp_output:
 
         return transp
 
+    def _time_window_weights(self, it_range):
+        """Trapezoidal weights over the CDF output slices in it_range, normalised to sum 1, so that
+        sum(w*f) is the time integral of f over the window divided by its duration. TRANSP's output
+        grid is not uniform (steps jitter, get denser around sawteeth, and the last step is short),
+        so a plain mean over slices would over-weight the densely sampled stretches."""
+        if len(it_range) == 1:
+            return np.array([1.0])
+        t = self.t[it_range]
+        w = np.zeros(len(t))
+        w[:-1] += 0.5 * np.diff(t)
+        w[1:] += 0.5 * np.diff(t)
+        return w / w.sum()
+
+    def _radiation_for_profiles(self, it_range, w):
+        """Radiation channels for the gacode state, on the TRANSP zone-centre grid, averaged over it_range.
+
+        The gacode state radiates qbrem+qsync+qline and that sum is what gets subtracted from the
+        electron power balance, so it must equal TRANSP's TOTAL radiated power PRAD (self.Prad). In
+        interpretive decks that prescribe measured radiation (the .QRA ufile), PRAD *is* the physical
+        radiated power, while PRAD_BR/PRAD_CY/PRAD_LI (self.Prad_b/_c/_l) are TRANSP's internally
+        computed subset and can be an order of magnitude smaller. Mapping only that subset makes the
+        extracted state under-radiate and biases the electron target flux high.
+
+        Convention: keep the computed bremsstrahlung and cyclotron channels as they are and put the
+        remainder, PRAD - qbrem - qsync, into the line channel (line radiation plus whatever else the
+        bolometer sees). Where the prescribed total is locally BELOW brems+sync that remainder would be
+        negative, i.e. an unphysical local electron heat source; there the line channel is zeroed and
+        brems+sync scaled by PRAD/(qbrem+qsync) instead, which keeps every channel non-negative and the
+        total exactly equal to PRAD. That rescaling is reported, never silently applied.
+        """
+
+        def _p(arr):
+            return np.tensordot(w, arr[it_range, :], axes=1)
+
+        qbrem, qsync = _p(self.Prad_b), _p(self.Prad_c)
+
+        # No prescribed total available (older/differently-configured runs) -> keep the internal split
+        if (not hasattr(self, 'Prad')) or np.all(np.abs(self.Prad) <= self.eps00):
+            print("\t\t* PRAD not found in CDF, radiation falls back to the PRAD_BR/CY/LI split "
+                  "(the state will under-radiate if the deck prescribes bolometric power)", typeMsg='w')
+            return qbrem, qsync, _p(self.Prad_l)
+
+        qtot = _p(self.Prad)
+        qline = qtot - qbrem - qsync
+
+        neg = qline < 0.0
+        if neg.any():
+            computed = qbrem[neg] + qsync[neg]
+            scale = qtot[neg] / computed
+            print(f"\t\t* PRAD below qbrem+qsync at {int(neg.sum())}/{neg.size} zones (worst deficit "
+                  f"{float(np.max(1.0 - scale))*100:.1f}%): qline zeroed there and qbrem/qsync scaled "
+                  f"down, so the total still equals PRAD", typeMsg='w')
+            qbrem[neg] *= scale
+            qsync[neg] *= scale
+            qline[neg] = 0.0
+
+        return qbrem, qsync, qline
+
     def to_profiles(self, time_extraction=None, time_window=0.0):
+        """time_window is the HALF-width [s]: slices with |t - time_extraction| <= time_window are averaged
+        (trapezoidal in time); time_window=0 extracts the single slice nearest time_extraction."""
 
         if time_extraction is None:
             time_extraction = self.t[self.ind_saw]
+            if time_window > 0.0:
+                print(f"\t- time_extraction=None resolves to the slice before the last sawtooth (t={time_extraction:.3f}s); a window "
+                      f"centred there averages pre- and post-crash slices. Pass time_extraction explicitly to control this", typeMsg='w')
         elif time_extraction < 0:
             time_extraction = self.t[-1] + time_extraction
 
         it = np.argmin(np.abs(self.t - time_extraction))
+        if (time_extraction < self.t[0]) or (time_extraction > self.t[-1]):
+            print(f"\t- Requested t={time_extraction:.3f}s is outside the run [{self.t[0]:.3f}, {self.t[-1]:.3f}]s; using nearest slice t={self.t[it]:.3f}s", typeMsg='w')
 
         # Time indices to average over (single point when time_window == 0)
         if time_window == 0.0:
             it_range = np.array([it])
         else:
-            mask = np.abs(self.t - time_extraction) <= time_window / 2
+            mask = np.abs(self.t - time_extraction) <= time_window
             it_range = np.where(mask)[0]
             if len(it_range) == 0:
                 it_range = np.array([it])
+            if len(it_range) == 1:
+                print(f"\t- time_window (+-{time_window:.3f}s) contains a single output slice (t={self.t[it_range[0]]:.3f}s); no averaging performed", typeMsg='w')
 
         if time_window == 0.0:
             print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
-            print(f"\t\t* Kinetic profiles, power, rotation, torque, and equilibrium: single slice at t={self.t[it]:.3f}s", typeMsg='i')
-            print(f"\t\t* Flux surfaces: evaluated at t={self.t[it]:.3f}s", typeMsg='i')
+            print(f"\t\t* Kinetic profiles, power, rotation, torque, equilibrium and flux surfaces: single slice at t={self.t[it]:.3f}s", typeMsg='i')
         else:
             t_lo, t_hi = self.t[it_range[0]], self.t[it_range[-1]]
-            t_mean = float(np.mean(self.t[it_range]))
-            print(f"\t- Converting to input.gacode class, time-averaging over t=[{t_lo:.3f}, {t_hi:.3f}]s ({len(it_range)} slices)")
-            print(f"\t\t* Kinetic profiles, power, rotation, torque, and equilibrium: averaged over {len(it_range)} slices", typeMsg='i')
-            print(f"\t\t* Flux surfaces: evaluated at mean time t={t_mean:.3f}s", typeMsg='i')
+            print(f"\t- Converting to input.gacode class, time-averaging over t=[{t_lo:.3f}, {t_hi:.3f}]s ({len(it_range)} slices, trapezoidal in time)")
+            print(f"\t\t* Kinetic profiles, power, rotation, torque, equilibrium and flux surfaces: averaged over {len(it_range)} slices", typeMsg='i')
+            if (time_extraction - time_window < self.t[0]) or (time_extraction + time_window > self.t[-1]):
+                print(f"\t\t* Requested window exceeds the run limits [{self.t[0]:.3f}, {self.t[-1]:.3f}]s: truncated to [{t_lo:.3f}, {t_hi:.3f}]s, so its centre is not t={time_extraction:.3f}s", typeMsg='w')
+            print(f"\t\t* Fast-ion temperatures: 2/3 <W>/<n> from window-averaged energy and density (not <T>)", typeMsg='i')
         print("\t\t* Extrapolating using cubic spline", typeMsg='i')
 
-        # Helpers: average a scalar (time,) or profile (time, x) over it_range
+        # Helpers: time-average a scalar (time,) or profile (time, x) over it_range with trapezoidal weights
+        w = self._time_window_weights(it_range)
+
         def _s(arr):
-            return float(np.mean(arr[it_range]))
+            return float(np.dot(w, arr[it_range]))
 
         def _p(arr):
-            return np.mean(arr[it_range, :], axis=0)
+            return np.tensordot(w, arr[it_range, :], axes=1)
 
         #TODO: I should be looking at the extrapolated quantities in TRANSP?
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as extrapolation_routine
@@ -15254,8 +15445,9 @@ class transp_output:
 
         profiles = {}
 
-        # Radial grid — averaged over time window
-        rho_grid = np.mean(self.xb[it_range, :], axis=0)
+        # Radial grids — averaged over time window (zone boundaries = output grid, zone centres = where TRANSP profiles live)
+        rho_grid = _p(self.xb)
+        x_grid = _p(self.x)
 
         # Info
         nion = len(self.Species) - 1
@@ -15316,15 +15508,16 @@ class transp_output:
         # -------------------------------------------------------------------------------------------------------
         # Flux surfaces  (R,Z averaged over time window, then MXH fitted once)
         # -------------------------------------------------------------------------------------------------------
+        # getFluxSurface evaluates the TRANSP moment expansion on the same uniform theta grid at every slice, so
+        # averaging R(theta), Z(theta) point by point is the same as averaging the moments themselves
 
         coeffs_MXH = 7
 
-        t_mean = float(np.mean(self.t[it_range]))
         Rs, Zs = [], []
         for rho in profiles['rho(-)']:
-            R, Z = getFluxSurface(self.f, t_mean, rho, rhoPol=False, sqrt=True)
-            Rs.append(R)
-            Zs.append(Z)
+            RZ = [getFluxSurface(self.f, self.t[j], rho, rhoPol=False, sqrt=True) for j in it_range]
+            Rs.append(np.tensordot(w, np.array([R for R, _ in RZ]), axes=1))
+            Zs.append(np.tensordot(w, np.array([Z for _, Z in RZ]), axes=1))
         Rs = np.array(Rs)
         Zs = np.array(Zs)
 
@@ -15356,29 +15549,55 @@ class transp_output:
                 profiles['te(keV)'] = _p(self.Te)
                 profiles['ne(10^19/m^3)'] = _p(self.ne) * 1E1
             else:
-                profiles['ni(10^19/m^3)'].append(_p(self.Species[specie]['n']) * 1E1)
-                profiles['ti(keV)'].append(_p(self.Species[specie]['T']))
+                n_avg = _p(self.Species[specie]['n'])
+                T_avg = _p(self.Species[specie]['T'])
+                if self.Species[specie].get('Wperp') is not None:
+                    # Fast species: T = 2/3 <W>/<n> so that <n>*T reproduces the window-averaged stored fast
+                    # pressure; <T> = <W/n> does not. Identical to T at the slice when time_window == 0
+                    T_avg = self._fast_temperature(_p(self.Species[specie]['Wperp']), _p(self.Species[specie]['Wpar']), n_avg, T_avg)
+                profiles['ni(10^19/m^3)'].append(n_avg * 1E1)
+                profiles['ti(keV)'].append(T_avg)
         profiles['ni(10^19/m^3)'] = np.array(profiles['ni(10^19/m^3)']).T
         profiles['ti(keV)'] = np.array(profiles['ti(keV)']).T
 
         # Power profiles  (time-averaged)
         profiles['qei(MW/m^3)'] = _p(self.Pei)
-        profiles['qrfe(MW/m^3)'] = _p(self.Peich)
-        profiles['qrfi(MW/m^3)'] = _p(self.Piich)
-        profiles['qbrem(MW/m^3)'] = _p(self.Prad_b)
-        profiles['qsync(MW/m^3)'] = _p(self.Prad_c)
-        profiles['qline(MW/m^3)'] = _p(self.Prad_l)
+        # RF: gacode has a single auxiliary-RF channel per species, so ICRH + ECH + LH are summed
+        # (Peich/Piich = PEICH/PIICH, Pech = PEECH, Plhe/Plhi = PELH/PILH). Missing systems sit at
+        # the eps00 floor, so the sum is safe when only one is present
+        profiles['qrfe(MW/m^3)'] = _p(self.Peich) + _p(self.Pech) + _p(self.Plhe)
+        profiles['qrfi(MW/m^3)'] = _p(self.Piich) + _p(self.Plhi)
+        # Ion power exchanged with neutrals (CX + ionization). SIGN FLIP: TRANSP's P0NET is a LOSS
+        # (Pi_teo = Pi + Pei - Pcx), whereas gacode sums qioni into qi with +1, so it must be negated
+        profiles['qioni(MW/m^3)'] = -_p(self.Pcx)
         profiles['qohme(MW/m^3)'] = _p(self.Poh)
         profiles['qfuse(MW/m^3)'] = _p(self.Pfuse)
         profiles['qfusi(MW/m^3)'] = _p(self.Pfusi)
         profiles['qbeame(MW/m^3)'] = _p(self.Pnbie)
         profiles['qbeami(MW/m^3)'] = _p(self.Pnbii)
 
+        # Radiation  (time-averaged): total pinned to TRANSP's PRAD, not the PRAD_BR/CY/LI subset
+        profiles['qbrem(MW/m^3)'], profiles['qsync(MW/m^3)'], profiles['qline(MW/m^3)'] = self._radiation_for_profiles(it_range, w)
+
         # Rotation  (time-averaged)
         profiles['w0(rad/s)'] = _p(self.TGLF_w0)
 
         # Torque — full NBI momentum source: collisional + JxB + thermalization  (time-averaged)
         profiles['qmom(N/m^2)'] = _p(self.Pnbit_coll) + _p(self.Pnbit_jxb) + _p(self.Pnbit_therm)
+
+        # Particle sources  (time-averaged, parsed attributes in 10^20 m^-3/s -> 1/m^3/s is x1e20)
+        # qpar_beam: ni_source_beams (SBTH) = fast-ion thermalization source (beam ions joining the
+        #   thermal population), NOT the deposition (BDEP/SDEP) family, which counts fast-ion birth
+        #   before CX/orbit losses
+        # qpar_wall: nD_source_wall (SWD) = thermal ion source from wall/recycled neutrals only; SVD
+        #   would double-count the beam (it contains SBTH) and SISRC adds volume-recombination re-ionization
+        # Missing CDF variables leave the parsed attributes at the eps00 floor -> warn, effectively zero
+        profiles['qpar_beam(1/m^3/s)'] = _p(self.ni_source_beams) * 1e20
+        if np.all(np.abs(self.ni_source_beams) <= self.eps00):
+            print("\t\t* SBTH not found in CDF, qpar_beam is zero", typeMsg='w')
+        profiles['qpar_wall(1/m^3/s)'] = _p(self.nD_source_wall) * 1e20
+        if np.all(np.abs(self.nD_source_wall) <= self.eps00):
+            print("\t\t* SWD not found in CDF, qpar_wall is zero", typeMsg='w')
 
         # -------------------------------------------------------------------------------------------------------
         # Postprocessing: Interpolate from x to xb (zone centres to boundary grid)
@@ -15387,12 +15606,12 @@ class transp_output:
         def grid_interpolation_method_to_one(x, y, x_new):
             return extrapolation_routine(x_new, x, y)
 
-        keys_in_x = ['te(keV)', 'ne(10^19/m^3)', 'ni(10^19/m^3)', 'ti(keV)', 'qei(MW/m^3)', 'qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qohme(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)', 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'w0(rad/s)', 'qmom(N/m^2)']
+        keys_in_x = ['te(keV)', 'ne(10^19/m^3)', 'ni(10^19/m^3)', 'ti(keV)', 'qei(MW/m^3)', 'qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qioni(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qohme(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)', 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'w0(rad/s)', 'qmom(N/m^2)', 'qpar_beam(1/m^3/s)', 'qpar_wall(1/m^3/s)']
         for key in keys_in_x:
             if (profiles[key].ndim == 1):
-                profiles[key] = grid_interpolation_method_to_one(self.x[it], profiles[key], profiles['rho(-)'])
+                profiles[key] = grid_interpolation_method_to_one(x_grid, profiles[key], profiles['rho(-)'])
             elif (profiles[key].ndim == 2):
-                profiles[key] = np.vstack([grid_interpolation_method_to_one(self.x[it], profiles[key][:,i], profiles['rho(-)']) for i in range(profiles[key].shape[1])]).T
+                profiles[key] = np.vstack([grid_interpolation_method_to_one(x_grid, profiles[key][:,i], profiles['rho(-)']) for i in range(profiles[key].shape[1])]).T
 
         # -------------------------------------------------------------------------------------------------------
         # Postprocessing: Add zero at the beginning
@@ -15419,6 +15638,10 @@ class transp_output:
             profiles[key] = profiles[key].clip(min=minimum)
 
         p = PROFILEStools.gacode_state.scratch(profiles)
+
+        # ptot from the kinetic species written above (thermal + fast, the latter with their Maxwellian-equivalent T),
+        # i.e. TRANSP's PPLAS + PMHDF_IN; TRANSP's own total-pressure variables are not read
+        p.selfconsistentPTOT()
 
         return p
 

@@ -19,10 +19,10 @@ from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
-from mitim_modules.maestro.utils.SHARPNESSbeat import sharpness_beat
-from mitim_modules.maestro.utils.CONFINEMENTbeat import confinement_beat
+from mitim_modules.maestro.utils.BCbeat import bc_beat
 from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped, creator_from_parameterization, creator_from_fixed_bc, creator
 from mitim_modules.maestro.utils.MAESTRObeat import beat as beat_generic
+from mitim_modules.maestro.utils.MAESTRObeat import PRUNE_NOTHING, PRUNE_OUTPUTS, PRUNE_LEVELS
 
 '''
 MAESTRO:
@@ -32,6 +32,31 @@ MAESTRO:
 
 ENABLE_EMBED = False # If True, will enable IPython embed, useful for debugging (but won't write maestro.log or Logs/ files... so only use for debugging a run)
 
+
+class MAESTROStop(Exception):
+    '''Raised by maestro.run() when the chain must stop early (e.g. max_unconverged_portals_beats reached);
+    run_maestro catches it, skips the remaining beats and still finalizes the run.'''
+
+
+def _resolve_prune_level(prune_level, keep_all_files = None):
+    '''
+    Resolve the effective prune level, honoring the deprecated `keep_all_files` boolean
+    (True -> PRUNE_NOTHING, False -> PRUNE_OUTPUTS). `prune_level` wins when both are given.
+    '''
+
+    if prune_level is None and keep_all_files is not None:
+        prune_level = PRUNE_NOTHING if keep_all_files else PRUNE_OUTPUTS
+        print(f'\t- `keep_all_files: {keep_all_files}` is deprecated, use `prune_level: {prune_level}` instead', typeMsg='w')
+
+    if prune_level is None:
+        prune_level = PRUNE_NOTHING
+
+    if prune_level not in PRUNE_LEVELS:
+        raise ValueError(f'[MITIM] maestro.prune_level must be one of {list(PRUNE_LEVELS)}, got {prune_level}')
+
+    return prune_level
+
+
 class maestro:
 
     def __init__(
@@ -40,20 +65,27 @@ class maestro:
             terminal_outputs = False,
             master_cold_start = False,
             overall_log_file = True,
-            keep_all_files = True,
+            keep_all_files = None,
+            prune_level = None,
             master_seed = 0,
-            maestro_namelist = {}
+            maestro_namelist = {},
+            max_unconverged_portals_beats = None,
             ):
         '''
         Inputs:
             - folder: Main folder where all the beats will be saved
             - terminal_outputs: If True, all outputs will be printed to terminal. If False, they will be saved to a log file per beat step
+            - prune_level: How much on-disk material to discard as the run proceeds, 0-3
+              (see MAESTRObeat's PRUNE_* constants and templates/namelist.maestro.yaml).
+              Overridable per beat via maestro.<beat>.prune_level.
+            - keep_all_files: DEPRECATED boolean alias of prune_level (True -> 0, False -> 3)
         '''
 
         self.terminal_outputs = terminal_outputs
         self.master_cold_start = master_cold_start        # If True, all beats will be cold_started
-        self.keep_all_files = keep_all_files              # If True, all files will be kept, if False, only the final output files will be kept
+        self.prune_level = _resolve_prune_level(prune_level, keep_all_files)
         self.master_seed = master_seed
+        self.max_unconverged_portals_beats = max_unconverged_portals_beats   # None -> never stop on unconvergence
 
         self.maestro_namelist = maestro_namelist
 
@@ -119,11 +151,22 @@ class maestro:
         #          (the null case is enforced in the EPED beat's _inform)
         self.refreeze_995_after_beat = self.maestro_namelist.get('maestro', {}).get('refreeze_995_after_beat', 0)
 
+        # Harvest options (maestro.harvest): plain dict; EPED and PORTALS beats all stage into Outputs/harvest/
+        # with this run_id (each record carries its maestro_beat), and finalize() pushes everything once
+        from mitim_tools.harvest_tools.HARVESTtools import options_from_namelist, checked_block
+        self.harvest = options_from_namelist(checked_block(self.maestro_namelist.get('maestro', {}).get('harvest', {})),
+                                             staging_folder=self.folder_output / 'harvest',
+                                             run_meta_extra={'run_folder': str(self.folder)})
+
         # Whether this instance has already stashed a previous run's finalization
         # artifacts (done automatically at the first beat run())
         self._unfinalize_done = False
 
-    def define_beat(self, beat, initializer = None, cold_start = False):
+        # Plot degradations collected during plot() (reset there; defined here so
+        # _plot_beats never hits an undefined attribute if called directly)
+        self._plot_skips = []
+
+    def define_beat(self, beat, initializer = None, cold_start = False, prune_level = None, method = None, legacy = False, count_unconverged = True):
 
         timeBeginning = datetime.datetime.now()
 
@@ -143,15 +186,27 @@ class maestro:
         elif beat == 'lengyel':
             print(f'\n- Beat {self.counter_current}: LENGYEL ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
             self.beats[self.counter_current] = lengyel_beat(self)
-        elif beat == 'sharpness':
-            print(f'\n- Beat {self.counter_current}: SHARPNESS ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
-            self.beats[self.counter_current] = sharpness_beat(self)
-        elif beat == 'confinement':
-            print(f'\n- Beat {self.counter_current}: CONFINEMENT ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
-            self.beats[self.counter_current] = confinement_beat(self)
+        elif beat == 'bc':
+            print(f'\n- Beat {self.counter_current}: BC ({method}) ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
+            # legacy=True only for READING pre-refactor run folders (run_<method>/,
+            # <method>_results.npy); set by plot-side consumers, never from a namelist
+            self.beats[self.counter_current] = bc_beat(self, method=method, legacy=legacy)
+        elif beat in ('sharpness', 'confinement'):
+            raise ValueError(
+                f"[MITIM] beat_type '{beat}' has been removed: use beat_type 'bc' with "
+                f"parameters_prepare 'method: {beat}' instead"
+            )
 
         # Access current beat easily
         self.beat = self.beats[self.counter_current]
+
+        # Per-beat prune level (maestro.<beat>.prune_level); None -> inherit maestro.prune_level
+        if prune_level is not None and prune_level not in PRUNE_LEVELS:
+            raise ValueError(f'[MITIM] prune_level for beat "{beat}" must be one of {list(PRUNE_LEVELS)}, got {prune_level}')
+        self.beat.prune_level_override = prune_level
+
+        # maestro.<beat>.count_unconverged: false keeps this beat out of max_unconverged_portals_beats
+        self.beat.count_unconverged = count_unconverged
 
         # Define initializer
         self.beat.define_initializer(initializer)
@@ -352,10 +407,25 @@ class maestro:
         # run and skip paths, right after the snapshot is written/restored, so it stays restart-safe)
         self._maybe_refreeze_995()
 
-        # To save space, we can remove the contents of the run_ folder, as everything needed is in the output folder
-        if not self.keep_all_files:
-            for item in self.beat.folder .iterdir():
-                IOtools.shutil_rmtree(item) if item.is_dir() else item.unlink()
+        # Stop the chain once enough PORTALS beats failed to converge (both paths, so a re-run of a
+        # stopped case stops again at the same beat instead of running the remaining beats)
+        self._check_unconverged_portals_stop()
+
+        # To save space, prune this beat's run_ folder according to its effective prune level.
+        # Everything needed downstream is already in beat_results/, which pruning never touches.
+        self.beat.prune_run_folder()
+
+    def _check_unconverged_portals_stop(self):
+        if self.max_unconverged_portals_beats is None:
+            return
+        history = self.parameters_trans_beat.get('portals_converged_history', [])
+        n_unconverged = sum(1 for c in history if c is False)
+        if n_unconverged >= self.max_unconverged_portals_beats:
+            msg = (f'{n_unconverged} PORTALS beats did not converge (history {history}); '
+                   f'maestro.max_unconverged_portals_beats = {self.max_unconverged_portals_beats} -> stopping the chain after beat {self.counter_current}')
+            print(f'\t- {msg}', typeMsg='w')
+            (self.folder_output / 'maestro_stopped.txt').write_text(msg + '\n')
+            raise MAESTROStop(msg)
 
     # --------------------------------------------------------------------------------------------
     # Cross-beat parameters (parameters_trans_beat) persistence
@@ -588,8 +658,26 @@ class maestro:
             # drop intermediates). Runs LAST -- after every beat's run (so all next-beat flux-match
             # warm-starts already consumed the prior beats' surrogates) and after the summary -- so
             # nothing still needs the full GP surrogates. No-op for beats that don't override it.
+            # The initializer prune goes here too: the engineering-parameter freeze reads
+            # initializer_*/input.gacode on every invocation, so it can only be safe once the run
+            # is over (and that file is never a target -- see beat.prune_initializer).
+            # Harvest push (once per run, all beats). Everything is staged in Outputs/harvest, outside Beats/,
+            # so it survives every prune level; the per-beat folders are only there for chains started before
+            # the staging was centralized.
+            if self.harvest.get('enabled', False):
+                from mitim_tools.harvest_tools import HARVESTtools
+                folders = [self.folder_output / 'harvest']
+                for beat_obj in self.beats.values():
+                    if getattr(beat_obj, 'name', None) == 'portals':
+                        folders += [beat_obj.folder_output / 'Outputs' / 'harvest', beat_obj.folder / 'Outputs' / 'harvest']
+                try:
+                    HARVESTtools.harvest_database(self.harvest.get('file')).push([f for f in folders if f.is_dir()])
+                except Exception as e:
+                    print(f'\t\t- harvest push failed ({type(e).__name__}: {e}); push later with `mitim_harvester {self.folder}`', typeMsg='w')
+
             for beat_obj in self.beats.values():
                 beat_obj.optional_postprocessing()
+                beat_obj.prune_initializer()
 
     # --------------------------------------------------------------------------------------------
     # Summary report
@@ -730,10 +818,21 @@ class maestro:
             wasProvided = True
             self.fn = fn
 
+        # Plotting must never fail on a pruned run: show what survives, report what did not.
+        self._plot_skips = []
+
         # summary_only -> only the cross-beat 'special' + 'timings' tabs (no per-beat tabs)
         if num_beats>0 and not summary_only:
             self._plot_beats(self.fn, num_beats = num_beats, only_beats = only_beats, full_plot = full_plot)
-        ps, ps_lab = self._plot_results(self.fn, summary_only = summary_only)
+
+        try:
+            ps, ps_lab = self._plot_results(self.fn, summary_only = summary_only)
+        except Exception as e:
+            self._plot_skips.append(f'cross-beat results tabs: {type(e).__name__}: {e}')
+            print(f'\t\t- Could not plot the cross-beat results: {type(e).__name__}: {e}', typeMsg = 'w')
+            ps, ps_lab = [], []
+
+        self._report_plot_skips()
 
         if not wasProvided:
             self.fn.show()
@@ -753,16 +852,28 @@ class maestro:
                     with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file):
                         msg = beat.plot(fn = self.fn, counter = i, full_plot = full_plot)
                     print(msg)
-                except FileNotFoundError:
-                    print(f'\t\t- Could not plot beat #{counter} because some files are missing', typeMsg = 'w')
+                except FileNotFoundError as e:
+                    self._plot_skips.append(f'beat #{counter} ({beat.name}): missing {IOtools.clipstr(getattr(e, "filename", None) or e)}')
+                    print(f'\t\t- Skipping beat #{counter} ({beat.name}): {getattr(e, "filename", None) or e} not available (pruned?)', typeMsg = 'w')
                 except Exception as e:
-                    print(f'\t\t- Could not plot beat #{counter} because of an error: {e}', typeMsg = 'w')
+                    self._plot_skips.append(f'beat #{counter} ({beat.name}): {type(e).__name__}: {e}')
+                    print(f'\t\t- Could not plot beat #{counter} because of an error: {type(e).__name__}: {e}', typeMsg = 'w')
 
     def _plot_results(self, fn, summary_only = False):
 
         print('\t- Plotting MAESTRO results...')
 
         return MAESTROplot.plot_results(self, fn, summary_only = summary_only)
+
+    def _report_plot_skips(self):
+        '''Tell the user, in one place, what the plot could not show (e.g. pruned artifacts)'''
+
+        if not self._plot_skips:
+            return
+
+        print(f'\t- MAESTRO plotting finished with {len(self._plot_skips)} item(s) skipped:', typeMsg = 'w')
+        for skip in self._plot_skips:
+            print(f'\t\t- {skip}', typeMsg = 'w')
 
 
 def read_warning(file, d, label):
@@ -873,8 +984,11 @@ def _render_beat_flow_png(beats, wall_times, out_path):
         'portals':   '#9ec5fe',  # sky-blue
         'eped':      '#b7e4c7',  # light green
         'lengyel':   '#fff3b0',  # pale yellow
-        'sharpness': '#e0c3fc',  # lavender
-        'confinement': '#a8dadc',  # light teal
+        'bc_sharpness': '#e0c3fc',  # lavender
+        'bc_confinement': '#a8dadc',  # light teal
+        'bc_betap':  '#ffd6e0',  # light pink
+        'sharpness': '#e0c3fc',    # legacy pre-'bc' folder naming
+        'confinement': '#a8dadc',  # legacy pre-'bc' folder naming
     }
     DEFAULT_COLOR = '#d0d0d0'
 

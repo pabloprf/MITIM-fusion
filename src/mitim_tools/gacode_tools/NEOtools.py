@@ -53,14 +53,14 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
         print("\t\t\t NEO class module")
         print("-----------------------------------------------------------------------------------------\n")
 
-        self.output_files_simulation["minimal"] = ['out.neo.transport_flux']
+        self.output_files_simulation["minimal"] = ['out.neo.transport_flux',
+                                                   'out.neo.version']   # 3 lines; NEO build provenance (harvest code_version)
         self.output_files_simulation["complete"] = [
             'out.neo.transport_flux',
             'out.neo.transport',
             'out.neo.transport_gv',
             'out.neo.equil',
             'out.neo.theory',
-            'out.neo.rotation',
             'out.neo.grid',
             'out.neo.diagnostic_geo',
             'out.neo.diagnostic_geo2',
@@ -68,6 +68,12 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
             'out.neo.run',
             'out.neo.version',
         ]
+        # NEO only writes out.neo.rotation for the rotation models that solve for the
+        # poloidal potential; with ROTATION_MODEL=1 it is never produced. Listing it as
+        # mandatory made every retrieval miss it, sleep 60 s and re-pull ALL outputs of
+        # ALL radii once more (~224 times, ~3.7 h of pure sleep, in a 14-beat chain).
+        # Optional = still retrieved whenever NEO does write it, absence only warns.
+        self.output_files_simulation["optional"] = ['out.neo.rotation']
 
     # ------------------------------------------------------------------
     # In-process / subprocess dispatch.  Each method picks the engine
@@ -98,7 +104,9 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
 
     def read(self, label="run1", folder=None, **kwargs):
         if self.in_process:
-            return self.read_inprocess(label=label, folder=folder)
+            out = self.read_inprocess(label=label, folder=folder)
+            self._harvest(label, folder=folder)
+            return out
         return super().read(label=label, folder=folder, **kwargs)
 
     def prep_from_file(
@@ -1170,6 +1178,10 @@ class NEOoutput(SIMtools.GACODEoutput):
         with open(self.FolderGACODE / ("input.neo" + self.suffix), "r") as fi:
             self.inputFile = fi.read()
 
+        # ---- NEO version string (gacode hash + date, platform, timestamp), if retrieved ----
+        version_path = self.FolderGACODE / ("out.neo.version" + self.suffix)
+        self.neo_version = version_path.read_text().strip() if version_path.exists() else ""
+
     # ------------------------------------------------------------------
     # Private readers
     # ------------------------------------------------------------------
@@ -1201,8 +1213,17 @@ class NEOoutput(SIMtools.GACODEoutput):
             lines = f.readlines()
 
         if len(lines) == 0:
+            # NEO can fail internally yet exit 0 with empty transport files (e.g. the
+            # ROTATION_MODEL=2 quasineutrality solve at extreme Ti/Te); the actual reason
+            # is written to out.neo.run, so surface it here instead of guessing.
+            reason = ""
+            runfile = self.FolderGACODE / ("out.neo.run" + self.suffix)
+            if runfile.exists() and runfile.stat().st_size > 0:
+                runlines = runfile.read_text().splitlines()
+                errlines = [l.strip() for l in runlines if 'ERROR' in l.upper()] or runlines[-3:]
+                reason = " NEO reported: " + " | ".join(l.strip() for l in errlines)
             raise ValueError(
-                f"NEO output file {filepath} is empty! NEO run may have failed."
+                f"NEO output file {filepath} is empty! NEO run may have failed.{reason}"
             )
 
         self.roa = float(lines[0].split()[-1])

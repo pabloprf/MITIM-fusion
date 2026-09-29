@@ -1,4 +1,5 @@
 import torch
+from pathlib import Path
 import gpytorch
 import botorch
 import contextlib
@@ -112,7 +113,8 @@ class surrogate_model:
 
             print(f"\t* Requested extension of training set by points in file {self.surrogate_options['extrapointsFile']}")
 
-            df = pd.read_csv(self.surrogate_options["extrapointsFile"])
+            # The file may not exist yet (e.g. extra points harvested during the run): nothing to add
+            df = pd.read_csv(self.surrogate_options["extrapointsFile"]) if Path(self.surrogate_options["extrapointsFile"]).exists() else pd.DataFrame(columns=['Model'])
             df_model = df[df['Model'] == self.output]
 
             if len(df_model) == 0:
@@ -130,20 +132,24 @@ class surrogate_model:
             if df_model['x_names'].nunique() > 1:
                 print("Different x_names for points in the file, prone to errors", typeMsg='q')
 
-            # Check 2: Is it consistent with the x_names of this run?
+            # Check 2: Is it consistent with the x_names of this run? Two layouts are accepted:
+            #   positional x0..xN columns (legacy, must match this run's x_names), or
+            #   one column per variable name (x is assembled from this run's x_names, so
+            #   the file stays valid when the transformation set changes with iteration)
             x_names = df_model['x_names'].apply(ast.literal_eval).iloc[0]
             x_names_check = self.surrogate_parameters['surrogate_transformation_variables_lasttime'][self.output]
-            if x_names != x_names_check:
+            named_columns = all(name in df_model.columns for name in x_names_check)
+            if (not named_columns) and x_names != x_names_check:
                 print('x_names in file:', x_names)
                 print('x_names in this run:', x_names_check)
-                print("x_names in file do not match the ones in this run, prone to errors", typeMsg='q')            
+                print("x_names in file do not match the ones in this run, prone to errors", typeMsg='q')
 
             self.train_Y_added = torch.from_numpy(df_model['y'].to_numpy()).unsqueeze(-1).to(self.dfT)
             self.train_Yvar_added = torch.from_numpy(df_model['yvar'].to_numpy()).unsqueeze(-1).to(self.dfT)
-    
+
             x = []
-            for i in range(len(x_names)):
-                x.append(df_model[f'x{i}'].to_numpy())
+            for i, name in enumerate(x_names_check if named_columns else x_names):
+                x.append(df_model[name if named_columns else f'x{i}'].to_numpy())
             self.train_X_added_full = torch.from_numpy(np.array(x).T).to(self.dfT)
 
             # ------------------------------------------------------------------------------------------------------------

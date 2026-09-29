@@ -1,15 +1,17 @@
 import os
 import numpy as np
 import copy
+from mitim_tools import __mitimroot__
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
 from mitim_tools.simulation_tools.physics.LENGYELtools import Lengyel
 from IPython import embed
+from mitim_modules.powertorch.utils import CALCtools
+import periodictable as pt
 
 def element_to_lengyel(symbol):
-    
-    import periodictable as pt
+
     e = pt.elements.symbol(symbol)                      # 'W'
     
     name = e.name                                       # 'tungsten'
@@ -23,13 +25,36 @@ class lengyel_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'lengyel', folder_name = folder_name)
 
-    def prepare(self, *args, lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, zeff_relaxation_factor = 1.0, **kwargs):
+    def prepare(self, *args, mode = 'seeded', lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, zeff_relaxation_factor = 1.0, zeff_floor = None, dilution_impurity_species = None, dilution_impurity_charges = None, dilution_impurity_masses = None, dilution_impurity_min_concentrations = None, **kwargs):
+
+        if mode not in ('seeded', 'clean'):
+            raise ValueError(f"[MAESTRO][LENGYELbeat] mode must be 'seeded' or 'clean', got '{mode}'")
+        self.mode = mode
 
         self.rhotop = rhotop
 
         # User overrides for the Lengyel namelist `input` block (keys as in input.lengyel.controls.yaml),
         # applied at run() time on top of the defaults and input.gacode-derived values
         self.override_namelist_params = override_namelist_params if override_namelist_params is not None else {}
+
+        # ----------------------------------------------------
+        # mode='clean': non-detached forward conduction Tsep (Lengyel.run_forward,
+        # registered package algorithms per templates/input.lengyel_clean.controls.yaml);
+        # ONLY the separatrix temperature will be applied to the profiles -- no
+        # impurity seeding, no Zeff change, no atomic data; seed/fixed impurity
+        # entries are ignored. Connection length defaults to pi*R*|q95| with a 0.441
+        # divertor leg (overridable via override_namelist_params). Same vocabulary as
+        # MITIMstate.calculate_sol_lengyel.
+        # ----------------------------------------------------
+        if self.mode == 'clean':
+            if lengyel_namelist_location is None:
+                lengyel_namelist_location = __mitimroot__ / 'templates' / 'input.lengyel_clean.controls.yaml'
+            print(f"\t- Lengyel beat in 'clean' (tsep-only forward) mode: impurities untouched, no radas needed", typeMsg='i')
+            self.l = Lengyel(namelist_location = lengyel_namelist_location)
+            self.l.prep(input_gacode = self.profiles_current)
+            self.lengyel_args = {}
+            self._inform()
+            return
 
         # Relaxation factor w in [0, 1] applied (in run(), below) to the Zeff update: the Zeff profile
         # actually realized is
@@ -45,6 +70,52 @@ class lengyel_beat(beat):
         if not (0.0 <= zeff_relaxation_factor <= 1.0):
             raise ValueError(f"[MAESTRO][LENGYELbeat] zeff_relaxation_factor must be in [0, 1], got {zeff_relaxation_factor}")
         self.zeff_relaxation_factor = zeff_relaxation_factor
+
+        # Hard floor on the vol-avg Zeff after this beat (applied in run(), below, after the relaxation).
+        # If the seed-impurity update (possibly relaxed) would leave the vol-avg Zeff below this value,
+        # the seed-impurity density is scaled up just enough to meet the floor. null (default) means no
+        # floor is applied. Set this to plasma.species.Zeff (the initialization Zeff in the MAESTRO
+        # namelist) to prevent the Lengyel beat from ever dragging Zeff below the starting point.
+        self.zeff_floor = zeff_floor
+
+        if dilution_impurity_species is None:
+            # Legacy behavior: dilution feature disabled
+            self.dilution_impurity_species = None
+            self.dilution_impurity_charges = None
+            self.dilution_impurity_masses = None
+            self.dilution_impurity_min_concentrations = None
+        else:
+            if (
+                dilution_impurity_charges is None
+                or dilution_impurity_masses is None
+                or dilution_impurity_min_concentrations is None
+            ):
+                raise ValueError(
+                    "[MAESTRO][LENGYELbeat] When dilution_impurity_species is provided, "
+                    "dilution_impurity_charges, dilution_impurity_masses, and "
+                    "dilution_impurity_min_concentrations must also be provided as lists."
+                )
+
+            # Check dilution_impurity lists are all the same length
+            if (
+                len(dilution_impurity_species) != len(dilution_impurity_charges)
+                or len(dilution_impurity_species) != len(dilution_impurity_masses)
+                or len(dilution_impurity_species) != len(dilution_impurity_min_concentrations)
+            ):
+                raise ValueError(
+                    "[MAESTRO][LENGYELbeat] dilution_impurity_species, dilution_impurity_charges, "
+                    "dilution_impurity_masses, and dilution_impurity_min_concentrations must all be the same length. "
+                    f"Got lengths: {len(dilution_impurity_species)}, "
+                    f"{len(dilution_impurity_charges)}, "
+                    f"{len(dilution_impurity_masses)}, "
+                    f"{len(dilution_impurity_min_concentrations)}"
+                )
+
+            # Save the diluting impurity parameters for use in run()
+            self.dilution_impurity_species = dilution_impurity_species
+            self.dilution_impurity_charges = dilution_impurity_charges
+            self.dilution_impurity_masses = dilution_impurity_masses
+            self.dilution_impurity_min_concentrations = dilution_impurity_min_concentrations
 
         if radas_dir is not None:
             radas_dir_env = radas_dir
@@ -69,9 +140,25 @@ class lengyel_beat(beat):
         
         try:
             i_W = np.where(self.profiles_current.profiles['name']==fixed_impurity_symbol)[0][0]
+            print(f'Found fixed impurity "{fixed_impurity_symbol}" (Z={fixed_impurity_Z}, A={fixed_impurity_A}) in input.gacode at index {i_W}')
         except IndexError:
             raise ValueError(f"[MAESTRO][LENGYELbeat] The high-Z impurity species '{fixed_impurity_symbol}' was not found in the input.gacode profiles; please ensure it is present to keep its concentration fixed during the Lengyel beat.")
-        
+
+        if self.dilution_impurity_species is None:
+            self.i_dilutions = []
+        else:
+            self.i_dilutions = [None] * len(self.dilution_impurity_species)
+            # keep self.i_dilution=None so run() can add it as thermal if needed.
+            for i,dilution_impurity_species in enumerate(self.dilution_impurity_species):  
+                i_dilution = self._find_thermal_species_index(dilution_impurity_species)
+                if i_dilution is not None:
+                    print(f'\t- Diluting impurity "{dilution_impurity_species}" found in input.gacode at index {i_dilution}; it will be used in run() if needed.')
+                    i_dilution = int(i_dilution)
+                else:
+                    print(f'\t- Diluting impurity "{dilution_impurity_species}" not found in input.gacode; it will be added as a thermal species in run() if needed.')
+                self.i_dilutions[i] = i_dilution
+
+    
         fixed_impurity_weights = self.profiles_current.derived['fi_vol'][i_W]
 
         # Prepare Lengyel with default inputs and changes from GACODE
@@ -83,14 +170,22 @@ class lengyel_beat(beat):
         # ----------------------------------------------------
         # To pass to the run
         # ----------------------------------------------------
+
+        # Have Lengyel model consider both the fixed impurity and any diluting impurities as fixed impurities for it
+        if self.dilution_impurity_species != None:
+            all_fixed_impurity_species = [fixed_impurity_name] + [element_to_lengyel(symbol)[0] for symbol in (self.dilution_impurity_species or [])]
+            all_fixed_impurity_weights = [fixed_impurity_weights] + self.dilution_impurity_min_concentrations
+        else:
+            all_fixed_impurity_species = [fixed_impurity_name]
+            all_fixed_impurity_weights = [fixed_impurity_weights]
         
         self.lengyel_args = {
             'seed_impurity_species': [ seed_impurity_name ],
             'seed_impurity_weights': [ 1.0 ],
-            'fixed_impurity_species': [fixed_impurity_name],
-            'fixed_impurity_weights': [fixed_impurity_weights]
+            'fixed_impurity_species': all_fixed_impurity_species,
+            'fixed_impurity_weights': all_fixed_impurity_weights
         }
-        
+
         # ----------------------------------------------------
         # Other impurity information for post-processing
         # ----------------------------------------------------
@@ -106,10 +201,79 @@ class lengyel_beat(beat):
         
         self._inform()
 
+    def prepare_minimal(self, *args, mode = 'seeded', **kwargs):
+        # Skip-path counterpart of prepare(): _inform_save() (which always runs)
+        # needs the mode of a completed beat
+        self.mode = mode
+
+    def _find_thermal_species_index(self, species_name):
+        matches = np.where(self.profiles_current.profiles['name'] == species_name)[0]
+
+        if matches.size == 0:
+            print(
+                f'Diluting impurity "{species_name}" was not found in input.gacode; '
+                'it will be added as a thermal species in run() if needed.'
+            )
+            return None
+
+        print(
+            f'Found diluting impurity "{species_name}" '
+            f'in input.gacode at index(es) {matches}'
+        )
+
+        thermal_labels = {'thermal', '[thermal]', 'therm', '[therm]'}
+        thermal_matches = [
+            int(i)
+            for i in matches
+            if str(self.profiles_current.profiles['type'][i]).strip().lower() in thermal_labels
+        ]
+
+        if len(thermal_matches) == 0:
+            print(
+                'Diluting impurity exists, but not as thermal species. '
+                'A thermal species will be added in run() if needed.'
+            )
+            return None
+
+        i_dilution = thermal_matches[0]
+        print(
+            f'Diluting impurity is present as a thermal species '
+            f'(type = {self.profiles_current.profiles["type"][i_dilution]} at index {i_dilution}). '
+            'It will be used in run() if needed.'
+        )
+        if len(thermal_matches) > 1:
+            print(
+                f'Multiple thermal matches found for "{species_name}" '
+                f'at indexes {thermal_matches}; using the first one ({i_dilution}).',
+                typeMsg='w'
+            )
+
+        return i_dilution
+
     def run(self, *args, **kwargs):
-        
+
         # Merge user-provided namelist overrides on top of the impurity args (overrides win on key collision)
         lengyel_inputs = {**self.lengyel_args, **self.override_namelist_params}
+
+        if self.mode == 'clean':
+            # Connection length defaults tied to the state (same convention as
+            # MITIMstate.calculate_sol_lengyel: L = pi*R*|q95|, 0.441*L divertor leg)
+            L_par = np.pi * self.profiles_current.profiles["rcentr(m)"][0] * abs(self.profiles_current.derived["q95"])
+            lengyel_inputs.setdefault("parallel_connection_length", f"{L_par:.2f}m")
+            lengyel_inputs.setdefault("divertor_parallel_length", f"{0.441 * L_par:.2f}m")
+
+            self.l.run_forward(self.folder, cold_start=True, **lengyel_inputs)
+
+            Tesep = float(str(self.l.results['separatrix_electron_temp']).split()[0]) * 1E-3
+
+            # Only the separatrix temperature is applied; densities/impurities untouched
+            print(f'\t- Applying Lengyel (clean forward) separatrix temperature to profiles:')
+            p = copy.deepcopy(self.profiles_current)
+            _modify_temperatures(p, Tesep, self.rhotop)
+
+            p.write_state(file=self.folder / 'input.gacode.lengyel')
+            self.impurity_lengyel = None
+            return
 
         # Run Lengyel standalone
         self.l.run(
@@ -166,6 +330,11 @@ class lengyel_beat(beat):
         ne = p.profiles['ne(10^19/m^3)']
         Zeff_before = np.sum(p.profiles['ni(10^19/m^3)'] * p.profiles['z'] ** 2, axis=1) / ne
 
+        # Contribution to Zeff from every species except the seed impurity; used by both the relaxation and
+        # the floor below. Stays constant through _modify_impurity_density (only slot i_Z changes).
+        other = np.arange(p.profiles['z'].shape[0]) != i_Z
+        z2ni_other = np.sum(p.profiles['ni(10^19/m^3)'][:, other] * p.profiles['z'][other] ** 2, axis=1)
+
         _modify_impurity_density(p, impurity_symbol, impurity_Z, impurity_A, fZ_sep, fZ_top, self.rhotop, i_Z = i_Z, edge_profile=self.seed_impurity_edge_profile)
 
         # Relax the Zeff update: the Zeff profile actually realized is a weighted average of the profile
@@ -174,11 +343,6 @@ class lengyel_beat(beat):
         # previous unrelaxed behavior exactly. See zeff_relaxation_factor in prepare().
         w = self.zeff_relaxation_factor
         if w < 1.0:
-            # Contribution to Zeff from every species except the seed impurity (unaffected by this beat, so
-            # identical before/after the call above)
-            other = np.arange(p.profiles['z'].shape[0]) != i_Z
-            z2ni_other = np.sum(p.profiles['ni(10^19/m^3)'][:, other] * p.profiles['z'][other] ** 2, axis=1)
-
             Zeff_after = np.sum(p.profiles['ni(10^19/m^3)'] * p.profiles['z'] ** 2, axis=1) / ne
             Zeff_relaxed = w * Zeff_after + (1 - w) * Zeff_before
 
@@ -189,8 +353,96 @@ class lengyel_beat(beat):
             fZ_top = float(p.profiles['ni(10^19/m^3)'][0, i_Z] / ne[0])
             print(f"\t\t* Applying Zeff relaxation factor {w:.2f}: Zeff profile is {w:.2f}*<full Lengyel update> + {1-w:.2f}*<profile input into this beat> (resulting core '{impurity_symbol}' concentration: {fZ_top:.1e})")
 
-        # Enforce quasineutrality
+
+        # Apply a hard floor on the vol-avg Zeff after this beat (see zeff_floor in prepare()). If the
+        # seed-impurity update (possibly relaxed) would leave the vol-avg Zeff below this value, the seed-impurity density is scaled up just enough to meet the floor.
+        if self.zeff_floor is not None:
+            Zeff = np.sum(p.profiles['ni(10^19/m^3)'] * p.profiles['z'] ** 2, axis=1) / p.profiles['ne(10^19/m^3)']
+            Zeff_vol = CALCtools.volume_integration(Zeff, p.derived["r"], p.derived["volp_geo"])[-1] / p.derived["volume"]
+            max_iter = 10
+            iterations = 0
+            while Zeff_vol < self.zeff_floor and iterations < max_iter:
+                iterations += 1
+                if Zeff_vol <= 0 or np.isclose(Zeff_vol, 0.0):
+                    print(f"\t\t! Invalid vol-avg Zeff ({Zeff_vol:.3g}); aborting Zeff-floor loop")
+                    break
+                scale_factor = self.zeff_floor / Zeff_vol
+                fZ_top = float(p.profiles['ni(10^19/m^3)'][0, i_Z] * scale_factor / ne[0])
+                
+                # modify impurity in-place on the profile object `p` (pass `p` as first arg)
+                _modify_impurity_density(p, impurity_symbol, impurity_Z, impurity_A, fZ_sep, fZ_top, self.rhotop, i_Z = i_Z, edge_profile=self.seed_impurity_edge_profile)
+                p.enforce_quasineutrality()
+                print(f'Enforced Quasineutrality before recalculating Zeff_vol. Zeff_vol in mitim state object is now {p.derived["Zeff_vol"]}')
+                
+                # Recompute Zeff and its volume average after the change
+                Zeff = np.sum(p.profiles['ni(10^19/m^3)'] * p.profiles['z'] ** 2, axis=1) / p.profiles['ne(10^19/m^3)']
+                Zeff_vol = CALCtools.volume_integration(Zeff, p.derived["r"], p.derived["volp_geo"])[-1] / p.derived["volume"]
+                print(f"\t\t* Applied Zeff floor, manually calculated Zeff_vol now {Zeff_vol:.2f} (iteration {iterations})")
+            
+            if Zeff_vol < self.zeff_floor:
+                print(f"\t\t! Warning: Zeff floor not reached after {max_iter} iterations: vol-avg Zeff {Zeff_vol:.2f} < floor {self.zeff_floor:.2f}")
+
+        # add dilution impurities to the profiles if they are not already present, and ensure their concentrations meet the minimum specified
+        if self.dilution_impurity_species is not None:
+            for i, dilution_impurity in enumerate(self.dilution_impurity_species):
+                species = dilution_impurity
+                charge = self.dilution_impurity_charges[i]
+                mass = self.dilution_impurity_masses[i]
+                min_conc = self.dilution_impurity_min_concentrations[i]
+                i_dilution = self.i_dilutions[i]
+
+                # Add species as thermal if it does not currently exist as thermal
+                if i_dilution is None:
+                    print(
+                        f'\t\t* Adding diluting impurity "{species}" (Z={charge}, A={mass}) '
+                        f'to the profiles with a minimum concentration of {min_conc:.2f}. '
+                        'It will be added as a thermal species.'
+                    )
+                    i_dilution = len(p.profiles['name'])
+                    p.addSpecie(Z=charge, mass=mass, fi_vol=0.0, forcename=species)
+                    print(f'All species in input.gacode.lengyel after adding the diluting impurity "{species}": {p.Species}')
+
+                # check adding the species worked
+                if i_dilution is None:
+                    raise ValueError(
+                        f'Diluting impurity "{species}" was expected to be added as a thermal species, '
+                        'but i_dilution is still None.'
+                    )
+                print(f'Index of i_dilution is {i_dilution} for diluting impurity "{species}"')
+
+                # dilute the impurity concentration if it is below the minimum specified
+                diluting_impurity_current_concentration = (
+                    p.profiles['ni(10^19/m^3)'][:, i_dilution] / p.profiles['ne(10^19/m^3)'][:]
+                )
+                below_minimum = diluting_impurity_current_concentration < min_conc
+
+                print(
+                    f'Diluting impurity "{species}" current concentration. '
+                    f'If it was just added this should be zero: {diluting_impurity_current_concentration.tolist()}'
+                )
+
+                if np.any(below_minimum):
+                    p.profiles['ni(10^19/m^3)'][below_minimum, i_dilution] = (
+                        min_conc * p.profiles['ne(10^19/m^3)'][below_minimum]
+                    )
+                    print(
+                        f'\t\t* Diluting impurity "{species}" concentration was below the minimum '
+                        f'of {min_conc:.2f} in some regions; it has been raised to meet the minimum.'
+                    )
+                else:
+                    print(
+                        f'\t\t* Diluting impurity "{species}" concentration is already at or above '
+                        f'the minimum of {min_conc:.2f} at all rho values; no change applied.'
+                    )
+
+                print(
+                    f'Diluting impurity "{species}" new concentration: '
+                    f'{p.profiles["ni(10^19/m^3)"][:, i_dilution] / p.profiles["ne(10^19/m^3)"][:]}'
+                )
+
+        # Quasineutrality
         p.enforce_quasineutrality()
+        print(f'Quasineutrality enforced: Zeff_vol is now {p.derived["Zeff_vol"]}')
         
         # Check if the plasma just had too much impurity
         if p.profiles['ni(10^19/m^3)'].min() < 0:
@@ -203,6 +455,17 @@ class lengyel_beat(beat):
         self.impurity_lengyel = [impurity_Z, impurity_A, fZ_top]
 
     def finalize(self, *args, **kwargs):
+
+        # Persist the Lengyel namelist to beat_results (copy under keep_all_files: true;
+        # move otherwise, matching the EPED/PORTALS/TRANSP beat behavior).
+        src_input_namelist = self.folder / 'input.lengyel.controls.yml'
+        dst_input_namelist = self.folder_output / 'input.lengyel.controls.yml'
+        src_output_namelist = self.folder / 'output.lengyel.results.yml'
+        dst_output_namelist = self.folder_output / 'output.lengyel.results.yml'
+        if src_output_namelist.exists():
+            self._persist(src_output_namelist, dst_output_namelist)
+        if src_input_namelist.exists():
+            self._persist(src_input_namelist, dst_input_namelist)
 
         # On a re-invocation after a prior keep_all_files: false cleanup wiped
         # self.folder, input.gacode.lengyel is gone and folder_output already holds
@@ -228,10 +491,16 @@ class lengyel_beat(beat):
             print(f"\t\t- Using previous rhotop: {self.rhotop}")
             
     def _inform_save(self, *args, **kwargs):
-        
-        # If I have run Lengyel, I cannot reuse surrogate data #TODO: Maybe not always true?
+
+        # mode='clean' only moves the temperature edge tail beyond rhotop (a/L at the
+        # PORTALS control points is preserved by the blend) and touches no densities,
+        # so PORTALS surrogate data stays reusable
+        if self.mode == 'clean':
+            return
+
+        # If I have run Lengyel (seeded), I cannot reuse surrogate data #TODO: Maybe not always true?
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None
-        
+
         # Store the impurity specifications
         #self.maestro_instance.parameters_trans_beat['lowZ_impurity'] = self.impurity_lengyel
 

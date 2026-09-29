@@ -61,6 +61,13 @@ def _apply_flattop_floor(cdf_results, it_extract, time_diffusion, time_end, min_
 
 class transp_beat(beat):
 
+    # `results/` is the retrieved copy of what runSINGULARITY_finish already surfaced into the run
+    # folder -- it carries a SECOND copy of the multi-GB CDF and nothing reads it locally (see
+    # TRANSPsingularity.runSINGULARITY_finish, which tries to drop it but does not on every path).
+    # PH.CDF is the intermediate dump, and a stale one actively aborts the next run.
+    # The main .CDF and the AC folders stay: mitim_plot_maestro still needs them at level 1.
+    scratch_patterns = ['results', '*PH.CDF', 'paramiko.log', 'squeue_output.dat']
+
     def __init__(
         self,
         maestro_instance,
@@ -124,11 +131,12 @@ class transp_beat(beat):
         transition_window   = 0.1,                  # Transition (in seconds) to move from guess TRANSP equilibrium to actual. To prevent equilibrium crashes
         currentheating_window = 0.001,
         time_before_end     = 0.001,
-        machine_initialization = 'CMOD',
+        machine_initialization = 'CMOD',            # Registered machine whose stored TEQ equilibrium seeds the first GS solve (shape is then morphed to the target over transition_window). NULL means PRESCRIBED EQUILIBRIUM: levgeo=8, the state's own flux surfaces are handed to TRANSP as data, no seed and no GS solve
         machine_initialization_match_target = False,
         mxh_coeffs_smooth_sep = None,
         extract_at          = "saw-1",              # Which CDF time slice feeds the next beat: 'saw[-N]' (N slices before the last sawtooth) or 'last[-N]'
         min_extraction_flattop_fraction = 0.5,      # Floor the extraction at this fraction (0-1) of the flattop window; guards against an only-early-sawtooth plasma being sampled too soon. None disables
+        frozen_field        = False,                # Freeze the poloidal field: q pinned to the QPR ufile for all time (nlmdif=F/nlqdata=T). Requires machine_initialization: null
         sanitize_q_input    = None,                 # If not None, the target on-axis q0 to rescale the INITIAL q-profile seed fed to TRANSP to (e.g. 0.95), anchored on q95 (q at psiN=0.95 held fixed). Guards a pathological over-peaked equilibrium seed (deep q0 -> q=1 surface far toward the boundary) from crashing the Kadomtsev sawtooth model at startup; current diffusion relaxes q over the flattop regardless, so only the seed needs to start benign. null (default) leaves the seed q untouched
         **transp_namelist
         ):
@@ -146,6 +154,37 @@ class transp_beat(beat):
         # Grab structures
         tokamak_structures = transp_namelist.get('tokamak_structures', None)
         is_machine_fixed = tokamak_structures is not None
+
+        # 'No seed machine' and 'prescribed equilibrium' are the same thing: TEQ cannot be given a
+        # user initial guess, so without a registered machine to warm-start from there is nothing
+        # for it to solve from -- the equilibrium HAS to come in as data. Collapsing the two onto
+        # machine_initialization makes the meaningless combination unrepresentable. The lower-level
+        # equilibrium_mode knob survives in TRANSPhelpers/NMLtools for standalone TRANSP users,
+        # who have no machine_initialization concept.
+        #
+        # A registered machine (CMOD, D3D, NSTX, ITER): TEQ (levgeo=11) solves Grad-Shafranov every
+        # step, warm-starting its FIRST solve from a stored equilibrium keyed to this label. TEQ's
+        # basin is tight (~1.3x), so pick the registered machine nearest the target in size/shape
+        # (e.g. ITER for ARC-class) and let transition_window morph the shape from seed to target.
+        #
+        # null -> PRESCRIBED EQUILIBRIUM (levgeo=8): the state's own nested flux surfaces are handed
+        # to TRANSP as data (full-x RFS/ZFS with QPR/GRB/PRS and the TRF/PLF enclosed fluxes); no
+        # seed, no morph, no MRY, so ANY shape works at t=0 and no TEQ device file is needed (a CMOD
+        # label survives for run-tree bookkeeping only). transition_window and currentheating_window
+        # are INERT. Caveats: the geometry is FROZEN in time and not pressure-self-consistent
+        # in-run, and g = R*Bt is written at its vacuum value (a ~1% para/diamagnetic
+        # approximation). Requires a state whose (x,theta)->(R,Z) map does not fold: prepare() runs
+        # a spline-based det(J) check and fails loudly if it does, warning if the margin is small.
+        equilibrium_mode = 'prescribed' if machine_initialization is None else 'evolve'
+        if frozen_field and equilibrium_mode != 'prescribed':
+            raise ValueError(
+                f"[MITIM] frozen_field=True requires machine_initialization: null (prescribed "
+                f"equilibrium), got machine_initialization={machine_initialization!r}. Freezing the "
+                f"poloidal field while TEQ re-solves Grad-Shafranov every step is inconsistent: the "
+                f"equilibrium would evolve away from the q it is being held at.")
+        if equilibrium_mode == 'prescribed':
+            print('\t- machine_initialization is null -> PRESCRIBED EQUILIBRIUM (levgeo=8): the state\'s own '
+                  'flux surfaces are handed to TRANSP as data, no seed machine and no GS solve', typeMsg='i')
         
         # Define timings
         # Namelist documents "If null, no transition performed" — same effect as 0.0
@@ -196,8 +235,11 @@ class transp_beat(beat):
 
         boundary_override = self._fixed_boundary_for_transp()
         if boundary_override is not None:
-            # Reusing the frozen curve: the backoff and the MXH smoothing are already baked into it.
-            boundary_surface_psin, mxh_coeffs_smooth_sep = 1.0, None
+            # Reusing the frozen curve: the backoff and the MXH smoothing are already baked into it,
+            # and write_ufiles takes it verbatim (boundary_frozen tag). mxh_coeffs_smooth_sep is KEPT:
+            # it is still needed to project the NON-frozen time slices (e.g. the machine-initialization
+            # equilibrium added when transition_window > 0) onto the same fixed theta grid.
+            boundary_surface_psin = 1.0
 
         # Optional sanitization of the INITIAL q-profile seed handed to TRANSP. A pathological,
         # over-peaked equilibrium (very low q0 -> q=1 surface far toward the boundary) makes TRANSP's
@@ -230,7 +272,8 @@ class transp_beat(beat):
             Vsurf = self.profiles_current.Vsurf,
             mxh_coeffs_smooth = mxh_coeffs_smooth_sep,
             boundary_surface_psin = boundary_surface_psin,
-            boundary_override = boundary_override
+            boundary_override = boundary_override,
+            equilibrium_mode = equilibrium_mode
             )
 
         if q_restore is not None:
@@ -257,6 +300,12 @@ class transp_beat(beat):
             raise ValueError('[MITIM] You cannot define UFILES in a MAESTRO transp_namelist')
         else:
             transp_namelist_mod['Ufiles'] = ["qpr","cur","vsf","ter","ti2","ner","rbz","lim","zf2", "rfs", "zfs"]
+            if equilibrium_mode == 'prescribed':
+                # LEVGEO=8 also consumes the equilibrium's flux functions and enclosed fluxes
+                transp_namelist_mod['Ufiles'] += ["grb", "prs", "trf", "plf"]
+
+        transp_namelist_mod['equilibrium_mode'] = equilibrium_mode
+        transp_namelist_mod['frozen_field'] = frozen_field
 
         if is_machine_fixed:
             # Remove antenna geometry that may have been written from GACODE
@@ -269,6 +318,8 @@ class transp_beat(beat):
         # and a multi-GB output CDF. Pick c_sawtooth(2) so the floor lands at min_sawtooth_period_ms
         # for this plasma; large machines (tau_PM already above the floor) are left effectively
         # untouched. Set None to bypass and use the raw NMLtools c_sawtooth(2) default.
+        # The floor is APPROXIMATE: c_sawtooth(2) is sized from the INITIAL central Te, but TRANSP
+        # applies it with the evolving post-crash central Te, so the realized minimum can differ.
         if min_sawtooth_period_ms is not None and 'c_sawtooth_2' not in transp_namelist_mod:
             p = self.profiles_current
             tau_PM = PLASMAtools.park_monticello_sawtooth_period(
@@ -291,9 +342,12 @@ class transp_beat(beat):
             modify_Ip_to_match_qstar = None
             modify_p_to_match_pB2 = None
             
-        self.machine_run = machine_initialization
-        
-        if transition_window > 0.0:
+        # With a prescribed equilibrium no TEQ device file is ever consulted, but TRANSP still needs
+        # a registered tokamak label for its run tree, so fall back to CMOD for bookkeeping only.
+        self.machine_run = machine_initialization if machine_initialization is not None else 'CMOD'
+
+        # Nothing to morph away from without a seed: the transition window is simply not applied.
+        if transition_window > 0.0 and equilibrium_mode != 'prescribed':
             self._additional_operations_add_initialization(
                 machine_initialization = self.machine_run,
                 modify_Ip_to_match_qstar=modify_Ip_to_match_qstar,
@@ -343,7 +397,11 @@ class transp_beat(beat):
                 '''
                 if freq_ICH is None:
 
-                    B_T         = self.profiles_current.profiles['bcentr(T)'][0]
+                    # MAGNITUDE: gacode states legitimately carry a negative bcentr (field
+                    # direction is a sign convention), and a signed B_T here put a NEGATIVE
+                    # frqicha into the deck. The resonance condition only involves |B|; the
+                    # field direction reaches TRANSP through nlbccw, not the antenna frequency.
+                    B_T         = abs(self.profiles_current.profiles['bcentr(T)'][0])
 
                     '''
                     Best resonance condition for minority ions
@@ -381,7 +439,8 @@ class transp_beat(beat):
         # Write Ufiles
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self.transp.write_ufiles(mxh_coeffs_smooth = mxh_coeffs_smooth_sep, is_machine_fixed=is_machine_fixed)
+        self.transp.write_ufiles(mxh_coeffs_smooth = mxh_coeffs_smooth_sep, is_machine_fixed=is_machine_fixed,
+                                 equilibrium_mode = equilibrium_mode)
 
         # Freeze the boundary this beat actually handed TRANSP (after the final write_ufiles above)
         self._freeze_boundary_for_transp()
@@ -421,9 +480,23 @@ class transp_beat(beat):
         if 'transp_fixed_boundary' in self.maestro_instance.parameters_trans_beat:
             return
 
-        time = sorted(self.transp.geometry.keys())[0]
+        # Freeze the PLASMA boundary, i.e. a from_profiles time slice -- NOT the machine-initialization
+        # equilibrium that occupies the EARLIEST time when transition_window > 0 (freezing that would
+        # hand every later TRANSP beat the startup machine's boundary, e.g. CMOD a=0.22 m). The last
+        # time slice is always a profile one.
+        time = sorted(self.transp.geometry.keys())[-1]
         geo = self.transp.geometry[time]
         R, Z = geo['R_sep_transp'], geo['Z_sep_transp']
+
+        # Loud sanity guard: the frozen curve must describe THIS plasma (the psi_N backoff and MXH
+        # smoothing only change the minor radius at the % level).
+        a_frozen = (np.max(R) - np.min(R)) / 2
+        a_state = self.profiles_current.derived['a']
+        if abs(a_frozen - a_state) / a_state > 0.10:
+            raise ValueError(
+                f"[MITIM] Refusing to freeze TRANSP boundary with a = {a_frozen:.3f} m: inconsistent "
+                f"with the plasma minor radius a = {a_state:.3f} m (wrong time slice selected?)"
+            )
         self.maestro_instance.parameters_trans_beat['transp_fixed_boundary'] = {
             'R': np.array(R).tolist(), 'Z': np.array(Z).tolist()}
         print(f'\t- Froze the TRANSP fixed boundary ({np.array(R).size} points, '
@@ -477,6 +550,7 @@ class transp_beat(beat):
             minutesAllocation = 60*kwargs.get("hours_allocation",8),
             case = self.transp.runid,
             tokamak_name = kwargs.get("tokamak_name",None),
+            cpus_per_task = kwargs.get("cpus_per_task",None),
             checkMin = kwargs.get("checkMin",3),
             retrieveAC = self.timeAC is not None,
             )
@@ -549,10 +623,48 @@ class transp_beat(beat):
                 if spec == z:
                     impurity_order[spec] = i
                     break
-        np.save(self.folder_output / 'transp_results.npy', {
+        # Extract Li3 (plasma inductance) and BPEQ from the TRANSP CDF and save them.
+        # Also attach the same dict to `self.transp_results` for in-memory access by maestro.
+        try:
+            li3_full = getattr(cdf_results, 'Li3', None)
+            if li3_full is None:
+                try:
+                    li3_full = np.asarray(cdf_results.f['LI_3'][:])
+                except Exception:
+                    li3_full = np.array([])
+            else:
+                li3_full = np.asarray(li3_full)
+            li3_at_extract = float(li3_full[it_extract]) if (hasattr(li3_full, 'size') and li3_full.size) else np.array([])
+        except Exception:
+            li3_full = np.array([])
+            li3_at_extract = np.array([])
+
+        try:
+            bpeq_full = getattr(cdf_results, 'BPEQ', None)
+            if bpeq_full is None:
+                try:
+                    bpeq_full = np.asarray(cdf_results.f['BPEQ'][:])
+                except Exception:
+                    bpeq_full = np.array([])
+            else:
+                bpeq_full = np.asarray(bpeq_full)
+            bpeq_at_extract = float(bpeq_full[it_extract]) if (hasattr(bpeq_full, 'size') and bpeq_full.size) else np.array([])
+        except Exception:
+            bpeq_full = np.array([])
+            bpeq_at_extract = np.array([])
+
+        transp_results = {
             'impurity_order': impurity_order,
             'sawtooth_times': np.array(cdf_results.tlastsawU),
-        })
+            'Li3': li3_at_extract,
+            'Li3_full': li3_full,
+            'BPEQ': bpeq_at_extract,
+            'BPEQ_full': bpeq_full,
+        }
+
+        # Persist summary sidecar and keep an in-memory copy on the beat instance
+        np.save(self.folder_output / 'transp_results.npy', transp_results)
+        self.transp_results = transp_results
 
         # Close the (multi-GB) TRANSP CDF now, before the downstream PORTALS beats fork their
         # workers -- otherwise the open fd is inherited and the wiped CDF stays pinned on disk
@@ -975,6 +1087,12 @@ class transp_beat(beat):
         elif machine_initialization == 'NSTX':
             R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 0.89, 0.61, 2.5, 0.46, 0.0, 0.0, 0.4, 1.0, 0.5, 1.0
             # says it has no psi-bndry
+        elif machine_initialization == 'ITER':
+            # Reactor-scale seed: TEQ warm-starts its FIRST solve from a stored per-device
+            # equilibrium keyed to this label, and its convergence basin is tight (~1.3x in
+            # size/shape) -- so pick the registered machine NEAREST the target (e.g. ITER for
+            # ARC-class designs, rather than a ~7x morph from CMOD).
+            R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 6.2, 2.0, 1.85, 0.485, 0.0, 0.0, 0.3, 10.0, 5.3, 1.0
 
         if modify_Ip_to_match_qstar is not None:
             qstar_now = PLASMAtools.evaluate_qstar(

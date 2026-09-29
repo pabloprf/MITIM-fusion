@@ -1,47 +1,46 @@
 """
-Post-hoc replication of MAESTRO's `keep_all_files: false` space-saving on a run
-that was already FINISHED with `keep_all_files: true`.
+Post-hoc application of a MAESTRO `prune_level` to a run that already FINISHED at a
+lower level (typically level 0, i.e. everything kept).
 
-A live MAESTRO run with `maestro.keep_all_files: false` shrinks its on-disk
-footprint in two places (the source of truth):
+The levels are exactly those a live run applies via `maestro.prune_level` -- see
+templates/namelist.maestro.yaml for the authoritative description, and MAESTRObeat for
+the code (the per-beat `scratch_patterns` / `_scratch_to_drop`, `prune_run_folder`,
+`prune_initializer`, and `portals_beat.optional_postprocessing`). This script imports
+those definitions rather than restating them, so the two cannot drift:
 
-  1. MAESTROmain._run_beat (the `if not self.keep_all_files:` block): after every
-     beat, the contents of that beat's `run_<name>/` folder are wiped -- everything
-     a downstream beat or a replot needs has already been persisted into
-     `beat_results/`. The multi-GB TRANSP CDF lives in `run_transp/` and is
-     deliberately NOT copied to `beat_results/` (only the small `transp_results.npy`
-     subset is), so under `keep_all_files: false` the CDF is discarded here.
+  level 1 : per-beat execution scratch inside `run_<name>/` (the transp `results/`
+            duplicate of the multi-GB CDF, the eped per-height TOQ/ELITE work dirs, the
+            portals `Execution/` trees). Every plot tab still works afterwards.
+  level 2 : 1 + wipe each `run_<name>/` entirely. The TRANSP CDF goes here -- it is
+            deliberately never copied into `beat_results/` (only the small
+            `transp_results.npy` subset travels forward).
+  level 3 : 2 + the PORTALS end-of-run pass (LAST beat's `optimization_object.pkl`
+            re-saved lean, INTERMEDIATE beats' pickles / `portals_profiles/` / logs
+            dropped; `surrogate_data.csv` and `beat_results/input.gacode` kept) and the
+            initializer prune (throwaway geqdsk intermediates + any nested run folder
+            such as `initializer_eped/run_eped/`).
 
-  2. PORTALSbeat.optional_postprocessing (run once at the end of the whole run):
-       - the LAST PORTALS beat is KEPT but its `optimization_object.pkl` is re-saved
-         lean (the fitted GP `steps` dropped -- the bulk of the pickle) so the final
-         core solution still replots;
-       - every INTERMEDIATE PORTALS beat drops the heavy items nothing downstream
-         reads: `optimization_object.pkl`, `optimization_extra.pkl`,
-         `optimization_log.txt`, the per-iteration `portals_profiles/` snapshots, and
-         that beat's `Outputs/Logs/beat_<n>_*.log`. Chaining keeps `surrogate_data.csv`
-         and `beat_results/input.gacode`.
+`beat_results/` is never touched except by the PORTALS pass at level 3, and
+`initializer_*/input.gacode`, `input.geqdsk` and `beat_results/` are never touched at
+all. Dry-run by default; pass --apply to actually delete.
 
-This tool reproduces exactly that end-state on an already-finished
-`keep_all_files: true` folder. It never touches `beat_results/` except for the
-PORTALS pruning in (2), and never touches the `initializer_*` folders (neither does
-the live cleanup). Dry-run by default; pass --apply to actually delete.
-
-    mitim_prune_maestro FOLDER1 FOLDER2 ...          # dry-run: report what would be freed
-    mitim_prune_maestro FOLDER1 --apply              # actually prune
-    mitim_prune_maestro scan_dir/case_* --apply      # every matching run (shell-expanded glob)
+    mitim_prune_maestro FOLDER1 FOLDER2 ...              # dry-run at the default level (3)
+    mitim_prune_maestro FOLDER1 --level 1                # dry-run, scratch only
+    mitim_prune_maestro FOLDER1 --level 2 --apply        # actually prune
+    mitim_prune_maestro scan_dir/case_* --apply          # every matching run (shell-expanded glob)
 
 Multiple folders are summed into a grand total at the end. A shell glob (scan_dir/case_*)
 is expanded by the shell into one argument per match before this script sees it.
-
-Keep the pruned/slimmed set in sync with PORTALSbeat.optional_postprocessing and the
-run-folder wipe in MAESTROmain._run_beat if those ever change.
 """
 
 import argparse
 from pathlib import Path
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+from mitim_modules.maestro.utils.MAESTRObeat import (
+    PRUNE_SCRATCH, PRUNE_RUN, PRUNE_OUTPUTS, PRUNE_LEVELS, _INITIALIZER_SCRATCH)
+from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
+from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 
 # Heavy items an INTERMEDIATE PORTALS beat drops (relative to beat_results/Outputs/).
 # Mirrors PORTALSbeat.optional_postprocessing.
@@ -52,32 +51,40 @@ _PORTALS_INTERMEDIATE_DROP = [
     'portals_profiles',   # directory
 ]
 
+# Level-1 scratch per beat name, taken from the beat classes so this script cannot drift from
+# the live run. eped is special-cased: its selection is dirs-only under case1/run1 (see
+# eped_beat._scratch_to_drop), which a plain glob list cannot express.
+_SCRATCH_PATTERNS = {
+    'transp': transp_beat.scratch_patterns,
+    'portals': portals_beat.scratch_patterns,
+}
+
+
+def _scratch_targets(run_dir, name):
+    '''Level-1 targets inside a run_<name>/ folder, mirroring the beat classes.'''
+    if name == 'eped':
+        return [p for p in sorted(run_dir.glob('case1/run1/*')) if p.is_dir()]
+    targets = []
+    for pattern in _SCRATCH_PATTERNS.get(name, []):
+        targets += sorted(run_dir.glob(pattern))
+    return targets
+
 
 def _bytes_of(path):
-    '''Total bytes of a file or (recursively) a directory. 0 if missing.'''
-    path = Path(path)
-    if not path.exists():
-        return 0
-    if path.is_file():
-        return path.stat().st_size
-    return sum(f.stat().st_size for f in path.rglob('*') if f.is_file())
+    return IOtools.path_size_bytes(path)
 
 
 def _human(nbytes):
-    size = float(nbytes)
-    for unit in ('B', 'K', 'M', 'G', 'T'):
-        if size < 1024 or unit == 'T':
-            return f'{size:.0f}{unit}' if unit == 'B' else f'{size:.1f}{unit}'
-        size /= 1024
-    return f'{size:.1f}T'
+    return IOtools.human_readable_size(nbytes)
 
 
 class MaestroPruner:
-    '''Replicate `keep_all_files: false` on a finished MAESTRO root folder.'''
+    '''Apply a MAESTRO prune level to a finished run folder.'''
 
-    def __init__(self, root, apply=False):
+    def __init__(self, root, apply=False, level=PRUNE_OUTPUTS):
         self.root = Path(root)
         self.apply = apply
+        self.level = level
         self.beats_dir = self.root / 'Beats'
         self.logs_dir = self.root / 'Outputs' / 'Logs'
         self.freed = 0          # bytes deleted outright (run wipe + intermediate prune)
@@ -122,16 +129,44 @@ class MaestroPruner:
             run_dir = b['run_dir']
             if run_dir is None:
                 continue
-            items = list(run_dir.iterdir())
+
+            if self.level >= PRUNE_RUN:
+                items = sorted(run_dir.iterdir())
+                what = f"wipe run_{b['name']}/"
+            else:
+                items = _scratch_targets(run_dir, b['name'])
+                what = f"drop run_{b['name']}/ scratch"
+
             if not items:
                 continue
-            size = _bytes_of(run_dir)
+            size = sum(_bytes_of(item) for item in items)
             self.freed += size
-            print(f"\t- Beat {b['counter']} ({b['name']}): wipe run_{b['name']}/ "
+            print(f"\t- Beat {b['counter']} ({b['name']}): {what} "
                   f"[{_human(size)}, {len(items)} item(s)]{'' if self.apply else '  (dry-run)'}")
             if self.apply:
                 for item in items:
                     IOtools.shutil_rmtree(item) if item.is_dir() else item.unlink()
+
+    # -------------------------------------------------------------------------
+    # (3) Initializer prune -- mirrors MAESTRObeat.beat.prune_initializer
+    # -------------------------------------------------------------------------
+    def prune_initializers(self, beats):
+        for b in beats:
+            targets = []
+            for initializer_folder in sorted(b['folder'].glob('initializer_*')):
+                targets += [initializer_folder / name for name in _INITIALIZER_SCRATCH]
+                for nested_run in sorted(initializer_folder.glob('run_*')):
+                    targets += sorted(nested_run.iterdir()) if nested_run.is_dir() else []
+            targets = [t for t in targets if t.exists()]
+            if not targets:
+                continue
+            size = sum(_bytes_of(t) for t in targets)
+            self.freed += size
+            print(f"\t- Beat {b['counter']} ({b['name']}): prune initializer scratch "
+                  f"[{_human(size)}, {len(targets)} item(s)]{'' if self.apply else '  (dry-run)'}")
+            if self.apply:
+                for t in targets:
+                    IOtools.shutil_rmtree(t) if t.is_dir() else t.unlink()
 
     # -------------------------------------------------------------------------
     # (2) PORTALS slim/prune -- mirrors PORTALSbeat.optional_postprocessing
@@ -200,10 +235,12 @@ class MaestroPruner:
         if not self.beats_dir.is_dir():
             print(f'- {IOtools.clipstr(self.root)}: no Beats/ folder -- not a MAESTRO run, skipping', typeMsg='w')
             return False
-        print(f"\n- {'Pruning' if self.apply else 'Dry-run for'} {IOtools.clipstr(self.root)}")
+        print(f"\n- {'Pruning' if self.apply else 'Dry-run for'} {IOtools.clipstr(self.root)} at level {self.level}")
         beats = self.discover_beats()
         self.wipe_run_folders(beats)
-        self.prune_portals(beats)
+        if self.level >= PRUNE_OUTPUTS:
+            self.prune_portals(beats)
+            self.prune_initializers(beats)
         verb = 'Freed' if self.apply else 'Would free'
         msg = f"\t=> {verb} {_human(self.freed)}"
         if self.slim_before:
@@ -214,8 +251,11 @@ class MaestroPruner:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Replicate MAESTRO keep_all_files:false space-saving on a finished keep_all_files:true run.')
+        description='Apply a MAESTRO prune_level to an already-finished run (see maestro.prune_level).')
     parser.add_argument('folders', type=str, nargs='+', help='MAESTRO run folder(s) to prune.')
+    parser.add_argument('--level', type=int, default=PRUNE_OUTPUTS, choices=list(PRUNE_LEVELS[1:]),
+                        help='Prune level to apply: 1 execution scratch only (every plot tab still works), '
+                             '2 also wipe run_<name>/, 3 also prune outputs+initializers (default).')
     parser.add_argument('--apply', action='store_true',
                         help='Actually delete/slim. Without it, only report what would be freed (dry-run).')
     args = parser.parse_args()
@@ -225,7 +265,7 @@ def main():
 
     total_freed, total_slim, n = 0, 0, 0
     for folder in args.folders:
-        pruner = MaestroPruner(folder, apply=args.apply)
+        pruner = MaestroPruner(folder, apply=args.apply, level=args.level)
         if pruner.run():
             n += 1
             total_freed += pruner.freed

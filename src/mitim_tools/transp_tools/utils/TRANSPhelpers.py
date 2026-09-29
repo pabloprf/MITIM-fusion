@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.transp_tools import TRANSPtools, CDFtools, UFILEStools, NMLtools
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools, FARMINGtools
+from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools, FARMINGtools, LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -41,6 +41,15 @@ class transp_run:
             'Zeff': ['zf2','ZF2','x', 1.0],
             'PichT': ['rfp','RFP',[1], 1E6],
             'PnbiT': ['nb2','NB2',[1], 1E6],
+        }
+
+        # Only written for equilibrium_mode='prescribed' (LEVGEO=8), where TRANSP needs the
+        # flux functions of the equilibrium as data alongside the RFS/ZFS surfaces
+        self.quantities_prescribed = {
+            'RBt_profile': ['grb','GRB','xb', 1.0],
+            'p_total': ['prs','PRS','xb', 1.0],
+            'Phi_enclosed': ['trf','TRF',None, 1.0],
+            'psi_enclosed': ['plf','PLF',None, 1.0],
         }
 
     # --------------------------------------------------------------------------------------------
@@ -124,7 +133,8 @@ class transp_run:
             radial_position = 0,
             use_mry_file = False,
             mxh_coeffs_smooth = 5,
-            is_machine_fixed = False
+            is_machine_fixed = False,
+            equilibrium_mode = 'evolve'
             ):
         '''
         Write ufiles based on variables that were stored (e.g. from freegs or cdf)
@@ -135,21 +145,30 @@ class transp_run:
 
         self.times = np.unique(np.concatenate((times, times_geometry)))
 
+        prescribed = equilibrium_mode == 'prescribed'
+        if prescribed and use_mry_file:
+            raise ValueError("[MITIM] equilibrium_mode='prescribed' cannot use an MRY file: LEVGEO=8 "
+                             "takes the nested surfaces from RFS/ZFS and MRY must be absent")
+
+        quantities = dict(self.quantities)
+        if prescribed:
+            quantities.update(self.quantities_prescribed)
+
         # --------------------------------------------------------------------------------------------
         # Write ufiles of profiles
         # --------------------------------------------------------------------------------------------
 
-        for quantity in self.quantities:
+        for quantity in quantities:
 
             # Initialize ufile
-            uf = UFILEStools.UFILEtransp(scratch=self.quantities[quantity][0])
+            uf = UFILEStools.UFILEtransp(scratch=quantities[quantity][0])
 
             # Grab variables
             t,x,z = [], [], []
             for time in self.times:
-                if self.quantities[quantity][1] in self.variables[time].keys():
-                    x0 = self.variables[time][self.quantities[quantity][1]]['x']
-                    z0 = self.variables[time][self.quantities[quantity][1]]['z']
+                if quantities[quantity][1] in self.variables[time].keys():
+                    x0 = self.variables[time][quantities[quantity][1]]['x']
+                    z0 = self.variables[time][quantities[quantity][1]]['z']
                     x.append(x0)
                     z.append(z0)
                     t.append(time)
@@ -159,32 +178,67 @@ class transp_run:
                 continue
 
             # If radial, interpolate to radial_position
-            if self.quantities[quantity][2] in ['x','xb']:
+            if quantities[quantity][2] in ['x','xb']:
                 for i in range(len(z)):
                     z[i] = np.interp(x[radial_position], x[i], z[i])
 
             # Populate 1D time trace
-            if self.quantities[quantity][2] is None:
+            if quantities[quantity][2] is None:
                 uf.Variables['X'] = t
                 uf.Variables['Z'] = np.array(z)
-            elif self.quantities[quantity][2] in ['x','xb']:
+            elif quantities[quantity][2] in ['x','xb']:
                 uf.Variables['Y'] = t
                 uf.Variables['X'] = x[radial_position]
                 uf.Variables['Z'] = np.array(z).T
                 uf.shiftVariables()
             else:
                 uf.Variables['Y'] = t
-                uf.Variables['X'] = self.quantities[quantity][2]
+                uf.Variables['X'] = quantities[quantity][2]
                 uf.Variables['Z'] = np.array(z)
 
             # Write ufile
-            uf.writeUFILE(self.folder / f'MIT{self.shot}.{self.quantities[quantity][1]}')
+            uf.writeUFILE(self.folder / f'MIT{self.shot}.{quantities[quantity][1]}')
 
         # --------------------------------------------------------------------------------------------
         # Write Boundary UFILE
         # --------------------------------------------------------------------------------------------
 
-        if use_mry_file:
+        if prescribed:
+            '''
+            Prescribed equilibrium (LEVGEO=8)
+            ---------------------------------
+            The FULL nested surface set, not the rho=[0,1] axis+boundary trick used below:
+            R(theta, x, t) and Z(theta, x, t) with x = sqrt(phi/philim) spanning [0,1] and
+            theta equal-arc over [0,2pi] (closing point duplicated). Constant in time -- the
+            geometry is data, so there is no morph window to interpolate across; two knots
+            spanning the run are enough and TRANSP extrapolates flat outside them.
+            '''
+            geo = [self.geometry[time] for time in self.times
+                   if (time in self.geometry) and ('R_surfaces' in self.geometry[time])]
+            if len(geo) == 0:
+                raise ValueError("[MITIM] equilibrium_mode='prescribed' but no time slice carries "
+                                 "full flux surfaces (was from_profiles called with it?)")
+            if len(geo) > 1:
+                print(f'\t\t- Prescribed equilibrium: {len(geo)} slices carry surfaces, using the first '
+                      f'(the geometry is constant in time by construction)', typeMsg='i')
+            g = geo[0]
+
+            ts = [float(self.times[0]), float(self.times[-1])]
+            for scratch, key, name in (('rfs','R_surfaces','RFS'), ('zfs','Z_surfaces','ZFS')):
+                uf = UFILEStools.UFILEtransp(scratch=scratch)
+                uf.Variables['X'] = ts
+                uf.Variables['Y'] = g['theta_surfaces']
+                uf.Variables['Q'] = g['x_surfaces']
+                # (nx, ntheta) -> (ntime, ntheta, nx), which is what writeUFILE flattens
+                uf.Variables['Z'] = np.repeat(np.asarray(g[key]).T[np.newaxis, :, :], len(ts), axis=0)
+                uf.writeUFILE(self.folder / f'MIT{self.shot}.{name}')
+
+            for time in self.times:
+                if (time in self.geometry) and ('R_sep' in self.geometry[time]):
+                    self.geometry[time]['R_sep_transp'] = self.geometry[time]['R_sep']
+                    self.geometry[time]['Z_sep_transp'] = self.geometry[time]['Z_sep']
+
+        elif use_mry_file:
             # Use MRY file
             tt = []
             for time in self.times:
@@ -220,7 +274,11 @@ class transp_run:
             for time in self.times:
                 if (time in self.geometry) and ('R_sep' in self.geometry[time]):
 
-                    if mxh_coeffs_smooth is not None:
+                    # A frozen boundary (boundary_override) is used VERBATIM -- never re-projected
+                    # through the MXH smoothing (the round-trip is not idempotent). Non-frozen time
+                    # slices (e.g. the machine-initialization equilibrium) still get the projection,
+                    # which also lands every slice on the same fixed theta grid.
+                    if (mxh_coeffs_smooth is not None) and (not self.geometry[time].get('boundary_frozen', False)):
                         thetas, R, Z = prepare_RZsep_for_TRANSP(
                             self.geometry[time]['R_sep'],
                             self.geometry[time]['Z_sep'],
@@ -240,6 +298,17 @@ class transp_run:
                     Zs.append(Z)
                     R0.append(  r0 * np.ones(R.shape) )
                     Z0.append(  z0 * np.ones(R.shape) )
+
+            # The RFS/ZFS UFILE is a dense (time, theta, rho) array: every time slice must carry the
+            # same number of boundary points. Fail loudly here (mixed sources, e.g. a frozen boundary
+            # alongside an unprojected machine-initialization curve) instead of numpy's cryptic
+            # "inhomogeneous shape" error.
+            npoints = [len(R) for R in Rs]
+            if len(set(npoints)) > 1:
+                raise ValueError(
+                    f"[MITIM] Boundary curves have inconsistent point counts across times "
+                    f"{ts} -> {npoints}; all time slices must share one theta grid."
+                )
 
             Rs, Zs, R0, Z0 = np.array(Rs), np.array(Zs), np.array(R0), np.array(Z0)
 
@@ -384,7 +453,7 @@ class transp_run:
 
     # --------------------------------------------------------------------------------------------
 
-    def run(self, tokamakTRANSP, tokamak_name = None, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=1E6, retrieveAC=False):
+    def run(self, tokamakTRANSP, tokamak_name = None, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=1E6, retrieveAC=False, cpus_per_task=None):
         '''
         Run TRANSP
         '''
@@ -399,7 +468,8 @@ class transp_run:
             self.shot + self.runid, self.shot,
             mpisettings = mpisettings,
             minutesAllocation = minutesAllocation,
-            tokamak_name = tokamak_name)
+            tokamak_name = tokamak_name,
+            cpus_per_task = cpus_per_task)
 
         self.t.run()
 
@@ -516,6 +586,140 @@ def prepare_RZsep_for_TRANSP(Ro, Zo, n_coeff=5, thetas = np.linspace(0, 2*np.pi,
         embed()
 
     return thetas, surfaces.R[0], surfaces.Z[0]
+
+def jacobian_margin(R, Z, x, theta):
+    '''
+    det(J) of the discrete (x,theta) -> (R,Z) map, evaluated the way xplasma builds it:
+    CUBIC-SPLINE derivatives (periodic in theta), NOT finite differences. xplasma splines
+    RFS/ZFS and refuses the map if det(J) changes sign anywhere (xplasma_jacheck).
+
+    A finite-difference version of this check PASSES on geometry xplasma rejects: a fold
+    can live entirely in the spline's end derivative at x=1 while every FD node is still
+    positive. Use this one.
+
+    Returns (det(J) off the axis row, its min, its min normalized to its own poloidal row
+    mean). The normalized number is the meaningful margin: det(J) vanishes linearly at the
+    magnetic axis, so a bare minimum is always ~0 there.
+    '''
+    from scipy.interpolate import CubicSpline
+
+    csR, csZ = CubicSpline(x, R, axis=0), CubicSpline(x, Z, axis=0)
+    pR = CubicSpline(theta, R, axis=1, bc_type="periodic")
+    pZ = CubicSpline(theta, Z, axis=1, bc_type="periodic")
+    J = (csR(x, 1) * pZ(theta, 1) - pR(theta, 1) * csZ(x, 1))[1:]
+
+    return J, float(J.min()), float((J / J.mean(axis=1, keepdims=True)).min())
+
+
+def resample_closed_curve(R, Z, n_theta):
+    '''
+    Resample one closed flux surface onto n_theta points spanning [0, 2*pi] with the closing
+    point duplicated, uniformly in the curve's OWN parameter (for a gacode state that is the
+    MXH poloidal angle). Input may be open or already closed.
+
+    Deliberately NOT equal-arc-length. Equal-arc re-parameterizes every surface
+    INDEPENDENTLY, so the theta index stops following a smooth family across x: where two
+    neighbouring surfaces differ slightly in shape, the equal-arc points slide tangentially,
+    and once that tangential slide exceeds the radial spacing the (x,theta) -> (R,Z) map
+    folds even though the surfaces themselves are perfectly nested. Measured on a 501-surface
+    ARC state: equal-arc gives det(J) margin -0.034 (folded), the native parameter +0.025.
+    The MXH parameter is a smooth function of (theta, x) by construction, which is what
+    TRANSP's "smooth and fairly evenly spaced" requirement is really asking for.
+    '''
+    if np.isclose(R[0], R[-1]) and np.isclose(Z[0], Z[-1]):
+        R, Z = R[:-1], Z[:-1]
+
+    t_in = np.linspace(0.0, 2 * np.pi, len(R), endpoint=False)
+    t_in = np.append(t_in, 2 * np.pi)
+    Rc, Zc = np.append(R, R[0]), np.append(Z, Z[0])
+
+    t_out = np.linspace(0.0, 2 * np.pi, n_theta)
+    return np.interp(t_out, t_in, Rc), np.interp(t_out, t_in, Zc)
+
+
+def surfaces_for_prescribed_equilibrium(Rsurf, Zsurf, x, n_theta=101, n_surfaces_max=121):
+    '''
+    Turn a gacode state's nested flux surfaces (Rsurf/Zsurf [nrad, ntheta], x = rho =
+    sqrt(phi/philim)) into the (x, theta) arrays a LEVGEO=8 RFS/ZFS ufile needs:
+      - x[0] = 0 is the magnetic axis, written as ONE point repeated n_theta times (note V)
+      - theta spanning [0, 2*pi] with the closing point duplicated, on the state's own
+        poloidal parameter (see resample_closed_curve for why not equal-arc)
+      - x kept as a subset of the state's own grid (no new radial coordinate is invented);
+        only thinned, uniformly in x, if the state carries more surfaces than a ufile needs
+
+    Returns (x_out, theta, R[nx, n_theta], Z[nx, n_theta]).
+    '''
+    x = np.asarray(x, dtype=float)
+
+    # Thin (never interpolate) if the state is far finer than the geometry needs; the
+    # endpoints are always kept so x still spans [0, 1] exactly.
+    if len(x) > n_surfaces_max:
+        idx = np.unique(np.linspace(0, len(x) - 1, n_surfaces_max).round().astype(int))
+        print(f'\t\t- Prescribed equilibrium: thinning {len(x)} state surfaces to {len(idx)} for RFS/ZFS', typeMsg='i')
+    else:
+        idx = np.arange(len(x))
+
+    x_out = x[idx]
+    theta = np.linspace(0.0, 2 * np.pi, n_theta, endpoint=True)
+
+    R = np.empty((len(idx), n_theta))
+    Z = np.empty((len(idx), n_theta))
+    for i, k in enumerate(idx):
+        R[i], Z[i] = resample_closed_curve(Rsurf[k], Zsurf[k], n_theta)
+
+    # The innermost state surface has rmin ~ 0 but is not exactly a point; TRANSP wants the
+    # x=0 row to be the magnetic axis repeated, so collapse it onto its own centroid.
+    if np.isclose(x_out[0], 0.0):
+        R[0, :], Z[0, :] = R[0].mean(), Z[0].mean()
+
+    return x_out, theta, R, Z
+
+
+def ip_from_geometry_and_q(p, n_fit=4):
+    '''
+    COARSE plasma current implied by the state's GEOMETRY and q, via Ampere on the boundary:
+        mu0*Ip = oint |grad psi| / R dl,   |grad psi| = (dpsi/drho) * |grad rho|
+    dpsi/drho comes from q through the exact relation dpsi/drho = Phi_b*rho/(pi*q)
+    (Phi_b = 2*pi*torfluxa); |grad rho| is fitted per poloidal point as drho/dn over the
+    outermost n_fit surfaces, projected on the boundary normal. Returns amps (magnitude).
+
+    ACCURACY, measured: this runs ~10-15% LOW against the state's own current(MA) on healthy
+    states (0.86 vs 1.00 MA on tests/data, 12.5 vs 14.0 MA on an ARC case), because the
+    boundary contour is only ~100 points and |grad rho| is steep and under-resolved there.
+    It is therefore a GROSS-inconsistency detector (wrong sign, corrupt torfluxa, a q profile
+    that does not belong to the geometry) and NOT a precision check -- do not tighten the
+    tolerance without a better metric.
+
+    The single-difference form (just the outer two surfaces) is NOT usable: where the surface
+    spacing collapses poloidally it gives |grad rho| -> inf and overestimates Ip by ~2.5x.
+    '''
+    rho = p.profiles['rho(-)']
+    q = np.abs(p.profiles['q(-)'])
+    Phi_b = 2 * np.pi * abs(p.profiles['torfluxa(Wb/radian)'][0])
+
+    Rs, Zs = p.derived["R_surface"][0], p.derived["Z_surface"][0]
+    Rb, Zb = Rs[-1], Zs[-1]
+    closed = np.isclose(Rb[0], Rb[-1]) and np.isclose(Zb[0], Zb[-1])
+    sl = slice(0, -1) if closed else slice(None)
+    Rb, Zb = Rb[sl], Zb[sl]
+
+    # boundary arc elements and OUTWARD unit normal (periodic central differences)
+    dR = 0.5 * (np.roll(Rb, -1) - np.roll(Rb, 1))
+    dZ = 0.5 * (np.roll(Zb, -1) - np.roll(Zb, 1))
+    dl = np.hypot(dR, dZ)
+    nx, ny = dZ / dl, -dR / dl
+    if np.sum(nx * (Rb - Rb.mean()) + ny * (Zb - Zb.mean())) < 0:
+        nx, ny = -nx, -ny
+
+    # drho/dn from a least-squares fit over the outer surfaces (robust where they near-touch)
+    k = np.arange(max(len(rho) - n_fit, 0), len(rho))
+    s = np.stack([(Rs[j][sl] - Rb) * nx + (Zs[j][sl] - Zb) * ny for j in k])
+    grad_rho = np.abs(np.array([np.polyfit(s[:, i], rho[k], 1)[0] for i in range(len(Rb))]))
+
+    dpsi_drho = Phi_b * rho[-1] / (np.pi * q[-1])
+
+    return float(np.sum(dpsi_drho * grad_rho / Rb * dl) / PLASMAtools.mu0)
+
 
 class transp_input_time:
 
@@ -797,7 +1001,8 @@ class transp_input_time:
         
         self._populate(time)
 
-    def from_profiles(self, time, profiles_file, Vsurf = 0.0, boundary_surface_psin = 1.0, boundary_override = None):
+    def from_profiles(self, time, profiles_file, Vsurf = 0.0, boundary_surface_psin = 1.0, boundary_override = None,
+                      equilibrium_mode = 'evolve'):
 
         self.time = time
 
@@ -807,13 +1012,18 @@ class transp_input_time:
         else:
             self.p = profiles_file
 
-        self.variables = {}
-        for var in self.transp_instance.quantities.keys():
-            self.variables[self.transp_instance.quantities[var][1]] = {}
+        quantities = dict(self.transp_instance.quantities)
+        if equilibrium_mode == 'prescribed':
+            quantities.update(self.transp_instance.quantities_prescribed)
 
-            if var in ['Ip','RBt_vacuum','q','Te','Ti','ne','Zeff','PichT','PnbiT']:
-                self.variables[self.transp_instance.quantities[var][1]]['x'],self.variables[self.transp_instance.quantities[var][1]]['z'] = self._produce_quantity_profiles(var = var)
-            
+        self.variables = {}
+        for var in quantities.keys():
+            self.variables[quantities[var][1]] = {}
+
+            if var in ['Ip','RBt_vacuum','q','Te','Ti','ne','Zeff','PichT','PnbiT',
+                       'RBt_profile','p_total','Phi_enclosed','psi_enclosed']:
+                self.variables[quantities[var][1]]['x'],self.variables[quantities[var][1]]['z'] = self._produce_quantity_profiles(var = var)
+
             # --------------------------------------------------------------
             # Quantities that do not come from profiles
             # --------------------------------------------------------------
@@ -822,7 +1032,8 @@ class transp_input_time:
                 self.variables[self.transp_instance.quantities[var][1]]['x'] = None
                 self.variables[self.transp_instance.quantities[var][1]]['z'] = Vsurf
 
-        self._produce_geometry_profiles(boundary_surface_psin = boundary_surface_psin, boundary_override = boundary_override)
+        self._produce_geometry_profiles(boundary_surface_psin = boundary_surface_psin, boundary_override = boundary_override,
+                                        equilibrium_mode = equilibrium_mode)
         self._populate(time)
 
     def _produce_quantity_profiles(self, var = 'Te', Vsurf = None):
@@ -855,11 +1066,107 @@ class transp_input_time:
             x = [1]
             z = self.p.derived['qBEAM_MW'][-1]*1E6
 
+        # ---- LEVGEO=8 (prescribed equilibrium) flux functions. TRANSP takes POSITIVE
+        # magnitudes here and gets the field/current directions from nlbccw/nljccw, so the
+        # gacode sign conventions (torfluxa, polflux, bcentr can all be negative) are stripped.
+        elif var == 'RBt_profile':
+            x = self.p.profiles['rho(-)']
+            # APPROXIMATION: g = R*Bt is held at its VACUUM value across the whole profile.
+            # The true g deviates by the para/diamagnetic correction, ~1% at these betas.
+            # The self-consistent alternative is g(x) = q(x) * dpsi/dphi evaluated per
+            # surface, which requires the flux-surface metrics rather than just the file.
+            z = abs(self.p.profiles['rcentr(m)'][0] * self.p.profiles['bcentr(T)'][0]) * 1E2 * np.ones(len(x))
+        elif var == 'p_total':
+            x = self.p.profiles['rho(-)']
+            # Thermal pe + sum_i pi [Pa]. NOT the ptot(Pa) column: that is optional and is
+            # identically zero in some MAESTRO-produced states. ptot_manual (thermal + fast)
+            # is the Grad-Shafranov-consistent choice when a fast population is present.
+            z = self.p.derived['pthr_manual'] * 1E6
+        elif var == 'Phi_enclosed':
+            x = None
+            z = 2 * np.pi * abs(self.p.profiles['torfluxa(Wb/radian)'][0])           # [Wb]
+        elif var == 'psi_enclosed':
+            x = None
+            psi = self.p.profiles['polflux(Wb/radian)']
+            z = abs(psi[-1] - psi[0])                                                # [Wb/rad]
+
         return x,z
 
-    def _produce_geometry_profiles(self, boundary_surface_psin = 1.0, boundary_override = None):
+    def _produce_geometry_profiles(self, boundary_surface_psin = 1.0, boundary_override = None,
+                                   equilibrium_mode = 'evolve'):
 
         self.geometry = {}
+
+        # --------------------------------------------------------------
+        # Prescribed equilibrium (LEVGEO=8): the state's OWN nested flux surfaces ARE the
+        # equilibrium handed to TRANSP -- that is the MAESTRO chaining semantics (a beat
+        # inherits the full equilibrium of the previous one, not just its boundary). The
+        # state boundary is already whatever cut/freeze earlier beats applied, so NO further
+        # psi_N cut is taken here and boundary_surface_psin / boundary_override do not apply.
+        # --------------------------------------------------------------
+        if equilibrium_mode == 'prescribed':
+
+            if boundary_override is not None or (boundary_surface_psin is not None and boundary_surface_psin < 1.0):
+                print('\t\t- Prescribed equilibrium: ignoring boundary_surface_psin / frozen boundary; '
+                      'the state\'s own outermost surface is the plasma boundary', typeMsg='i')
+
+            x, theta, R, Z = surfaces_for_prescribed_equilibrium(
+                self.p.derived["R_surface"][0],
+                self.p.derived["Z_surface"][0],
+                self.p.profiles['rho(-)'],
+                )
+
+            # xplasma splines RFS/ZFS and rejects a map whose det(J) changes sign. Fail HERE,
+            # loudly and locally, rather than after submission with a Jacobian abort at t=0.
+            _, detJ_min, detJ_margin = jacobian_margin(R, Z, x, theta)
+            print(f'\t\t- Prescribed equilibrium: {len(x)} surfaces x {len(theta)} poloidal points, '
+                  f'det(J) min/row-mean = {detJ_margin:.4f}', typeMsg='i')
+            if detJ_min <= 0.0:
+                raise ValueError(
+                    f"[MITIM] The (x,theta) -> (R,Z) map of this state FOLDS (min det(J) = "
+                    f"{detJ_min:.4e}, min/row-mean = {detJ_margin:.4f}). xplasma splines RFS/ZFS and "
+                    f"rejects a sign-changing Jacobian at initialization. The usual cause is flux "
+                    f"surfaces that touch or cross near the boundary.")
+            elif detJ_margin <= 0.05:
+                # Not fatal by itself, and we only have one calibration point: a levgeo=8 run
+                # that TRANSP accepted sat at 0.09. Warn rather than block.
+                print(f'\t\t- Prescribed equilibrium: det(J) margin {detJ_margin:.4f} is small (no fold, but '
+                      f'the surface spacing collapses somewhere poloidally). A run that TRANSP accepted '
+                      f'measured 0.09; watch for an xplasma Jacobian abort at t=0.', typeMsg='w')
+
+            self.geometry['R_surfaces'], self.geometry['Z_surfaces'] = R, Z
+            self.geometry['x_surfaces'], self.geometry['theta_surfaces'] = x, theta
+
+            # Outermost surface doubles as the boundary for the VV / limiter / antenna
+            # structures, and as what gets frozen for later beats -- so what those see is
+            # exactly what TRANSP is handed.
+            self.geometry['R_sep'], self.geometry['Z_sep'] = R[-1], Z[-1]
+            self.geometry['boundary_frozen'] = True
+
+            # Is the state internally consistent? A geometry inherited from an older
+            # equilibrium than the profiles carries the wrong Shafranov shift, and the current
+            # its q + shape imply then disagrees with current(MA).
+            Ip_state = abs(self.p.profiles['current(MA)'][0]) * 1E6
+            Ip_geom = ip_from_geometry_and_q(self.p)
+            # 25%, not 2%: the estimator itself runs 10-15% low (see ip_from_geometry_and_q).
+            # Only a GROSS disagreement is meaningful here.
+            if abs(Ip_geom - Ip_state) / max(Ip_state, 1e-12) > 0.25:
+                print(f'\t\t- Prescribed equilibrium: the geometry + q imply Ip ~ {Ip_geom*1E-6:.2f} MA but the '
+                      f'state says {Ip_state*1E-6:.2f} MA ({100*(Ip_geom-Ip_state)/Ip_state:+.0f}%; this estimator '
+                      f'reads 10-15% low even on healthy states, so this gap is beyond that). The q profile and '
+                      f'the flux surfaces do not describe the same equilibrium -- with frozen_field TRANSP will '
+                      f'carry the q-implied current, otherwise the CUR ufile wins and the prescribed q is '
+                      f'rewritten near the edge.', typeMsg='w')
+
+            self._produce_structures_from_variables(
+                self.p.profiles['rcentr(m)'][0],
+                self.p.derived['a'],
+                self.p.profiles['kappa(-)'][-1],
+                self.p.profiles['delta(-)'][-1],
+                self.p.profiles['zeta(-)'][-1],
+                self.p.profiles['zmag(m)'][0],
+                )
+            return
 
         # --------------------------------------------------------------
         # Boundary: the separatrix (last surface) by default, or -- when boundary_surface_psin < 1 --
@@ -878,13 +1185,17 @@ class transp_input_time:
         if boundary_override is not None:
             self.geometry['R_sep'] = np.array(boundary_override[0])
             self.geometry['Z_sep'] = np.array(boundary_override[1])
+            # Mark this time slice so write_ufiles hands the curve to TRANSP VERBATIM: the MXH
+            # round-trip is a projection (not idempotent), and re-projecting the frozen boundary
+            # would defeat the whole point of freezing it.
+            self.geometry['boundary_frozen'] = True
             self._produce_structures_from_variables(
                 self.p.profiles['rcentr(m)'][0],
                 self.p.derived['a'],
                 self.p.profiles['kappa(-)'][-1],
-                self.p.profiles['zmag(m)'][0],
                 self.p.profiles['delta(-)'][-1],
                 self.p.profiles['zeta(-)'][-1],
+                self.p.profiles['zmag(m)'][0],
                 )
             return
 
@@ -1256,10 +1567,17 @@ def interpret_trdat(file):
                 if ("?" in aux[i]) and ("????" not in aux[i]):
                     print("".join(aux[np.max(i - 5, 0) : i + 2]), typeMsg="w")
                     print("-------------------------------", typeMsg="w")
-            if not print(
-                "Do you wish to continue? It will likely fail! (c)", typeMsg="q"
-            ):
-                embed()
+            try:
+                if not print(
+                    "Do you wish to continue? It will likely fail! (c)", typeMsg="q"
+                ):
+                    embed()
+            except LOGtools.InteractiveTerminalError:
+                # batch: surface the actual TRDAT complaints instead of a bare prompt error
+                err_lines = "".join(
+                    ln for ln in aux if ("?" in ln) and ("????" not in ln)).strip()
+                raise Exception(
+                    f"[MITIM] TRDAT reported errors in the TRANSP inputs: {err_lines}")
         else:
             print("\t- TRDAT output did not show any error", typeMsg="i")
 

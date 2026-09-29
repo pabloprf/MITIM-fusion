@@ -9,7 +9,7 @@ from mitim_modules.portals.utils import PORTALSanalysis, PORTALSoptimization
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds
+from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds, PRUNE_OUTPUTS
 from IPython import embed
 from mitim_tools import __mitimroot__
 
@@ -17,6 +17,12 @@ from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
 class portals_beat(beat):
+
+    # Level-1: the per-iteration model trees (with CGYRO these carry the restart binaries and
+    # dominate the beat), the simple-relax seed states and the warm-start seed. All read only
+    # while the beat is live -- finalize()/merge_parameters() work off folder_output, and the
+    # replot reads beat_results/Outputs, which is a full copy of run_portals/Outputs.
+    scratch_patterns = ['Execution', 'Initialization', 'flux_match']
 
     def __init__(self, maestro_instance):
         super().__init__(maestro_instance, beat_name = 'portals')
@@ -33,7 +39,8 @@ class portals_beat(beat):
             use_previous_residual = True,
             use_previous_surrogate_data = True,
             use_previous_ranges = True,
-            try_flux_match_only_for_first_point = True,
+            first_point = 'previous_best',
+            try_flux_match_only_for_first_point = None,
             change_last_radial_call = True,
             portals_namelist_location = None,
             portals_parameters = None,
@@ -83,7 +90,18 @@ class portals_beat(beat):
         self.change_last_radial_call = change_last_radial_call
         self.use_previous_ranges = use_previous_ranges
 
-        self.try_flux_match_only_for_first_point = try_flux_match_only_for_first_point
+        # first_point: how a beat that follows another PORTALS beat starts
+        #   'previous_best' -> one training point = the previous beat's best solution (the incoming state
+        #                      already carries those gradients: bc beats rescale T at frozen a/L)
+        #   'flux_match'    -> one training point = flux match against the previous beat's surrogate
+        #   'namelist'      -> the PORTALS namelist initialization (initial_training simple-relax points)
+        # try_flux_match_only_for_first_point is the retired boolean alias (True -> 'flux_match', False -> 'namelist')
+        if try_flux_match_only_for_first_point is not None:
+            first_point = 'flux_match' if try_flux_match_only_for_first_point else 'namelist'
+            print(f"\t\t- try_flux_match_only_for_first_point is retired, use first_point: '{first_point}'", typeMsg='w')
+        if first_point not in ('previous_best', 'flux_match', 'namelist'):
+            raise ValueError(f"first_point must be 'previous_best', 'flux_match' or 'namelist', got {first_point!r}")
+        self.first_point = first_point
 
 
         # Initializat optimization options to empty, but may be filled in _inform, from previous beats information
@@ -92,7 +110,7 @@ class portals_beat(beat):
         self._inform(use_previous_residual = self.use_previous_residual, 
                      use_previous_surrogate_data = self.use_previous_surrogate_data,
                      change_last_radial_call = self.change_last_radial_call,
-                     use_previous_ranges = self.use_previous_ranges
+                     use_previous_ranges = self.use_previous_ranges,
                      )
 
     def run(self, **kwargs):
@@ -111,6 +129,18 @@ class portals_beat(beat):
         # MAESTRO beat may receive optimization options changes from previous beats (via _inform() inside prepare), so allow that too
         portals_fun.portals_parameters['optimization_options'] = portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.optimization_options_additional)
 
+        # Harvest inside MAESTRO: stage in MAESTRO's own Outputs/harvest (one folder for the whole chain, outside
+        # Beats/ so no prune level touches it) with the MAESTRO run_id; MAESTRO pushes once at finalize
+        harvest = getattr(self.maestro_instance, 'harvest', {}) or {}
+        if harvest.get('enabled', False):
+            portals_fun.portals_parameters['harvest'] = {
+                'enabled': True, 'file': harvest.get('file'), 'push': False, 'scan_trick_members': harvest.get('scan_trick_members', True),
+                'run_id': harvest['run_meta']['run'], 'maestro_beat': int(self.maestro_instance.counter_current),
+                'staging_folder': harvest['folder']}
+        else:
+            # MAESTRO not harvesting (switched off, or no file): its PORTALS beats must not harvest on their own
+            portals_fun.portals_parameters['harvest'] = {'enabled': False}
+
         # Initialization now happens by the user
         from mitim_tools.gacode_tools.PROFILEStools import gacode_state
         p = gacode_state(self.fileGACODE)
@@ -120,8 +150,22 @@ class portals_beat(beat):
 
         self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed = self.maestro_instance.master_seed, cold_start = cold_start, askQuestions = False, ENABLE_EMBED=ENABLE_EMBED)
 
-        if self.use_previous_surrogate_data and \
-            self.try_flux_match_only_for_first_point and \
+        has_previous_portals = self.maestro_instance.parameters_trans_beat.get('portals_last_run_folder') is not None
+
+        if has_previous_portals and self.first_point == 'previous_best':
+
+            # The incoming state carries the previous beat's best gradients, so the single
+            # simple-relax initialization point (x0 = base, no perturbation) IS that solution
+            print('\t- Seeding this beat with the previous PORTALS best solution as its only training point')
+            portals_fun.optimization_options['initialization_options']['initial_training'] = 1
+
+            portals_fun.prep(p,askQuestions=False)
+
+            self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed=self.maestro_instance.master_seed,cold_start = cold_start, askQuestions = False)
+
+        elif has_previous_portals and \
+            self.first_point == 'flux_match' and \
+            self.use_previous_surrogate_data and \
             self.folder_starting_point is not None and \
             ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat) and \
             self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] is not None:
@@ -146,6 +190,8 @@ class portals_beat(beat):
                 self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed=self.maestro_instance.master_seed,cold_start = cold_start, askQuestions = False)
 
         self.mitim_bo.run()
+
+        self.converged = getattr(self.mitim_bo, 'converged', False)
 
     def _flux_match_for_first_point(self):
         '''Seed this beat's first evaluation by flux-matching against the previous PORTALS beat's
@@ -203,6 +249,10 @@ class portals_beat(beat):
                 elif item.is_dir():
                     IOtools.shutil_rmtree(item)
 
+            # Persist the convergence verdict next to the results (read back on skipped/re-run beats)
+            if hasattr(self, 'converged'):
+                (self.folder_output / 'portals_converged.txt').write_text(str(self.converged))
+
             self._persist(self.folder / 'Outputs', self.folder_output / 'Outputs')
 
         # --------------------------------------------------------------------------------------------
@@ -248,7 +298,7 @@ class portals_beat(beat):
             )
 
     def optional_postprocessing(self):
-        '''Space-saving (keep_all_files: false), run once per beat at the END of the MAESTRO run
+        '''Space-saving (prune_level >= PRUNE_OUTPUTS), run once per beat at the END of the MAESTRO run
         (MAESTRO.finalize, AFTER all beats and generate_summary). Safe to slim/drop here because
         nothing reads a PORTALS beat's GP surrogates any more: the in-run consumers
         (the next beat's _flux_match_for_first_point, and summary()) have already happened.
@@ -259,7 +309,7 @@ class portals_beat(beat):
             (portals_profiles/), optimization_log.txt, and its MAESTRO per-phase stdout logs
             (Outputs/Logs/beat_<n>_*.log); chaining keeps surrogate_data.csv and
             beat_results/input.gacode, and warnings are already in warnings.log.'''
-        if self.maestro_instance.keep_all_files:
+        if self.prune_level < PRUNE_OUTPUTS:
             return
         out = getattr(self, 'folder_output', None)
         if out is None:
@@ -566,17 +616,25 @@ class portals_beat(beat):
 
     def plot(self,  fn = None, counter = 0, full_plot = True):
 
+        # The full path rebuilds the raw optimization object, which needs optimization_object.pkl --
+        # dropped from an INTERMEDIATE beat at prune_level >= PRUNE_OUTPUTS. Degrade to the
+        # metrics-only view instead of taking all of this beat's tabs down with an exception.
+        folder = self.folder_output if self.maestro_instance.check(beat_check=self) else self.folder
+        if full_plot and not (folder / 'Outputs' / 'optimization_object.pkl').exists():
+            print('\t\t- Skipping the full PORTALS tabs: optimization_object.pkl not available '
+                  '(pruned); plotting metrics only', typeMsg='w')
+            full_plot = False
+
         opt_fun, _ = self.grab_output(full = full_plot)
 
         if full_plot:
             opt_fun.fn = fn
             opt_fun.plot_optimization_results(analysis_level=4, tabs_colors=counter)
+        elif opt_fun is None or len(opt_fun.powerstates) == 0:
+            print('\t\t- PORTALS has not run enough to plot anything', typeMsg='w')
         else:
-            if len(opt_fun.powerstates)>0:
-                fig = fn.add_figure(label="PORTALS Metrics", tab_color=counter)
-                opt_fun.plotMetrics(fig=fig)
-            else:
-                print('\t\t- PORTALS has not run enough to plot anything', typeMsg='w')
+            fig = fn.add_figure(label="PORTALS Metrics", tab_color=counter)
+            opt_fun.plotMetrics(fig=fig)
 
         msg = '\t\t- Plotting of PORTALS beat done'
 
@@ -713,7 +771,9 @@ class portals_beat(beat):
         if last_radial_location_moved and reusing_surrogate_data:
             print('\t\t- Last radial location was moved, so surrogate data will not be reused for that specific location')
             self.optimization_options_additional['surrogate_options']["extrapointsModelsAvoidContent"] = ['_tar',f"_{len(self.portals_parameters['solution'][strKeys])}"]
-            self.try_flux_match_only_for_first_point = False
+            if self.first_point == 'flux_match':
+                print('\t\t- No surrogate at the moved location: first_point flux_match -> previous_best')
+                self.first_point = 'previous_best'
 
         # ----------------------------------------------------------------------------------------------
         # Change ranges
@@ -721,6 +781,10 @@ class portals_beat(beat):
         if use_previous_ranges and 'portals_ymin' in self.maestro_instance.parameters_trans_beat:
             print('\t\t- Freezing original ranges for PORTALS optimization from previous beat')
 
+            # These go into the PORTALS namelist overlay (portals_parameters['solution']), which is what
+            # PORTALSmain.prep reads the ranges from -- NOT into optimization_options, where they are
+            # silently ignored and every beat re-boxes relative to its own seed gradients.
+            # Deep-copied so the maestro namelist dict shared by the portals beats is never mutated.
             solution = {
                 'exploration_ranges': {
                     'limits_are_relative': False,
@@ -728,38 +792,63 @@ class portals_beat(beat):
                     'ymax': self.maestro_instance.parameters_trans_beat['portals_ymax'],
                 }
             }
-            
-            if 'solution' not in self.optimization_options_additional:
-                self.optimization_options_additional['solution'] = solution
-            else:
-                self.optimization_options_additional['solution'] = IOtools.deep_dict_update(self.optimization_options_additional['solution'], solution)
+
+            self.portals_parameters = IOtools.deep_dict_update(copy.deepcopy(self.portals_parameters), {'solution': solution})
 
     def _inform_save(self):
 
         print('\t- Saving PORTALS beat parameters for future beats')
 
+        # Convergence history of the PORTALS beats (drives maestro.max_unconverged_portals_beats)
+        verdict_file = self.folder_output / 'portals_converged.txt'
+        converged = getattr(self, 'converged', None)
+        if converged is None and verdict_file.exists():
+            converged = verdict_file.read_text().strip() == 'True'
+        history = list(self.maestro_instance.parameters_trans_beat.get('portals_converged_history', []))
+        if getattr(self, 'count_unconverged', True):
+            history.append(bool(converged) if converged is not None else None)
+            self.maestro_instance.parameters_trans_beat['portals_converged_history'] = history
+            print(f'\t\t* PORTALS convergence history: {history}')
+        else:
+            print(f'\t\t* PORTALS convergence of this beat ({converged}) not counted (count_unconverged: false); history: {history}')
+
         # Save the residual goal to use in the next PORTALS beat
         portals_output, _ = self.grab_output()
 
-        # Standard PORTALS output
-        try:
-            stepSettings = portals_output.step.stepSettings
+        # standard -> converged-in-training -> degraded. The degraded case is from_folder having fallen
+        # back to PORTALSinitializer (unreadable/pruned pickle): its opt_fun_full never gets a mitim_model
+        # (read_optimization_results assigns it only on success), so the old `except AttributeError`
+        # branch dereferenced an attribute that cannot exist and killed the chain. Hand over what is
+        # still valid (the surrogate data file) and skip the residual/ranges handoff; the next beat
+        # then reuses the previous frozen ranges (if any) and warns.
+        step = getattr(portals_output, 'step', None)
+        mitim_model = getattr(getattr(portals_output, 'opt_fun_full', None), 'mitim_model', None)
+        if step is not None:
+            stepSettings = step.stepSettings
             portals_parameters = portals_output.portals_parameters
-        # Converged in training case
-        except AttributeError:
-            stepSettings = portals_output.opt_fun_full.mitim_model.stepSettings
-            portals_parameters = portals_output.opt_fun_full.mitim_model.optimization_object.portals_parameters
+        elif mitim_model is not None:
+            stepSettings = mitim_model.stepSettings
+            portals_parameters = mitim_model.optimization_object.portals_parameters
+        else:
+            print('\t\t- PORTALS results unreadable (pruned/truncated pickle): skipping the residual and ranges '
+                  'handoff; the next beat still reuses surrogate_data.csv', typeMsg='w')
+            self.maestro_instance.parameters_trans_beat['portals_last_run_folder'] = self.folder_output
+            self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = self.folder_output / 'Outputs' / 'surrogate_data.csv'
+            return
 
         '''
         -------------------------------------------------------------------------------------------
         Store residual for convergence
         -------------------------------------------------------------------------------------------
         '''
-        
+
         # Get maximum value of negative residual (absolute)
-        original_residual = -portals_output.step.BOmetrics["overall"]["Residual"][0].item()
-        self.maestro_instance.parameters_trans_beat['original_residual'] = original_residual
-        print(f'\t\t* Original value of negative residual (absolute) saved for future beats: {original_residual}')
+        if step is not None:
+            original_residual = -step.BOmetrics["overall"]["Residual"][0].item()
+            self.maestro_instance.parameters_trans_beat['original_residual'] = original_residual
+            print(f'\t\t* Original value of negative residual (absolute) saved for future beats: {original_residual}')
+        else:
+            print('\t\t- PORTALS converged in training (no BO step): residual not saved for future beats', typeMsg='w')
 
         '''
         -------------------------------------------------------------------------------------------
@@ -797,12 +886,16 @@ class portals_beat(beat):
         Store ranges
         -------------------------------------------------------------------------------------------
         '''
+        # dvs are ordered channel-major over the ACTIVE grid (predicted_roa wins when provided, as in
+        # PORTALSmain.prep); looping over predicted_rho when predicted_roa was in use gave lists of the
+        # template's length, misaligned across channels
+        key_rhos = 'predicted_roa' if portals_parameters['solution'].get('predicted_roa') is not None else 'predicted_rho'
         ymin, ymax = {}, {}
         cont = 0
         for channel in portals_parameters['solution']['predicted_channels']:
             ymin0 = []
             ymax0 = []
-            for rho in portals_parameters['solution']['predicted_rho']:
+            for rho in portals_parameters['solution'][key_rhos]:
                 ymin0.append(stepSettings['optimization_options']['problem_options']['dvs_min'][cont])
                 ymax0.append(stepSettings['optimization_options']['problem_options']['dvs_max'][cont])
                 cont += 1

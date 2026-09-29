@@ -29,6 +29,9 @@ def main():
                         help="Interpret negative --tmin values as absolute a/cs offsets from the end of the run "
                              "(e.g. --tmin -200 means the last 200 a/cs). Without this flag, negative --tmin is "
                              "a fraction-of-run (e.g. --tmin -0.3 means the last 30%% of the run).")
+    parser.add_argument("--averaging", type=str, default="howard_gkav", choices=["fixed", "quends", "howard_gkav"],
+                        help="Method to select the saturated window and the flux uncertainties (see GKaveraging.py). "
+                             "'fixed' uses --tmin; 'quends' and 'howard_gkav' detect the steady state from Qi/Qe/Ge.")
     parser.add_argument("--scan_subfolder_id" , type=str, nargs="*", default="KY", help="If reading a linear scan, the subfolders contain this common identifier")
     parser.add_argument("--noplot", action="store_true", help="If set, it will not plot anything, just read the data.")
     parser.add_argument("--pickle", action="store_true", help="If set, it will save the read data in a pickle file for faster reading next time.")
@@ -82,6 +85,7 @@ def main():
         last_tmin_for_linear = False
 
     tmin_is_rel = not args.tmin_absolute
+    averaging = {"method": args.averaging}
 
     # Read
     c = CGYROtools.CGYRO()
@@ -108,7 +112,8 @@ def main():
                 last_tmin_for_linear=last_tmin_for_linear,
                 suffix=suffixes[i],
                 preffix=scan_subfolder_id[i],
-                minimal=minimal
+                minimal=minimal,
+                averaging=averaging,
             )
         else:
             c.read(
@@ -119,7 +124,8 @@ def main():
                 last_tmin_for_linear=last_tmin_for_linear,
                 suffix=suffixes[i],
                 preffix=scan_subfolder_id[i],
-                minimal=minimal
+                minimal=minimal,
+                averaging=averaging,
             )
 
         if pkl:

@@ -463,13 +463,28 @@ class gacode_state(MITIMstate.mitim_state):
         if color1 is None:
             color1 = color
 
-        for rho in surfaces_rho:
-            ir = np.argmin(np.abs(self.profiles["rho(-)"] - rho))
+        def surface_at(coordinate, value, i_toroidal):
+            '''
+            Surface INTERPOLATED (per theta index) onto the requested coordinate value.
+            Snapping to the nearest stored surface instead pairs DIFFERENT surfaces when two
+            states are overlaid on different radial grids (e.g. a 112-point TRANSP state and
+            a 109-point PORTALS state): each snaps within half of its own grid spacing, the
+            errors do not cancel, and the rings separate by up to ~5 mm on a 0.57 m plasma
+            with no physical difference behind it.
+            '''
+            R = self.derived["R_surface"][i_toroidal]
+            Z = self.derived["Z_surface"][i_toroidal]
+            return (
+                np.array([np.interp(value, coordinate, R[:, j]) for j in range(R.shape[1])]),
+                np.array([np.interp(value, coordinate, Z[:, j]) for j in range(Z.shape[1])]),
+            )
 
+        for rho in surfaces_rho:
             for i_toroidal in range(self.derived["R_surface"].shape[0]):
+                R, Z = surface_at(self.profiles["rho(-)"], rho, i_toroidal)
                 ax.plot(
-                    self.derived["R_surface"][i_toroidal,ir, :],
-                    self.derived["Z_surface"][i_toroidal,ir, :],
+                    R,
+                    Z,
                     "-",
                     lw=lw if rho<1.0 else lw1,
                     c=color if rho<1.0 else color1,
@@ -477,19 +492,21 @@ class gacode_state(MITIMstate.mitim_state):
                 if reflect:
                     # Reflect the surface across the midplane
                     ax.plot(
-                        self.derived["R_surface"][i_toroidal,ir, :] * -1,
-                        self.derived["Z_surface"][i_toroidal,ir, :],
+                        R * -1,
+                        Z,
                         "-",
                         lw=lw if rho<1.0 else lw1,
                         c=color if rho<1.0 else color1,
                     )
-        
+
         if include995:
-            ir = np.argmin(np.abs(self.derived["psi_pol_n"] - 0.995))
+            # Interpolated in psi_N, not rho: this curve is DEFINED as a fixed normalized
+            # poloidal flux surface, and each state maps 0.995 to its own rho
             for i_toroidal in range(self.derived["R_surface"].shape[0]):
+                R, Z = surface_at(self.derived["psi_pol_n"], 0.995, i_toroidal)
                 ax.plot(
-                    self.derived["R_surface"][i_toroidal,ir, :],
-                    self.derived["Z_surface"][i_toroidal,ir, :],
+                    R,
+                    Z,
                     "--",
                     lw=lw,
                     c=color,
@@ -498,8 +515,8 @@ class gacode_state(MITIMstate.mitim_state):
                 if reflect:
                     # Reflect the surface across the midplane
                     ax.plot(
-                        self.derived["R_surface"][i_toroidal,ir, :] * -1,
-                        self.derived["Z_surface"][i_toroidal,ir, :],
+                        R * -1,
+                        Z,
                         "--",
                         lw=lw,
                         c=color,

@@ -56,6 +56,43 @@ from IPython import embed
 
 plt.rcParams["figure.max_open_warning"] = False
 
+def headless_figures_folder(label="figures"):
+    """
+    Folder where headless runs (no Qt display) drop their figures instead of showing
+    them: $MITIM_HEADLESS_FIGURES if set, otherwise <MITIM root>/tests/figures/
+    <label>_<YYYYmmdd_HHMMSS>/ (that tree is git-ignored). Created if missing.
+    """
+    import datetime
+    from mitim_tools import __mitimroot__
+    base = os.environ.get("MITIM_HEADLESS_FIGURES")
+    base = Path(base).expanduser() if base else (__mitimroot__ / "tests" / "figures")
+    tag = re.sub(r"[^A-Za-z0-9._-]+", "_", str(label)).strip("_") or "figures"
+    folder = base / f"{tag}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def show_figures(label="figures", dpi=150):
+    """
+    Drop-in for `plt.show()` in scripts that build plain matplotlib figures (no
+    FigureNotebook): shows them when a display exists, otherwise saves every open
+    figure as PNG in `headless_figures_folder(label)` and closes them.
+    """
+    import matplotlib.pyplot as plt
+    if not _MITIM_HEADLESS:
+        plt.show()
+        return None
+    folder = headless_figures_folder(label)
+    nums = plt.get_fignums()
+    for i, num in enumerate(nums, start=1):
+        fig = plt.figure(num)
+        name = re.sub(r"[^A-Za-z0-9._-]+", "_", fig.get_label() or "").strip("_")
+        fig.savefig(folder / f"{i:02d}_figure{('_' + name) if name else ''}.png", dpi=dpi, bbox_inches="tight")
+    plt.close("all")
+    print(f"\n> Headless (no display): saved {len(nums)} figure(s) to {folder}", typeMsg="w")
+    return folder
+
+
 class FigureNotebook:
     def __init__(
         self,
@@ -95,6 +132,13 @@ class FigureNotebook:
         self.tab_handles = []
         self.tab_titles = []
         self.current_window = -1
+
+        # Notebook-wide decorations applied by addPlot(). Callers that fill one
+        # notebook from several independent plotting passes (e.g. mitim_plot_opt
+        # with several run folders) set these around each pass so every tab of
+        # that pass is prefixed with the run name and painted with one color.
+        self.label_prefix = ""
+        self.tab_color_forced = None
 
         # Headless: do not touch Qt at all.
         if self._headless:
@@ -208,7 +252,14 @@ class FigureNotebook:
     def addPlot(self, title, figure, tab_color=None, tab_alpha=0.55):
         """
         tab_color can be a color name or an integer to grab colors in order
+
+        `self.label_prefix` and `self.tab_color_forced` (if set) override the
+        per-call title and color, so a caller can tag a whole plotting pass.
         """
+
+        title = f"{self.label_prefix}{title}"
+        if self.tab_color_forced is not None:
+            tab_color = self.tab_color_forced
 
         if self._headless:
             self.figure_handles.append(figure)
@@ -289,29 +340,40 @@ class FigureNotebook:
                 tab_bar.tab_colors[i] = c
         tab_bar.update()
 
-    def move_tabs_block_to_front(self, block_start, block_count):
+    def move_tabs_block_to_front(self, block_start, block_count, destination=0):
         '''
         Move a consecutive block of tabs `[block_start, block_start+block_count)`
-        to the front of the notebook, preserving the block's internal order.
+        to position `destination`, preserving the block's internal order.
         Useful when two plotting passes build the notebook in one order but
         the desired visual order is the reverse (e.g. the OPT generic pass
         runs first for state-hygiene reasons but should appear after the
-        module-specific block on screen).
+        module-specific block on screen). `destination` > 0 keeps the block
+        inside its own group when several passes share one notebook (e.g. one
+        run folder per group).
         '''
-        if block_count <= 0:
+        if block_count <= 0 or block_start <= destination:
             return
         # Because moveTab(src, dst) only shifts indices in [min, max]
         # between src and dst, tabs at src+1, src+2, ... still sit at
         # those same indices after each move — so we can do the moves in
         # ascending k with a static from-formula.
         for k in range(block_count):
-            self._move_tab(block_start + k, k)
+            self._move_tab(block_start + k, destination + k)
 
     def show(self):
         if self._headless:
+            # No display: write the tabs to disk instead of dropping them, so a
+            # capability test or a plotting script run on a cluster still produces
+            # its figures. Folder: $MITIM_HEADLESS_FIGURES if set, otherwise
+            # <MITIM root>/tests/figures/<notebook title>_<timestamp>/ (git-ignored).
+            folder = headless_figures_folder(self.windowtitle)
             print(
-                "\n> MITIM FigureNotebook running headless (no Qt display).", typeMsg="w"
+                f"\n> MITIM FigureNotebook running headless (no Qt display); saving tabs to {folder}", typeMsg="w"
             )
+            try:
+                self.save(folder, dpi=150)
+            except Exception as e:
+                print(f"\t- Could not save headless figures: {e}", typeMsg="w")
             return
         # Always open on the first tab: plotting passes may have moved tab blocks
         # around (Qt keeps the previously-current widget selected through moves),

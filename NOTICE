@@ -1,0 +1,62 @@
+MITIM-fusion
+Copyright (c) 2024 Pablo Rodriguez-Fernandez
+
+MITIM-fusion as a whole is distributed under the MIT License (see LICENSE).
+The following components are derived from, or built against, third-party
+software and carry their own terms.
+
+===============================================================================
+GACODE (TGLF, NEO, VGEN, EXPRO) — Apache License 2.0
+===============================================================================
+
+MITIM's in-process transport interfaces, in
+
+    src/mitim_tools/simulation_tools/interfaces/
+
+are built against GACODE (https://github.com/gafusion/gacode), which is
+licensed under the Apache License, Version 2.0. GACODE sources are NOT
+redistributed with MITIM: the build scripts compile them from the user's own
+GACODE_ROOT installation, and the Python layer loads GACODE's own input
+parsers from that installation at runtime.
+
+The following file is a derivative work of GACODE and remains under the
+Apache License, Version 2.0:
+
+    src/mitim_tools/simulation_tools/interfaces/vgen_c_api.f90
+        Derived from gacode/vgen/src/vgen.f90.
+        Modifications: MPI parallelisation removed (sequential single-rank
+        surface loop, no vgen_reduce), restricted to er_method=2 /
+        vel_method=1, and input handling bypasses neo_read_input.
+
+The remaining files in that directory (tglf_c_api.f90, neo_c_api.f90, the
+build_*.sh scripts and the *_inprocess.py modules) are original MITIM works
+that bind by name to GACODE's public interfaces, and are covered by MITIM's
+MIT License.
+
+A copy of the Apache License, Version 2.0 is available at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+The attribution notice below is reproduced from GACODE's NOTICE file, as
+required by Section 4(d) of that license:
+
+    GACODE
+    Copyright (c) 2003-2024 General Atomics
+
+    This product contains software and algorithms developed at General
+    Atomics by the Theory and Computational Science group. The names
+    "General Atomics", and any associated logos or images, are trademarks
+    of General Atomics. Use of these trademarks without prior written
+    consent from General Atomics is strictly prohibited. Users cannot imply
+    endorsement by General Atomics or contributors to the project simply
+    because the project is part of their work.
+
+===============================================================================
+ASTRA
+===============================================================================
+
+MITIM's ASTRA interface (src/mitim_tools/astra_tools/) drives the ASTRA
+transport code (G. Pereverzev, P. N. Yushmanov), which is distributed by
+IPP Garching at https://gitlab.mpcdf.mpg.de/git/astra.git. ASTRA sources are
+NOT redistributed with MITIM; users must obtain their own copy and point
+MITIM at it via the ASTRA_REPO environment variable.

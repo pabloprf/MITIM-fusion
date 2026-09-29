@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.misc_tools import PLASMAtools
+from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from pyro import factor
@@ -13,10 +13,79 @@ from scipy.optimize import brentq
 from IPython import embed
 
 # --------------------------------------------------------------------------------------------
+# Pruning levels (maestro.prune_level, per-beat override maestro.<beat>.prune_level)
+# --------------------------------------------------------------------------------------------
+# 0 PRUNE_NOTHING : keep everything                                    (legacy keep_all_files: true)
+# 1 PRUNE_SCRATCH : drop execution scratch nothing reads back; every plot tab still works
+#       - transp:  the `results/` tree (a second copy of the multi-GB CDF, already surfaced into
+#         run_transp/), `*PH.CDF`, job logs. The main CDF and AC folders are kept.
+#       - eped:    the per-height TOQ/ELITE work dirs under `case1/run1/` ("enormous"; see
+#         EPEDtools.EPED.run's clean_intermediate_files). `output_run1.nc` is kept. In practice
+#         a no-op: the EPED beat has EPED delete those dirs on the runner whenever the level is
+#         above 0 (eped.keep_eped_intermediate_files is only honored at level 0).
+#       - portals: `Execution/` (per-iteration model trees, incl. CGYRO restart binaries),
+#         `Initialization/`, `flux_match/`. `run_portals/Outputs` is kept.
+#       - lengyel / bc: nothing (KB-scale).
+# 2 PRUNE_RUN     : 1 + wipe run_<name>/ entirely; _persist moves instead of copying
+# 3 PRUNE_OUTPUTS : 2 + prune persisted outputs and initializers       (legacy keep_all_files: false)
+#       - portals: LAST beat's optimization_object.pkl re-saved lean (GP steps dropped);
+#         INTERMEDIATE beats drop the pickles, portals_profiles/ and their beat logs.
+#         Chaining keeps surrogate_data.csv and beat_results/input.gacode.
+#       - initializers: the throwaway geqdsk intermediates and any nested run folder (notably
+#         `initializer_eped/run_eped/`, a full TOQ/ELITE tree no earlier level reaches).
+#         `input.gacode`, `input.geqdsk` and `beat_results/` are never touched -- MAESTRO
+#         re-reads them on every invocation and so does the plotter.
+#
+# Plot tabs that depend on run-folder artifacts degrade gracefully from level 2 on (never fatal --
+# mitim_plot_maestro reports what it skipped and carries on):
+#   - EPED "orig" pre-EPED profile trace is skipped (`run_eped/input.gacode` is gone).
+#   - TRANSP CDF detail tab is skipped: the multi-GB CDF is never copied to beat_results/; only
+#     `transp_results.npy` (sawtooth_times + impurity_order) travels forward -- sufficient for
+#     chain inheritance, not for full CDF plotting.
+# PORTALS plot tabs are unaffected up to level 2 (their inputs live in beat_results/Outputs/).
+#
+# `beat_results/` is NEVER touched by any level here -- it carries the sole idempotence key
+# (beat_results/input.gacode) and the small sidecars the next beat reads. The only pruning that
+# reaches into beat_results is PORTALS' end-of-run pass (portals_beat.optional_postprocessing).
+PRUNE_NOTHING, PRUNE_SCRATCH, PRUNE_RUN, PRUNE_OUTPUTS = 0, 1, 2, 3
+PRUNE_LEVELS = (PRUNE_NOTHING, PRUNE_SCRATCH, PRUNE_RUN, PRUNE_OUTPUTS)
+
+# Initializer artifacts that are written and consumed within the same call and never read back.
+# Everything else in initializer_*/ is load-bearing: input.gacode is re-read by MAESTRO's
+# engineering-parameter freeze on EVERY invocation, input.geqdsk by mitim_plot_maestro, and
+# initializer_eped/beat_results/ by the EPED creator's _inform_save on a restart.
+_INITIALIZER_SCRATCH = ['freegs.geqdsk', 'freegs.geqdsk.helper', 'input.geqdsk.gacode']
+
+
+def _prune_paths(paths):
+    '''
+    Delete the given files/folders, returning the bytes freed. Never raises: a failure to
+    remove one item is reported and the rest still go, since pruning is opportunistic.
+    '''
+
+    freed = 0
+    for path in paths:
+        if not path.exists():
+            continue
+        size = IOtools.path_size_bytes(path)
+        try:
+            IOtools.shutil_rmtree(path) if path.is_dir() else path.unlink()
+            freed += size
+        except Exception as e:
+            print(f'\t\t- Could not prune {IOtools.clipstr(path)}: {type(e).__name__}: {e}', typeMsg='w')
+    return freed
+
+
+# --------------------------------------------------------------------------------------------
 # Generic beat class with required methods
 # --------------------------------------------------------------------------------------------
 
 class beat:
+
+    # Level-1 prune targets inside run_<name>/, as glob patterns relative to it. Only artifacts
+    # that nothing reads back after the beat completes belong here -- a level-1 run must still
+    # replot in full. Overridden per beat; the generic beat drops nothing.
+    scratch_patterns = []
 
     def __init__(self, maestro_instance, beat_name = 'generic', folder_name = None):
 
@@ -37,8 +106,95 @@ class beat:
         self.folder_output.mkdir(parents=True, exist_ok=True)
 
         self.initialize_called = False
-        
+
         self.cold_start = False
+
+        # Per-beat prune level from maestro.<beat>.prune_level (None -> inherit maestro.prune_level)
+        self.prune_level_override = None
+
+    @property
+    def prune_level(self):
+        '''Effective prune level for this beat: the per-beat namelist override, else the global one'''
+        if self.prune_level_override is not None:
+            return self.prune_level_override
+        return self.maestro_instance.prune_level
+
+    def _scratch_to_drop(self):
+        '''
+        Level-1 targets inside run_<name>/, resolved from `scratch_patterns`. Beats override
+        this when the selection needs logic rather than a glob (see eped_beat).
+        '''
+        paths = []
+        for pattern in self.scratch_patterns:
+            paths += sorted(self.folder.glob(pattern))
+        return paths
+
+    def prune_run_folder(self):
+        '''
+        Post-beat pruning of this beat's run_<name>/, dispatched on the effective prune level.
+        Called by MAESTRO after finalize/merge/inform, so everything a downstream beat or a
+        replot needs has already been persisted into beat_results/ (never touched here).
+        '''
+
+        level = self.prune_level
+
+        if level >= PRUNE_RUN:
+            targets = sorted(self.folder.iterdir()) if self.folder.exists() else []
+            what = f'run_{self.name}/ contents'
+        elif level == PRUNE_SCRATCH:
+            targets = self._scratch_to_drop()
+            what = f'run_{self.name}/ execution scratch'
+        else:
+            return
+
+        if not targets:
+            return
+
+        freed = _prune_paths(targets)
+        print(f'\t\t- Pruning (level {level}): freed {IOtools.human_readable_size(freed)} of {what}')
+
+    def prune_initializer(self):
+        '''
+        Level-3 pruning inside this beat's initializer_*/ folders. Drops the throwaway geqdsk
+        intermediates and, when the initializer hosts a nested beat (eped_initializer builds a
+        real eped_beat rooted there), prunes that beat's run folder with the same level.
+
+        NEVER removes the initializer folder itself, nor input.gacode / input.geqdsk /
+        beat_results -- all of those are read back on a re-invocation or by mitim_plot_maestro.
+        '''
+
+        if self.prune_level < PRUNE_OUTPUTS:
+            return
+
+        targets = []
+        for initializer_folder in sorted(self.folder_beat.glob('initializer_*')):
+            targets += [initializer_folder / name for name in _INITIALIZER_SCRATCH]
+            # The nested beat's run folder (e.g. initializer_eped/run_eped/, which holds a full
+            # per-height TOQ/ELITE tree); its beat_results/ sidecar is deliberately left alone
+            for nested_run in sorted(initializer_folder.glob('run_*')):
+                targets += sorted(nested_run.iterdir()) if nested_run.is_dir() else []
+
+        targets = [t for t in targets if t.exists()]
+        if not targets:
+            return
+
+        freed = _prune_paths(targets)
+        print(f'\t\t- Pruning (level {self.prune_level}): freed {IOtools.human_readable_size(freed)} of initializer scratch')
+
+    def incoming_profiles(self):
+        '''
+        The input.gacode this beat received, for the "before" trace in plots. run_<name>/input.gacode
+        is gone from prune level 2 on, so fall back to the initializer copy (the very same state the
+        beat ran on, which pruning never removes). Returns None when neither survives, so callers
+        skip that trace instead of raising -- mitim_plot_maestro must never fail on a pruned run.
+        '''
+
+        for f in [self.folder / 'input.gacode'] + sorted(self.folder_beat.glob('initializer_*/input.gacode')):
+            if f.exists():
+                return PROFILEStools.gacode_state(f)
+
+        print(f'\t\t- Skipping the "before" profiles of beat {self.name}: input.gacode not available (pruned)', typeMsg='w')
+        return None
 
     def define_initializer(self, initializer):
 
@@ -76,12 +232,12 @@ class beat:
 
     def _persist(self, src, dst):
         '''
-        Copy src to dst, or move when `maestro.keep_all_files: false` and the cleanup
-        loop is about to wipe src anyway. shutil.move reduces to os.rename on the same
-        filesystem (folder and folder_output share parent folder_beat), so the move
-        path is essentially free regardless of file size.
+        Copy src to dst, or move when this beat's prune level is about to wipe the run folder
+        anyway (>= PRUNE_RUN). shutil.move reduces to os.rename on the same filesystem (folder
+        and folder_output share parent folder_beat), so the move path is essentially free
+        regardless of file size.
         '''
-        if self.maestro_instance.keep_all_files:
+        if self.prune_level < PRUNE_RUN:
             if src.is_dir():
                 shutil.copytree(src, dst)
             else:
@@ -223,11 +379,15 @@ class beat_initializer:
             Te0_keV = kwargs_geqdsk['profiles_insert']['Te'][0]
             p0_MPa = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (ne0_20 * 1E20) * 1E-6 #MPa
         # If betaN provided, use it to estimate the pressure
-        elif 'BetaN' in kwargs_geqdsk:
+        elif kwargs_geqdsk.get('BetaN') is not None:
             print('\t- Using BetaN for a better estimation of pressure, instead of the p0 guess')
             pvol_MPa = ( Ip_MA / (a * B_T) ) * (B_T ** 2 / (2 * 4 * np.pi * 1e-7)) / 1e6 * kwargs_geqdsk['BetaN'] * 1E-2
             p0_MPa = pvol_MPa * 3.0
-            
+        # Otherwise, fall back to a fixed guess
+        else:
+            print('\t- No profiles or BetaN available, using default p0 guess of 1.0 MPa', typeMsg='w')
+            p0_MPa = 1.0
+
         return p0_MPa
             
 # --------------------------------------------------------------------------------------------
@@ -336,7 +496,15 @@ class initializer_from_geqdsk(beat_initializer):
         super().__call__(**kwargs_profiles)
 
     def _inform_save(self):
-        
+        '''
+        Extract the 99.5% shaping (kappa/delta/zeta[/s_three/s_four]) with the parameterization
+        selected by freeze_995_from and FREEZE it in parameters_trans_beat: every later EPED beat
+        reuses these fixed values even though the real internal surfaces drift as the equilibrium
+        evolves (Shafranov shift, beta, ...) -- that pinning is the purpose of the knob.
+        extract_995_from = None stores nothing, so each EPED beat recomputes from its own current
+        equilibrium instead. WHEN the frozen values are later refreshed is controlled by
+        maestro.refreeze_995_after_beat (MAESTROmain._maybe_refreeze_995).
+        '''
         if self.extract_995_from is None:
             return
 
@@ -462,10 +630,15 @@ class initializer_from_separatrix(beat_initializer):
         )
 
         # [Optional] Use the freegs to correct the profiles (keeping the shaping)
+        if boundary_parameters is not None:
+            # rz_boundary_file path: the namelist scalars may be null, so feed the
+            # freegs helper the scalars of the equilibrium just built from the file
+            kwargs.update(R = float(rmaj[-1]), a = float(rmin[-1]), z0 = float(z0[-1]),
+                          kappa_sep = float(kappa[-1]), delta_sep = float(delta[-1]), zeta_sep = float(zeta[-1]))
         try:
             self._correct_profiles_withfreegs(Paux_MW = Paux_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
-        except:
-            print('\t- Could not run freegs to correct the profiles, proceeding with uncorrected ones', typeMsg = 'w')
+        except Exception as e:
+            print(f'\t- Could not run freegs to correct the profiles ({type(e).__name__}: {e}), proceeding with uncorrected ones', typeMsg = 'w')
         
         # Write it to initialization folder
         self.p.write_state(file=self.folder / 'input.separatrix.gacode')
@@ -529,7 +702,27 @@ class initializer_from_separatrix(beat_initializer):
             self.p.profiles[f'shape_cos{i}(-)'] = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles[f'shape_cos{i}(-)'])
         for i in range(coeffs_MXH-3):
             self.p.profiles[f'shape_sin{i+3}(-)'] = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles[f'shape_sin{i+3}(-)'])
-        
+
+        # The shaping overwrite above replaces the geometry that to_profiles normalized the
+        # auxiliary power against (the solved freegs flux surfaces) with the analytic guess
+        # (r = a*rho, kappa ramping from 1). dV/dr changes by up to ~15% in the core at high
+        # elongation, so the volume integral of the aux channels no longer returns Paux_MW.
+        # Renormalize against the geometry actually written.
+        if aux_channels is None:
+            # mirrors the fallback inside GEQtools.equilibrium_to_profiles
+            aux_channels = {'e': 'qrfe(MW/m^3)', 'i': 'qrfi(MW/m^3)', 'total': 'qRF_MW'}
+        self.p.derive_quantities()
+        P_now = self.p.derived[aux_channels['total']][-1]
+        if P_now > 0.0:
+            factor = Paux_MW / P_now
+            print(f'\t- Renormalizing auxiliary power after the shaping overwrite '
+                  f'({P_now:.4f} -> {Paux_MW:.4f} MW, factor {factor:.4f})', typeMsg='i')
+            # non-in-place on purpose: if the two channels alias the same array
+            # (equilibrium_to_profiles used to), in-place *= would apply factor twice
+            self.p.profiles[aux_channels['e']] = self.p.profiles[aux_channels['e']] * factor
+            self.p.profiles[aux_channels['i']] = self.p.profiles[aux_channels['i']] * factor
+            self.p.derive_quantities()
+
     def _inform_save(self):
         
         if self.extract_995_from is None:
@@ -626,8 +819,19 @@ def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=Non
         zeta = np.linspace(0, zeta_sep if zeta_sep is not None else 0, resol)
         
         coeffs_MXH = 7
-        sn = np.zeros((resol, coeffs_MXH))
-        cn = np.zeros((resol, coeffs_MXH))
+        if separatrix_parameters.get('sn_sep') is not None:
+            # Boundary loaded from file: carry its full MXH moments, ramped from zero
+            # at the axis like delta/zeta above (delta/zeta stay in their own arrays;
+            # equilibrium_to_profiles writes only cn[:] and sn[3:] from these)
+            sn_sep = np.asarray(separatrix_parameters['sn_sep'], dtype=float)
+            cn_sep = np.asarray(separatrix_parameters['cn_sep'], dtype=float)
+            coeffs_MXH = len(sn_sep)
+            ramp = np.linspace(0, 1, resol)
+            sn = np.outer(ramp, sn_sep)
+            cn = np.outer(ramp, cn_sep)
+        else:
+            sn = np.zeros((resol, coeffs_MXH))
+            cn = np.zeros((resol, coeffs_MXH))
         
         torfluxa = torflux_total
         psi = np.linspace(0, polflux_total, resol)
@@ -745,10 +949,18 @@ def load_separatrix_from_file(boundary_parameters):
         'a': surfaces.a[0],
         'z0': surfaces.Z0[0],
         'kappa_sep': surfaces.kappa[0],
-        'delta_sep': surfaces.delta[0],
-        'zeta_sep': surfaces.zeta[0]
+        # delta/zeta in the GACODE-MXH convention (delta = sin(s1), zeta = -s2), NOT the
+        # geometric _to_miller ones: these scalars land in the gacode 'delta(-)'/'zeta(-)'
+        # arrays, whose consumers reconstruct the shape as theta + arcsin(delta)*sin(theta)
+        # - zeta*sin(2theta). The geometric squareness can differ in sign AND magnitude
+        # (ARC V4D pointed double-null: -s2 = -0.246 vs geometric +0.16 -> +24% area error)
+        'delta_sep': float(np.sin(surfaces.sn[0][1])),
+        'zeta_sep': float(-surfaces.sn[0][2]),
+        # Higher MXH moments of the fitted boundary (gacode shape_cos0+/shape_sin3+)
+        'sn_sep': surfaces.sn[0],
+        'cn_sep': surfaces.cn[0],
     }
-    
+
     return separatrix_parameters
 
 # --------------------------------------------------------------------------------------------
@@ -813,20 +1025,8 @@ class initializer_from_fibe(initializer_from_geqdsk):
         **kwargs_geqdsk
         ):
 
-        p0 = p0_MPa * 1.0e6
         Ip = Ip_MA * 1.0e6
-        # If profiles exist, substitute the pressure and density guesses by something better (not perfect though, no ions)
-        if ('ne' in kwargs_geqdsk.get('profiles_insert',{})) and ('Te' in kwargs_geqdsk.get('profiles_insert',{})):
-            print('\t- Using ne profile instead of the ne0 guess')
-            ne0_20 = kwargs_geqdsk['profiles_insert']['ne'][0]
-            print('\t- Using Te profile for a better estimation of pressure, instead of the p0 guess')
-            Te0_keV = kwargs_geqdsk['profiles_insert']['Te'][0]
-            p0 = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (ne0_20 * 1E20)
-        # If betaN provided, use it to estimate the pressure
-        elif 'BetaN' in kwargs_geqdsk:
-            print('\t- Using BetaN for a better estimation of pressure, instead of the p0 guess')
-            pvol_MPa = ( Ip_MA / (a * B_T) ) * (B_T ** 2 / (2 * 4 * np.pi * 1e-7)) / 1e6 * kwargs_geqdsk['BetaN'] * 1E-2
-            p0 = pvol_MPa * 3.0 * 1.0e6
+        p0 = self._produce_p0guess(kwargs_geqdsk, Ip_MA, a, B_T) * 1.0e6
 
         # Run FiBE to generate equilibrium
         from fibe import FixedBoundaryEquilibrium
@@ -994,6 +1194,8 @@ class creator_from_parameterization(creator):
             x_top = np.interp(self.rhotop, self.initialize_instance.profiles_current.profiles['rho(-)'], self.initialize_instance.profiles_current.derived['roa'])
             
             x_a = 0.3
+            
+            aLT_upper_bound = 5.0
 
             if (self.aLn_guess is not None) or (self.nu_ne is None):
                 aLn = self.aLn_guess if self.aLn_guess is not None else 0.2
@@ -1001,7 +1203,7 @@ class creator_from_parameterization(creator):
             else:
                 # Find the density gradient that matches the peaking (bracketed root find; monotonic)
                 print(f'\n\t- Optimizing aLn to match ne peaking = {self.nu_ne}')
-                aLn = _match_gradient_to_target(lambda a: self._return_profile_peaking_mismatch(a, x_a, x_top=x_top), (0.0, 3.0), 'ne peaking')
+                aLn = _match_gradient_to_target(lambda a: self._return_profile_peaking_mismatch(a, x_a, x_top=x_top), (0.0, aLT_upper_bound), 'ne peaking')
                 self._return_profile_peaking_mismatch(aLn, x_a, x_top=x_top)
                 print(f'\n\t- Gradient: aLn = {aLn:.4f}')
                 print(f'\t- ne peaking: {self.initialize_instance.profiles_current.derived["ne_peaking0.2"]:.5f} (target: {self.nu_ne:.5f})')
@@ -1011,12 +1213,27 @@ class creator_from_parameterization(creator):
                 aLT = self.aLT_guess if self.aLT_guess is not None else 2.0
                 print(f'\n\t- Using aLT = {aLT}')
             else:
-                # Find the temperature gradient that matches the BetaN (bracketed root find; monotonic)
-                print(f'\n\t- Optimizing aLTi to match BetaN = {self.BetaN}, with aLTe/aLTi = {self.aLTe_to_aLTi_ratio}')
-                aLT = _match_gradient_to_target(lambda a: self._return_profile_betan_mismatch(a, x_a, aLn, x_top=x_top), (0.5, 3.0), 'BetaN')
-                self._return_profile_betan_mismatch(aLT, x_a, aLn, x_top=x_top)
-                print(f'\n\t- Gradient: aLTi = {aLT:.4f}, aLTe = {aLT*self.aLTe_to_aLTi_ratio:.4f}')
-                print(f'\t- BetaN: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
+                # Find the temperature gradient that matches the BetaN (bracketed root find; monotonic).
+                # Guard: TRANSP's TRDAT rejects Te/Ti data above 100 keV (CKDRNG), so if this seed
+                # would exceed T0_cap_keV on axis (BetaN unreachable at low density -> aLT saturates
+                # high), lower the BetaN target 25% and re-solve until it fits.
+                T0_cap_keV = 95.0
+                for _ in range(10):
+                    print(f'\n\t- Optimizing aLTi to match BetaN = {self.BetaN}, with aLTe/aLTi = {self.aLTe_to_aLTi_ratio}')
+                    aLT = _match_gradient_to_target(lambda a: self._return_profile_betan_mismatch(a, x_a, aLn, x_top=x_top), (0.5, aLT_upper_bound), 'BetaN')
+                    self._return_profile_betan_mismatch(aLT, x_a, aLn, x_top=x_top)
+                    print(f'\n\t- Gradient: aLTi = {aLT:.4f}, aLTe = {aLT*self.aLTe_to_aLTi_ratio:.4f}')
+                    print(f'\t- BetaN: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
+                    T0 = max(float(self.initialize_instance.profiles_current.profiles['te(keV)'][0]),
+                             float(self.initialize_instance.profiles_current.profiles['ti(keV)'][0, 0]))
+                    if T0 <= T0_cap_keV:
+                        break
+                    self.BetaN *= 0.75
+                    print(f'\t- On-axis T = {T0:.1f} keV exceeds the TRANSP-safe {T0_cap_keV:.0f} keV cap, '
+                          f'lowering initialization BetaN to {self.BetaN:.3f} and re-solving', typeMsg='w')
+                else:
+                    raise Exception(f'[MITIM] Initialization on-axis T still above {T0_cap_keV} keV '
+                                    f'after lowering BetaN to {self.BetaN:.3f}')
 
             # Create profiles
 
@@ -1112,7 +1329,13 @@ class creator_from_fixed_bc(creator_from_parameterization):
         initialize_instance,
         label = 'fixed_bc',
         x_bc = None,                # BC location value in the coordinate given by bc_coordinate
-        bc_coordinate = 'rho',      # coordinate for x_bc: 'rho' (rho_tor), 'roa' (r/a), or 'psin'
+        bc_coordinate = 'rho',      # coordinate for x_bc: 'rho' (rho_tor), 'roa' (r/a), or 'psin'.
+                                    # 'rho' recommended: it is the immutable grid coordinate carried
+                                    # unchanged across beats, whereas 'roa'/'psin' depend on the
+                                    # equilibrium, which is not yet solved at separatrix
+                                    # initialization -- the BC can be pinned at the wrong rho_tor and
+                                    # drift once the real equilibrium is solved. The non-rho options
+                                    # are kept available to accommodate future improvements.
         Te_bc = None,               # Te at x_bc (keV)
         Ti_bc = None,               # Ti at x_bc (keV); if None, uses Te_bc
         neped_20 = None,            # ne at x_bc (10^20 m^-3)
@@ -1205,6 +1428,8 @@ class creator_from_fixed_bc(creator_from_parameterization):
         print(f'\t- x_bc = {self.x_bc} ({self.bc_coordinate}) -> rho_tor = {self.rhotop:.4f} -> r/a = {x_top:.4f}')
 
         x_a = 0.3
+        
+        aLT_upper_bound = 5.0
 
         # Optimize aLn to match nu_ne (density peaking)
         if (self.aLn_guess is not None) or (self.nu_ne is None):
@@ -1212,7 +1437,7 @@ class creator_from_fixed_bc(creator_from_parameterization):
             print(f'\n\t- Using fixed aLn = {aLn:.4f} (no nu_ne optimization)')
         else:
             print(f'\n\t- Optimizing aLn to match nu_ne = {self.nu_ne:.4f}')
-            aLn = _match_gradient_to_target(lambda a: self._return_profile_peaking_mismatch(a, x_a, x_top=x_top), (0.0, 3.0), 'ne peaking')
+            aLn = _match_gradient_to_target(lambda a: self._return_profile_peaking_mismatch(a, x_a, x_top=x_top), (0.0, aLT_upper_bound), 'ne peaking')
             self._return_profile_peaking_mismatch(aLn, x_a, x_top=x_top)
             print(f'\t  --> aLn = {aLn:.4f}')
             print(f'\t  --> ne peaking achieved: {self.initialize_instance.profiles_current.derived["ne_peaking0.2"]:.5f} (target: {self.nu_ne:.5f})')
@@ -1223,7 +1448,7 @@ class creator_from_fixed_bc(creator_from_parameterization):
             print(f'\n\t- Using fixed aLT = {aLT:.4f} (no BetaN optimization)')
         else:
             print(f'\n\t- Optimizing aLTi to match BetaN = {self.BetaN:.4f} (aLTe/aLTi = {self.aLTe_to_aLTi_ratio:.4f})')
-            aLT = _match_gradient_to_target(lambda a: self._return_profile_betan_mismatch(a, x_a, aLn, x_top=x_top), (0.5, 3.0), 'BetaN')
+            aLT = _match_gradient_to_target(lambda a: self._return_profile_betan_mismatch(a, x_a, aLn, x_top=x_top), (0.5, aLT_upper_bound), 'BetaN')
             self._return_profile_betan_mismatch(aLT, x_a, aLn, x_top=x_top)
             print(f'\t  --> aLTi = {aLT:.4f}, aLTe = {aLT*self.aLTe_to_aLTi_ratio:.4f}')
             print(f'\t  --> BetaN achieved: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
