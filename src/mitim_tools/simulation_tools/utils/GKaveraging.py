@@ -414,15 +414,20 @@ def _grab_ncorrelation(S, debug=False):
     # Calculate the autocorrelation function
     i_acf = sm.tsa.acf(S, nlags=len(S))
 
-    if i_acf.min() > 1/np.e:
+    # Decorrelation lag: FIRST lag where the ACF drops to 1/e, linearly interpolated between the
+    # bracketing lags (float). Not the lag closest to 1/e over all lags: the ACF oscillates at long
+    # lags and can come back near 1/e far beyond the first crossing.
+    below = np.flatnonzero(i_acf <= 1/np.e)
+    if below.size == 0:
         print("Autocorrelation function does not reach 1/e, will use full length of time series for n_corr.", typeMsg='w')
-
-    # Calculate how many time slices make the autocorrelation function is 1/e (conventional decorrelation level)
-    icor = np.abs(i_acf-1/np.e).argmin()
+        icor = len(S)
+    else:
+        k = below[0]   # >= 1, since i_acf[0] = 1
+        icor = (k - 1) + (i_acf[k-1] - 1/np.e) / (i_acf[k-1] - i_acf[k])
     if icor < 1:
-        # Window too short (or signal too noisy) for the ACF to be resolved: the
-        # closest-to-1/e lag is 0 and n_corr would be infinite (std -> 0). Treat
-        # every sample as correlated to the next one, i.e. one decorrelation lag.
+        # Window too short (or signal too noisy) for the ACF to be resolved: it
+        # drops below 1/e before lag 1 and n_corr would exceed N (std -> 0 as icor -> 0).
+        # Treat every sample as correlated to the next one, i.e. one decorrelation lag.
         print("Autocorrelation lag resolved as 0 (signal window too short); using 1 lag for n_corr — flux uncertainty is unreliable.", typeMsg='w')
         icor = 1
 
