@@ -994,6 +994,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
     # Restart blob the PORTALS warm-start chain (restart_from_cases) stages, retrieved per rho as
     # bin.cgyro.restart_<rho:.4f> (cgyro_restart.RestartChain)
     _warm_start_file = "bin.cgyro.restart"
+    # Set by the PORTALS evaluator when restart_from_cases reads this run's restart files back (_restart_retrieval)
+    keep_warm_start_file = False
 
     # Per-task inspection for `check(custom_checker=...)`. Picked up by
     # transport_cgyro.py via `getattr(gk_object, '_custom_check_callback', None)`
@@ -1289,6 +1291,16 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         body = self.run_specifications["code_call"](folder=rel_extra, p=str(self.simulation_job.folderExecution), n=self._extra_point_n, watchdog="stop")
         return rel_extra, body
 
+    def _restart_retrieval(self, only_minimal_files):
+        '''
+        A minimal retrieval (keep_files "none"/"pickle") skips the restart blob (~0.7 GB per radius on Perlmutter
+        grids) unless a PORTALS warm-start chain reads it back locally (keep_warm_start_file). Rescue, requeue
+        resumes and mitim_kill_cgyro only use the copy in the remote scratch.
+        '''
+        if only_minimal_files and not self.keep_warm_start_file:
+            restart = (self._warm_start_file, f"{self._warm_start_file}.flag")
+            self.output_files_simulation["optional"] = [f for f in self.output_files_simulation["optional"] if f not in restart]
+
     # Redefine to raise warning and allow selection of output files
     def _run_prepare(
         self,
@@ -1325,6 +1337,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             self.output_files_simulation["minimal"] = copy.deepcopy(self.output_files_simulation["minimal_nonlinear"])
         # Optional-retrieval set is the same for linear and nonlinear.
         self.output_files_simulation["optional"] = copy.deepcopy(self.output_files_simulation["optional_base"])
+        self._restart_retrieval(kwargs.get("only_minimal_files", False))
 
         # Pre-process BOX_SIZE / N_RADIAL from local equilibrium if requested.
         # Model yaml (input.cgyro.models.yaml) can supply per-model defaults;

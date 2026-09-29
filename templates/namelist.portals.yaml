@@ -642,6 +642,9 @@ transport:
       #     none: all runs will only keep minimal files
       #     all: retrieve all files from all runs
       #     pickle: retrieve only the gk_object as pickle file (removing all other files to save space)
+      # bin.cgyro.restart_<rho:.4f> (up to ~0.7 GB per radius) comes back under every keep_files when
+      # restart_from_cases is set; without it, only keep_files "all" brings it back (so a run meant to serve
+      # later as a restart_from_folder source needs "all").
       keep_files: "pickle" 
 
     # *********************************************************************************************************

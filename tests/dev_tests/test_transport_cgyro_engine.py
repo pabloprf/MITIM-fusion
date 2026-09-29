@@ -450,6 +450,35 @@ def test_restart_chain_no_op_modes():
     print("PASS test_restart_chain_no_op_modes")
 
 
+def test_cgyro_restart_blob_retrieval():
+    # keep_files "none"/"pickle" (only_minimal_files) skip bin.cgyro.restart unless a restart_from_cases chain reads
+    # it back locally; keep_files "all" always retrieves it. Driven through CGYRO._run_prepare (the SIMtools part
+    # and the input enforcement stubbed out) so the only_minimal_files wiring is covered too.
+    from mitim_tools.gacode_tools import CGYROtools
+    from mitim_tools.simulation_tools import SIMtools
+
+    cg, _ = _quiet(CGYROtools.CGYRO)
+    for name in ("_enforce_toroidals_per_proc", "_enforce_print_step", "_enforce_restart_step"):
+        setattr(cg, name, lambda extraOptions, *a, **k: extraOptions)
+    keep = SIMtools.mitim_simulation._run_prepare
+    SIMtools.mitim_simulation._run_prepare = lambda self, *a, **k: (None, None)
+    try:
+        def optional(only_minimal_files, chain):
+            cg.keep_warm_start_file = chain
+            _quiet(cg._run_prepare, "base_cgyro", extraOptions={}, only_minimal_files=only_minimal_files, code_settings="Nonlinear_reduced1")
+            return cg.output_files_simulation["optional"]
+
+        restart = {"bin.cgyro.restart", "bin.cgyro.restart.flag"}
+        assert not restart & set(optional(True, False))
+        assert "out.cgyro.tag" in optional(True, False)
+        assert restart <= set(optional(True, True))
+        assert restart <= set(optional(False, False))
+        assert not restart & set(optional(True, False)), "the optional list is rebuilt on every call"
+    finally:
+        SIMtools.mitim_simulation._run_prepare = keep
+    print("PASS test_cgyro_restart_blob_retrieval")
+
+
 # ======================================================================================
 # ExtraPointHarvester
 # ======================================================================================
@@ -551,6 +580,7 @@ if __name__ == "__main__":
     test_restart_chain_first()
     test_restart_chain_best()
     test_restart_chain_no_op_modes()
+    test_cgyro_restart_blob_retrieval()
     test_extra_points_marker_only_after_csv()
     test_extra_point_usable_still_importable()
     print("\nALL TESTS PASSED")

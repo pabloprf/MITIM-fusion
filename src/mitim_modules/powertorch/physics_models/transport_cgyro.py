@@ -281,7 +281,7 @@ class gyrokinetic_model:
         # re-attach can put restart_sources.json back on disk.
         gk._restart_sources_payload = ctx.plan.payload
         # Later iterations warm-start from this one's restart files, so they must come back whatever keep_files
-        # says (GX; CGYRO always retrieves bin.cgyro.restart as an optional file)
+        # says (otherwise only keep_files "all" retrieves them)
         gk.keep_warm_start_file = ctx.chain.active
         if getattr(gk, "simulation_job", None) is not None:
             gk.simulation_job.connection_retry_settings = ctx.connection_retry_settings
