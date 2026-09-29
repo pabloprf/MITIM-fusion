@@ -31,11 +31,11 @@ from __future__ import annotations
 
 import importlib
 import math
-import sys
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.path import Path as MplPath
@@ -194,6 +194,33 @@ class Profiles:
     average:   bool = True          # False -> plot all time samples in the window (no averaging)
 
 
+@dataclass
+class Overview:
+    """What one overview() call fetched and drew, in memory: the shots of ONE machine, the
+    resolved layout (EFIT tree / snapshot time filled in), per-shot trace `results`, the
+    EFIT slices `eq_data[(shot, time, tree)]` and profiles `prof_data[(column, shot, window,
+    panel)]`, the analysis window(s) `shade`, colours/labels, and the figure. Unpacks as
+    `fig, axes`; hand several to `overview_together` to overplot them without fetching."""
+    fig:       object
+    axes:      list
+    shots:     list
+    machine:   str            # display name, e.g. 'DIII-D', 'C-Mod'
+    layout:    list
+    columns:   list
+    results:   dict
+    eq_data:   dict
+    prof_data: dict
+    shade:     tuple | list | None = None
+    t_window:  tuple | None = None
+    colors:    list | None = None
+    labels:    list | None = None
+    vlines:    list | None = None
+    name:      str = ""
+
+    def __iter__(self):                # fig, axes = overview(...)
+        return iter((self.fig, self.axes))
+
+
 # =============================================================================
 # Fetch + plot driver
 # =============================================================================
@@ -229,10 +256,11 @@ def _parse_windows(shade):
 
 
 def _backend(machine="diiid", connection=None):
-    """(Connection, Fetcher) classes of `machine` ('diiid'|'cmod'); a passed connection's
-    own module wins, so e.g. a CMODConnection draws C-Mod data without `machine=`."""
-    mod = (sys.modules[type(connection).__module__] if connection is not None
-           else importlib.import_module(f"mitim_tools.experiment_tools.{machine}.retrieval"))
+    """(Connection, Fetcher) classes of `machine` ('diiid'|'cmod'); a passed MDSConnection's
+    own MACHINE wins, so e.g. a CMODConnection draws C-Mod data without `machine=` (a
+    duck-typed connection, e.g. a cache-only stub, keeps `machine`)."""
+    machine = getattr(connection, "MACHINE", None) or machine
+    mod = importlib.import_module(f"mitim_tools.experiment_tools.{machine}.retrieval")
     return mod.Connection, mod.Fetcher
 
 
@@ -274,8 +302,10 @@ def overview(shots, layout, name: str = "overview",
     carries its own machine and wins. All times are in ms for every machine;
     `t_window="default"` is the machine's T_WINDOW, None auto-detects it from Ip.
 
-    Returns `(fig, axes)` — the Figure and the list of all its subplot axes (in
-    creation order) — and does NOT close the figure, so you can keep plotting.
+    Returns an `Overview` holding the figure, its axes and everything that was fetched
+    (reusable by `overview_together`, which overplots several without fetching). It
+    unpacks as `fig, axes = overview(...)` — the Figure and the list of all its subplot
+    axes (in creation order) — and does NOT close the figure, so you can keep plotting.
     With `show=False` the figure is neither displayed NOR auto-saved (even if
     `save_dir` is set), so you can add to it and `fig.savefig(...)` yourself.
     """
@@ -365,21 +395,127 @@ def overview(shots, layout, name: str = "overview",
         if own_conn:
             conn.close()
 
-    if _is_columnar(layout):
-        columns = [col if isinstance(col, (Equilibrium, Profiles)) else list(col) for col in layout]
-    else:                               # flat: drop empty panels, fill 3-col grid
-        def has_data(p):
-            return any(_trace_xy(results[sh], tr) is not None
-                       for sh in shots for tr in p.traces)
-        kept = [p for p in layout if has_data(p)]
-        ncol = _NCOL
-        columns = [[kept[i] for i in range(c, len(kept), ncol)] for c in range(ncol)]
-
+    columns = _layout_columns(layout, results, shots)
     fig = _render(results, columns, shots, name=name, t_window=t_window, colors=colors,
                   labels=labels, shade=shade, vlines=vlines, eq_data=eq_data,
                   prof_data=prof_data, fig=fig, label_scale=label_scale, line_scale=line_scale,
                   marker_scale=marker_scale, save_dir=save_dir, show=show)
-    return fig, list(fig.axes)         # the figure + all its axes, so the caller can keep plotting
+    return Overview(fig=fig, axes=list(fig.axes), shots=list(shots), machine=Fetcher.NAME,
+                    layout=layout, columns=columns, results=results, eq_data=eq_data,
+                    prof_data=prof_data, shade=shade, t_window=t_window, colors=colors,
+                    labels=labels, vlines=vlines, name=name)
+
+
+def overview_together(overviews, layout=None, name: str = "", t_window: tuple | None | str = "union",
+                      colors: list | None = None, labels: list | None = None, fig=None,
+                      label_scale: float = 1.0, line_scale: float = 1.0, marker_scale: float = 1.0,
+                      save_dir: str | Path | None = None, show: bool = True):
+    """Overplot several `Overview`s (e.g. one C-Mod and one DIII-D overview()) in ONE figure,
+    from their in-memory data only: no connection, no tunnel, no cache read.
+
+    `layout` defaults to the first overview's; the layouts must share the same column
+    structure (Equilibrium / Profiles columns and profile panels are matched by position).
+    Every shot keeps its own machine, EFIT tree, analysis window (shaded in its colour on the
+    traces; its equilibrium and profiles are those of that window) and colour/label; the
+    Equilibrium column overlays all boundaries and every machine's wall in one R,Z frame.
+    `colors`/`labels` (parallel to all shots, in order) override the overviews' own; shots
+    that would share a colour get distinct ones. `t_window="union"` spans all overviews'
+    display windows, and each shot's trace is drawn only inside its own overview's window. Legend entries read '<machine> #<shot> (<label>)  [<window>]'.
+    """
+    ovs = list(overviews)
+    shots = [sh for ov in ovs for sh in ov.shots]
+    if len(set(shots)) != len(shots):
+        raise ValueError(f"overview_together: a shot appears in several overviews ({shots})")
+    owner = {sh: ov for ov in ovs for sh in ov.shots}
+    layout = layout if layout is not None else ovs[0].layout
+    columns = _layout_columns(layout, {sh: owner[sh].results[sh] for sh in shots}, shots)
+
+    # together column index -> (kind, ordinal) -> each overview's column index of that kind
+    def kinds(cols):
+        cnt, out = {}, []
+        for col in cols:
+            k = type(col).__name__ if isinstance(col, (Equilibrium, Profiles)) else None
+            out.append((k, cnt.get(k, 0))); cnt[k] = cnt.get(k, 0) + 1
+        return out
+    kpos = kinds(columns)
+    ov_cols = {id(ov): {kp: ci for ci, kp in enumerate(kinds(ov.columns))} for ov in ovs}
+    col_index = {id(col): ci for ci, col in enumerate(columns)}
+
+    def own_col(col, sh):                      # (index, resolved column) in the shot's overview
+        ov = owner[sh]
+        oci = ov_cols[id(ov)][kpos[col_index[id(col)]]]
+        return oci, ov.columns[oci]
+
+    def eq_get(col, sh, wi):                   # the shot's own window centre, tree and time
+        _, oc = own_col(col, sh)
+        cs = [0.5 * (a + b) for a, b in _parse_windows(owner[sh].shade)]
+        return owner[sh].eq_data.get((sh, cs[wi] if cs else oc.time, oc.tree))
+
+    prof_data = {}
+    for ci, col in enumerate(columns):
+        if isinstance(col, Profiles):
+            for sh in shots:
+                oci, _ = own_col(col, sh)
+                for (c, s, wi, pi), v in owner[sh].prof_data.items():
+                    if c == oci and s == sh:
+                        prof_data[(ci, sh, wi, pi)] = v
+
+    # one Equilibrium title naming every EFIT tree used
+    for ci, col in enumerate(columns):
+        if isinstance(col, Equilibrium) and not col.label:
+            trees = dict.fromkeys(own_col(col, sh)[1].tree for sh in shots)
+            columns[ci] = replace(col, label="EFIT " + " / ".join(trees))
+            col_index[id(columns[ci])] = ci
+
+    # colours / labels / windows per shot
+    base = [plt.cm.tab10(i) for i in range(10)]
+    if colors is None:
+        colors, used = [], []
+        for ov in ovs:
+            for i, sh in enumerate(ov.shots):
+                c = ov.colors[i] if ov.colors and i < len(ov.colors) else base[i % 10]
+                if any(np.allclose(matplotlib.colors.to_rgba(c), matplotlib.colors.to_rgba(u)) for u in used):
+                    c = next(b for b in base if not any(np.allclose(matplotlib.colors.to_rgba(b),
+                                                                     matplotlib.colors.to_rgba(u)) for u in used))
+                colors.append(c); used.append(c)
+    if labels is None:
+        labels = [ov.labels[i] if ov.labels and i < len(ov.labels) else None
+                  for ov in ovs for i in range(len(ov.shots))]
+    shot_windows = {sh: _parse_windows(owner[sh].shade) for sh in shots}
+    shot_names = []
+    for si, sh in enumerate(shots):
+        nm = f"{owner[sh].machine} #{sh}" + (f" ({labels[si]})" if labels[si] else "")
+        w = shot_windows[sh]
+        shot_names.append(nm + (f"  [{w[0][0]:.0f}-{w[0][1]:.0f} ms]" if len(w) == 1 else ""))
+    if isinstance(t_window, str):
+        tws = [ov.t_window for ov in ovs if ov.t_window is not None]
+        t_window = (min(t[0] for t in tws), max(t[1] for t in tws)) if tws else None
+    vlines = [v for ov in ovs for v in (ov.vlines or [None] * len(ov.shots))]
+
+    fig = _render({sh: owner[sh].results[sh] for sh in shots}, columns, shots, name=name,
+                  t_window=t_window, colors=colors, labels=labels, shade=None, vlines=vlines,
+                  eq_data={}, prof_data=prof_data, fig=fig, label_scale=label_scale,
+                  line_scale=line_scale, marker_scale=marker_scale, save_dir=save_dir, show=show,
+                  shot_windows=shot_windows, eq_get=eq_get, shot_names=shot_names,
+                  shot_twindow={sh: owner[sh].t_window for sh in shots})
+    return Overview(fig=fig, axes=list(fig.axes), shots=shots,
+                    machine=" + ".join(dict.fromkeys(ov.machine for ov in ovs)), layout=layout,
+                    columns=columns, results={sh: owner[sh].results[sh] for sh in shots},
+                    eq_data={k: v for ov in ovs for k, v in ov.eq_data.items()}, prof_data=prof_data,
+                    shade={sh: owner[sh].shade for sh in shots}, t_window=t_window, colors=colors,
+                    labels=labels, vlines=vlines, name=name)
+
+
+def _layout_columns(layout, results, shots):
+    """The drawn columns: a columnar layout as given; a flat list of Panels dropped of the
+    panels with no data and dealt into the 3-column grid."""
+    if _is_columnar(layout):
+        return [col if isinstance(col, (Equilibrium, Profiles)) else list(col) for col in layout]
+    def has_data(p):
+        return any(_trace_xy(results[sh], tr) is not None
+                   for sh in shots for tr in p.traces)
+    kept = [p for p in layout if has_data(p)]
+    return [[kept[i] for i in range(c, len(kept), _NCOL)] for c in range(_NCOL)]
 
 
 def profiles(shots, time: float = 4000.0, source: str = "cer",
@@ -920,9 +1056,10 @@ def _discharge_window(ip_sigs):
 
 
 def _draw_panel(ax, results, panel: Panel, shots, t0, t1, multishot,
-                shot_colors, shot_names, fs=1.0, lw=1.0, msc=1.0):
+                shot_colors, shot_names, fs=1.0, lw=1.0, msc=1.0, shot_twindow=None):
     """Draw one panel; returns True if anything was plotted. `fs`/`lw`/`msc` scale the
-    label font sizes, the line widths and the marker sizes."""
+    label font sizes, the line widths and the marker sizes. `shot_twindow` ({shot: (t0, t1)})
+    further limits each shot to its own display window (overview_together)."""
     multitrace = len(panel.traces) > 1
     drew = False
     for si, shot in enumerate(shots):
@@ -932,6 +1069,8 @@ def _draw_panel(ax, results, panel: Panel, shots, t0, t1, multishot,
                 continue
             t, y = xy
             m = (t >= t0) & (t <= t1)
+            if shot_twindow and shot_twindow.get(shot) is not None:
+                m &= (t >= shot_twindow[shot][0]) & (t <= shot_twindow[shot][1])
             t, y = t[m], y[m]
             if t.size == 0:
                 continue
@@ -1003,14 +1142,15 @@ def _separatrix_legs(ax, ed, color, lw=1.0):
     ax.plot(rxpt, zxpt, "x", color=color, ms=5, mew=1.3 * lw)
 
 
-def _draw_equilibrium(ax, series, eq, title_time=None, fs=1.0, lw=1.0):
+def _draw_equilibrium(ax, series, eq, title_time=None, fs=1.0, lw=1.0, all_walls=False):
     """R,Z flux-surface panel from a GEQDSK: dashed interior flux surfaces (psi_N
     from axis to boundary), the bold LCFS, and the diverted separatrix legs to the
     strike points. `series` is a list of (color, linestyle, label, EquilibriumData),
     one per (shot, window). The interior flux surfaces + SOL are drawn for EVERY
     series (grey when there is a single case, else in each series' colour) so all
-    selected times/shots are visible; the vessel is shared. `fs`/`lw` scale fonts
-    and line widths."""
+    selected times/shots are visible; the vessel is shared (`all_walls=True`: every
+    distinct vessel is drawn and each case is clipped to its own, e.g. several machines).
+    `fs`/`lw` scale fonts and line widths."""
     ax.set_title(f"{eq.label or f'EFIT {eq.tree}'}"
                  + (f"  t={title_time:.0f} ms" if title_time is not None else ""), fontsize=8 * fs)
     if not series:
@@ -1019,13 +1159,19 @@ def _draw_equilibrium(ax, series, eq, title_time=None, fs=1.0, lw=1.0):
         return
 
     ref = series[0][3]
-    # clip flux surfaces to the vessel so the SOL contours don't sprawl outside it
-    clip = PathPatch(MplPath(np.column_stack([ref.wall_r, ref.wall_z])),
-                     transform=ax.transData, fc="none", ec="none")
-    ax.add_patch(clip)
-    ax.plot(ref.wall_r, ref.wall_z, "-", color="0.15", lw=0.9 * lw)     # vessel (shared)
+    wall_key = lambda ed: (ed.wall_r.tobytes(), ed.wall_z.tobytes())
+    walls = (list({wall_key(s[3]): s[3] for s in series}.values()) if all_walls else [ref])
+    clips = {}
+    for w in walls:
+        # clip flux surfaces to the vessel so the SOL contours don't sprawl outside it
+        clip = PathPatch(MplPath(np.column_stack([w.wall_r, w.wall_z])),
+                         transform=ax.transData, fc="none", ec="none")
+        ax.add_patch(clip)
+        ax.plot(w.wall_r, w.wall_z, "-", color="0.15", lw=0.9 * lw)     # vessel
+        clips[wall_key(w)] = clip
     multi = len(series) > 1
     for color, ls, _label, ed in series:                          # interior + SOL + LCFS PER case
+        clip = clips[wall_key(ed if all_walls else ref)]
         surf = color if multi else "0.55"
         interp = RegularGridInterpolator((ed.zgrid, ed.rgrid), ed.psiN,
                                          bounds_error=False, fill_value=np.nan)
@@ -1051,8 +1197,8 @@ def _draw_equilibrium(ax, series, eq, title_time=None, fs=1.0, lw=1.0):
         _separatrix_legs(ax, ed, color, lw=lw)
         ax.plot(ed.raxis, ed.zaxis, "+", color=color, ms=7 * fs)
 
-    ax.set_xlim(ref.wall_r.min() - 0.04, ref.wall_r.max() + 0.04)
-    ax.set_ylim(ref.wall_z.min() - 0.04, ref.wall_z.max() + 0.04)
+    ax.set_xlim(min(w.wall_r.min() for w in walls) - 0.04, max(w.wall_r.max() for w in walls) + 0.04)
+    ax.set_ylim(min(w.wall_z.min() for w in walls) - 0.04, max(w.wall_z.max() for w in walls) + 0.04)
     ax.set_aspect("equal")
     ax.set_xlabel("R [m]", fontsize=7 * fs)
     ax.set_ylabel("Z [m]", fontsize=8 * fs)
@@ -1060,24 +1206,26 @@ def _draw_equilibrium(ax, series, eq, title_time=None, fs=1.0, lw=1.0):
 
 
 def _draw_profile_panel(ax, prof_data, eq_data, shots, pc, c, pi, pp, windows, centers,
-                        series_style, last, fs=1.0, lw=1.0, msc=1.0):
+                        series_style, last, fs=1.0, lw=1.0, msc=1.0, shot_windows=None, eq_get=None):
     """One radial-profile sub-panel (value vs ρ) in a Profiles column: one curve per
     (shot, window), each time-averaged over its window and mapped through that
     window's equilibrium. `series_style(si, wi)` gives the (color, linestyle).
-    `fs`/`lw`/`msc` scale the label font sizes, the line widths and the marker sizes."""
+    `fs`/`lw`/`msc` scale the label font sizes, the line widths and the marker sizes.
+    `shot_windows` ({shot: windows}) and `eq_get(col, shot, wi)` override the shared
+    windows and the eq_data lookup when each shot carries its own (overview_together)."""
     coord = pc.coord
     rho_kind = {"rho": "tor", "rhotor": "tor", "rhopol": "pol"}.get(coord)
-    wis = range(len(windows)) if windows else [0]
     drew = False
     flavor_ls = {}                                # CER flavor label -> linestyle (for the legend)
     for si, sh in enumerate(shots):
-        for wi in wis:
+        wins = shot_windows[sh] if shot_windows else windows
+        for wi in (range(len(wins)) if wins else [0]):
             variants = (prof_data or {}).get((c, sh, wi, pi)) or []      # (label, profile) per flavor
             for vidx, (vlabel, prof) in enumerate(variants):
                 if prof is None or not prof.r.size:
                     continue
-                t = centers[wi] if centers else pc.time
-                ed = eq_data.get((sh, t, pc.tree))
+                ed = (eq_get(pc, sh, wi) if eq_get else
+                      eq_data.get((sh, centers[wi] if centers else pc.time, pc.tree)))
                 if rho_kind and ed is None:
                     x = np.full(prof.r.size, np.nan)
                 elif rho_kind:                   # flux-grid profiles (HIREXSR) carry psin; else map (R, Z)
@@ -1121,7 +1269,8 @@ def _draw_profile_panel(ax, prof_data, eq_data, shots, pc, c, pi, pp, windows, c
     if pi == 0:                                   # top of the column: how the points were reduced
         n_w = len(windows)
         how = "avg" if pc.average else "all pts"  # time-averaged vs every sample in the window
-        ttl = (f"profiles  ({how} {windows[0][0]:.0f}-{windows[0][1]:.0f} ms)" if n_w == 1
+        ttl = (f"profiles  ({how} each shot's window, see legend)" if shot_windows
+               else f"profiles  ({how} {windows[0][0]:.0f}-{windows[0][1]:.0f} ms)" if n_w == 1
                else f"profiles  ({how} per window)" if n_w > 1
                else f"profiles  t={centers[0] if centers else pc.time:.0f} ms")
         ax.set_title(ttl, fontsize=8 * fs)
@@ -1138,16 +1287,22 @@ def _render(results, columns, shots, name="overview",
             vlines: list | None = None, eq_data: dict | None = None,
             prof_data: dict | None = None, fig=None, label_scale: float = 1.0,
             line_scale: float = 1.0, marker_scale: float = 1.0,
-            save_dir: str | Path | None = None, show: bool = True):
+            save_dir: str | Path | None = None, show: bool = True,
+            shot_windows: dict | None = None, eq_get=None, shot_names: list | None = None,
+            shot_twindow: dict | None = None):
     """Place `columns` (Panels, an Equilibrium, or a Profiles column) on a grid.
     `fig` (a Figure, e.g. a FigureNotebook tab) is drawn into if given; else a
     new figure is created and saved/shown per `save_dir`/`show`. `label_scale`/
-    `line_scale`/`marker_scale` multiply every label font size / line width / marker."""
+    `line_scale`/`marker_scale` multiply every label font size / line width / marker.
+    overview_together passes `shot_windows` ({shot: windows}, each shaded in its shot's
+    colour), `eq_get(col, shot, wi)` (per-shot EFIT tree/time) and `shot_names`; each
+    machine's wall is then drawn in the Equilibrium column."""
     fs, lw, msc = label_scale, line_scale, marker_scale
     eq_data, prof_data = eq_data or {}, prof_data or {}
     windows = _parse_windows(shade)               # analysis windows (one snapshot each)
     centers = [0.5 * (a + b) for a, b in windows]
-    n_w = len(windows)
+    n_w = len(windows) if not shot_windows else max(len(w) for w in shot_windows.values())
+    wins_of = lambda sh: shot_windows[sh] if shot_windows else windows
     multishot = len(shots) > 1
     ncol = len(columns)
     nrow = max((len(col.panels) if isinstance(col, Profiles) else len(col)
@@ -1156,10 +1311,10 @@ def _render(results, columns, shots, name="overview",
         _discharge_window([results[sh].get("ip") for sh in shots])
     shot_colors = list(colors) if colors else [plt.cm.tab10(i) for i in range(10)]
     win_palette = list(colors) if colors else [plt.cm.tab10(i) for i in range(10)]
-    shot_names = [f"{sh} ({labels[si]})" if labels and si < len(labels) and labels[si]
-                  else str(sh) for si, sh in enumerate(shots)]
+    shot_names = shot_names or [f"{sh} ({labels[si]})" if labels and si < len(labels) and labels[si]
+                                else str(sh) for si, sh in enumerate(shots)]
     by_window = (n_w > 1 and not multishot)       # one shot, many windows -> colour by window
-    win_lab = lambda wi: f"{windows[wi][0]:.0f}-{windows[wi][1]:.0f} ms"
+    win_lab = lambda wi, sh=shots[0]: f"{wins_of(sh)[wi][0]:.0f}-{wins_of(sh)[wi][1]:.0f} ms"
 
     def series_style(si, wi):                     # (color, linestyle) for one (shot, window) curve
         if by_window:
@@ -1170,7 +1325,7 @@ def _render(results, columns, shots, name="overview",
     def series_label(si, wi):
         if by_window:
             return win_lab(wi)
-        return shot_names[si] if n_w <= 1 else f"{shot_names[si]} @ {win_lab(wi)}"
+        return shot_names[si] if n_w <= 1 else f"{shot_names[si]} @ {win_lab(wi, shots[si])}"
 
     shade_color = lambda wi: win_palette[wi % len(win_palette)] if by_window else "gold"
 
@@ -1185,16 +1340,17 @@ def _render(results, columns, shots, name="overview",
     xref = None
     for c, col in enumerate(columns):
         if isinstance(col, Equilibrium):          # one boundary per (shot, window)
-            ts = centers if centers else [col.time]
             series = []
             for si, sh in enumerate(shots):
+                ts = [0.5 * (a + b) for a, b in wins_of(sh)] or [col.time]
                 for wi, t in enumerate(ts):
-                    ed = eq_data.get((sh, t, col.tree))
+                    ed = eq_get(col, sh, wi) if eq_get else eq_data.get((sh, t, col.tree))
                     if ed is not None:
                         color, ls = series_style(si, wi)
                         series.append((color, ls, series_label(si, wi), ed))
             _draw_equilibrium(fig.add_subplot(gs[:, c]), series, col,
-                              title_time=(ts[0] if len(ts) == 1 else None), fs=fs, lw=lw)
+                              title_time=(ts[0] if len(ts) == 1 and not shot_windows else None),
+                              fs=fs, lw=lw, all_walls=bool(shot_windows))
             continue
         if isinstance(col, Profiles):
             sub = gs[:, c].subgridspec(len(col.panels), 1, hspace=0.12)
@@ -1203,15 +1359,19 @@ def _render(results, columns, shots, name="overview",
                 pax = fig.add_subplot(sub[pi, 0], sharex=paxref); paxref = paxref or pax
                 _draw_profile_panel(pax, prof_data, eq_data, shots, col, c, pi, pp,
                                     windows, centers, series_style,
-                                    last=(pi == len(col.panels) - 1), fs=fs, lw=lw, msc=msc)
+                                    last=(pi == len(col.panels) - 1), fs=fs, lw=lw, msc=msc,
+                                    shot_windows=shot_windows, eq_get=eq_get)
             continue
         for r in range(len(col)):
             ax = fig.add_subplot(gs[r, c], sharex=xref)
             xref = xref or ax
             _draw_panel(ax, results, col[r], shots, t0, t1, multishot,
-                        shot_colors, shot_names, fs=fs, lw=lw, msc=msc)
+                        shot_colors, shot_names, fs=fs, lw=lw, msc=msc, shot_twindow=shot_twindow)
             for wi, (s0, s1) in enumerate(windows):
                 ax.axvspan(s0, s1, color=shade_color(wi), alpha=0.16, lw=0, zorder=0)
+            for si, sh in enumerate(shots if shot_windows else []):   # each shot's own window(s)
+                for s0, s1 in shot_windows[sh]:
+                    ax.axvspan(s0, s1, color=shot_colors[si % len(shot_colors)], alpha=0.12, lw=0, zorder=0)
             for si, vt in enumerate(vlines or []):       # per-shot event markers
                 if vt is not None:
                     ax.axvline(vt, color=shot_colors[si % len(shot_colors)],

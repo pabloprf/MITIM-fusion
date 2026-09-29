@@ -108,6 +108,7 @@ class DIIIDFetcher(MDSFetcher):
 
     CONNECTION = DIIIDConnection
     DEFAULT_CACHE = __mitimroot__ / "tests" / "scratch" / "diiid_fetcher"
+    NAME = "DIII-D"
     T_WINDOW = (1300.0, 5000.0)       # [ms]
     T_REF = 4000.0                    # [ms]
     EFIT = dict(tree="EFIT01", g=r"\{tree}::TOP.RESULTS.GEQDSK", a=r"\{tree}::TOP.RESULTS.AEQDSK",

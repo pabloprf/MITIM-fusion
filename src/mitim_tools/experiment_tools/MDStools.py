@@ -412,6 +412,7 @@ class MDSFetcher:
 
     CONNECTION = MDSConnection
     DEFAULT_CACHE = __mitimroot__ / "tests" / "scratch" / "mds_fetcher"
+    NAME = ""                 # display name of the machine (legends)
     TIME_TO_MS = 1.0          # stored time unit -> ms (C-Mod stores seconds: 1e3)
     T_WINDOW = None           # default display window [ms] for overview()
     T_REF = None              # default snapshot time [ms] when no analysis window is given

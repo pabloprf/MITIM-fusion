@@ -74,6 +74,7 @@ class CMODFetcher(MDSFetcher):
 
     CONNECTION = CMODConnection
     DEFAULT_CACHE = __mitimroot__ / "tests" / "scratch" / "cmod_fetcher"
+    NAME = "C-Mod"
     TIME_TO_MS = 1e3                  # tree time base is seconds
     T_WINDOW = (0.0, 2000.0)          # [ms]
     T_REF = 1000.0                    # [ms]
