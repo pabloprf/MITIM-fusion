@@ -8,6 +8,7 @@ import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.plasmastate_tools.utils import state_plotting
+from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch.utils import TRANSFORMtools, POWERplot
 from mitim_tools.opt_tools.optimizers import multivariate_tools
 from mitim_modules.powertorch.utils import TARGETStools, CALCtools, TRANSPORTtools
@@ -151,12 +152,28 @@ class powerstate:
         # -------------------------------------------------------------------------------------
 
         if isinstance(profiles_object, MITIMstate.mitim_state):
-            self.to_powerstate = TRANSFORMtools.gacode_to_powerstate
+            # If this state was built from a fusio plasma_io object (via scratch()), source
+            # powerstate's construction from plasma_io's own SI-native fields instead of the
+            # GACODE-unit profiles/derived dict -- see plasma_io_to_powerstate()'s docstring for
+            # the current scope/caveats of this path.
+            if getattr(profiles_object, "has_output", False):
+                self.to_powerstate = TRANSFORMtools.plasma_io_to_powerstate
+                self.to_plasma_io = MethodType(TRANSFORMtools.to_plasma_io, self)
+                self.sync_plasma_io = MethodType(TRANSFORMtools.sync_plasma_io, self)
+            else:
+                self.to_powerstate = TRANSFORMtools.gacode_to_powerstate
+                self.to_plasma_io = None
+                self.sync_plasma_io = None
             self.from_powerstate = MethodType(TRANSFORMtools.to_gacode, self)
 
             # Use a copy because I'm deriving, it may be expensive and I don't want to carry that out outside of this class
             self.profiles = copy.deepcopy(profiles_object)
-            if "derived" not in self.profiles.__dict__:
+            # For plasma_io-backed states, .profiles/.derived are no longer stored attributes
+            # (see get_profiles()/get_derived() on mitim_state) -- derived quantities are
+            # sourced lazily on first get_derived() call instead, so this eager call is both
+            # unnecessary and would fail (gacode_state.derive_quantities() touches the dict
+            # attribute directly).
+            if not getattr(self.profiles, "has_output", False) and "derived" not in self.profiles.__dict__:
                 self.profiles.derive_quantities()
 
         else:
@@ -176,7 +193,11 @@ class powerstate:
         # -------------------------------------------------------------------------------------
 
         # Resolution of input.gacode
-        if increase_profile_resol:
+        # (skipped for plasma_io-backed states: plasma_io_to_powerstate() deliberately reads
+        # from plasma_io's own native grid and never consumes this resampled dict -- see its
+        # docstring / plasma_io_migration_plan.md's "Performance" note. Also, .profiles is no
+        # longer a stored attribute for such states -- see get_profiles()/get_derived().)
+        if increase_profile_resol and not getattr(self.profiles, "has_output", False):
             smooth_around_coarsing = self.transport_options.get("flatten_gradients_at_control_points", True)
             TRANSFORMtools.improve_resolution_profiles(self.profiles, rho_vec, smooth_around_coarsing=smooth_around_coarsing)
 
