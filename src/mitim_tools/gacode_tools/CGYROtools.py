@@ -1391,9 +1391,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         machines; resources_per_call / omp_threads_cpu on CPU-only machines).
         Each rank holds N_TOROIDAL/resources toroidal modes, so TOROIDALS_PER_PROC
         must be a multiple of that ratio. If the user's value is incompatible (or
-        missing), coerce it to the preferred valid value and warn. On CPU-only machines
-        a rank count that no TOROIDALS_PER_PROC can fit to the velocity/configuration grid
-        raises instead (on GPU the smallest valid value is kept, as before).
+        missing), coerce it to the preferred valid value and warn. A rank count that no
+        TOROIDALS_PER_PROC can fit to the velocity/configuration grid raises instead (CPU and GPU).
         """
         from mitim_tools.misc_tools import SLURMtools
 
@@ -1481,13 +1480,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                        if (nt // tpp) <= ranks_per_node and _grid_allows(nt, tpp, n_radial)]
             if on_node:
                 return min(on_node)
-            if on_cpu:
-                return _cpu_fallback(nt, n_radial, valid)
-            return min(valid)
+            return _off_node_fallback(nt, n_radial, valid)
 
-        def _cpu_fallback(nt, n_radial, valid):
-            # No on-node candidate. On CPU a candidate that passes the grid rule off-node is still
-            # fine; one that fails it makes CGYRO abort at startup, so refuse instead of guessing
+        def _off_node_fallback(nt, n_radial, valid):
+            # No on-node candidate. A candidate that passes the grid rule off-node is still fine;
+            # one that fails it makes CGYRO abort at startup, so refuse instead of guessing
             grid_ok = [tpp for tpp in valid if _grid_allows(nt, tpp, n_radial)]
             if grid_ok:
                 return min(grid_ok)
@@ -1506,7 +1503,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 f"n_proc_1 = n_proc / (N_TOROIDAL/TOROIDALS_PER_PROC) fails to divide nv = N_ENERGY*N_XI = {n_energy}*{n_xi} = {nv} "
                 f"(N_SPECIES not counted) or nc = N_RADIAL*N_THETA = {n_radial}*{n_theta} = {nc}, and CGYRO aborts at startup. "
                 f"Rank counts that fit this grid up to {2 * n_ranks}: {fits} "
-                f"(resources_per_call = ranks x omp_threads_cpu). Set TOROIDALS_PER_PROC in extraOptions to bypass this check."
+                f"({'resources_per_call = ranks x omp_threads_cpu' if on_cpu else 'resources_per_call = GPUs = ranks'}). "
+                f"Set TOROIDALS_PER_PROC in extraOptions to bypass this check."
             )
 
         def _as_int(v):

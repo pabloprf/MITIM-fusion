@@ -11,7 +11,7 @@ Checked here, with raw machine dicts (no config file, no ssh):
     - the GPU layouts/sbatch (engaging 128 cores + 4 GPUs, Perlmutter 4 GPUs/node) equal the
       dicts origin/development (637fd85f) produced, hard-coded below;
     - the cgyro command line CgyroLaunchBody writes on CPU, and that code_call carries the OMP knob;
-    - TOROIDALS_PER_PROC on CPU (rank count = cores / threads) and its error when no value fits the grid.
+    - TOROIDALS_PER_PROC on CPU (rank count = cores / threads) and GPU, and the error when no value fits the grid.
 
 Run as:
 
@@ -205,12 +205,27 @@ def test_cpu_toroidals_per_proc():
         assert quiet(cg._enforce_toroidals_per_proc, {**GRID, "TOROIDALS_PER_PROC": 4}, {"resources_per_call": 96})["TOROIDALS_PER_PROC"] == 4
         partial = {k: v for k, v in GRID.items() if k != "N_ENERGY"}
         assert quiet(cg._enforce_toroidals_per_proc, partial, {"resources_per_call": 96})["TOROIDALS_PER_PROC"] == 1
-    with machine({**PERLMUTTER_GPU, "cores_per_node": 64}):
-        # GPU keeps its silent fallback (unchanged): 48 GPUs -> TOROIDALS_PER_PROC 1, as on origin/development
+    print("PASS: CPU TOROIDALS_PER_PROC (ranks = cores/threads) and its grid error")
+
+
+def test_gpu_toroidals_per_proc():
+    # Every GPU choice that passes the grid rule equals origin/development (637fd85f)
+    for block, expected in ((ENGAGING_GPU, {1: 16, 2: 8, 4: 4, 8: 4}), (PERLMUTTER_GPU, {4: 4, 8: 4})):
+        with machine(block):
+            cg = quiet(CGYROtools.CGYRO)
+            for rpc, tpp in expected.items():
+                assert quiet(cg._enforce_toroidals_per_proc, dict(GRID), {"resources_per_call": rpc})["TOROIDALS_PER_PROC"] == tpp, (block, rpc)
+    with machine(PERLMUTTER_GPU):
         cg = quiet(CGYROtools.CGYRO)
-        assert quiet(cg._enforce_toroidals_per_proc, dict(GRID), {"resources_per_call": 48})["TOROIDALS_PER_PROC"] == 1
-        assert quiet(cg._enforce_toroidals_per_proc, dict(GRID), {"resources_per_call": 8})["TOROIDALS_PER_PROC"] == 4
-    print("PASS: CPU TOROIDALS_PER_PROC (ranks = cores/threads) and its grid error; GPU unchanged")
+        # 48 GPUs: origin/development silently took TOROIDALS_PER_PROC 1 -> n_proc_1 = 3, which CGYRO rejects at startup
+        msg = raises(quiet, cg._enforce_toroidals_per_proc, dict(GRID), {"resources_per_call": 48}, match="N_TOROIDAL=16")
+        for piece in ("resources_per_call=48 (n_proc)", "nv = N_ENERGY*N_XI = 8*16 = 128", "resources_per_call = GPUs = ranks"):
+            assert piece in msg, (piece, msg)
+        # explicit TOROIDALS_PER_PROC still bypasses it; an unresolved grid still only warns
+        assert quiet(cg._enforce_toroidals_per_proc, {**GRID, "TOROIDALS_PER_PROC": 1}, {"resources_per_call": 48})["TOROIDALS_PER_PROC"] == 1
+        partial = {k: v for k, v in GRID.items() if k != "N_XI"}
+        assert quiet(cg._enforce_toroidals_per_proc, partial, {"resources_per_call": 48})["TOROIDALS_PER_PROC"] == 1
+    print("PASS: GPU TOROIDALS_PER_PROC unchanged where the grid fits (engaging rpc 1/2/4/8, Perlmutter 4/8); rpc 48 raises")
 
 
 if __name__ == "__main__":
@@ -220,4 +235,5 @@ if __name__ == "__main__":
     test_gpu_layouts_unchanged()
     test_cpu_launch_line()
     test_cpu_toroidals_per_proc()
+    test_gpu_toroidals_per_proc()
     print("\nALL PASS")
