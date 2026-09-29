@@ -1,5 +1,9 @@
 """DIII-D overview plotting (layout, scaling, colors, overlay).
 
+`overview(...)` is machine-agnostic: `machine="cmod"` (or passing a CMODConnection)
+draws Alcator C-Mod data through `experiment_tools.cmod.retrieval` with the same
+layout classes (C-Mod adds the Thomson 'edge' view and a 'hirex' ProfilePanel source).
+
 All the "how to draw it" lives here so the analysis scripts only declare
 *what* to plot. Data model — two small dataclasses:
 
@@ -24,6 +28,7 @@ server-side and cached on disk by the fetcher.
 
 from __future__ import annotations
 
+import importlib
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -70,6 +75,7 @@ _CER_QTY_DISPLAY = {
     "amp": ("ampt",  1.0,   "ph/s/m²/sr",          "intensity"),
 }
 _CER_QTY_ALL = ("ti", "rot", "nz", "fz")          # default rows for profiles_cer
+_HIREX_LINES = ("w", "x", "z", "lya1", "j", "mo4d")  # C-Mod HIREXSR lines (cmod.retrieval)
 
 
 # =============================================================================
@@ -126,10 +132,11 @@ class Equilibrium:
 @dataclass
 class ProfilePanel:
     """One radial-profile sub-panel inside a Profiles column."""
-    source:   str = "thomson"      # 'thomson' | 'cer'
-    quantity: str = "te"           # te|ne (thomson) ; tit|rotct (cer)
-    system:   str = "all"          # thomson view(s) core|tangential|divertor|list|'all';
-    #                              # for CER, the flavor: cerq(QUICK)|cera(AUTO)|cerf(FIT)
+    source:   str = "thomson"      # 'thomson' | 'cer' (DIII-D) | 'hirex' (C-Mod HIREXSR)
+    quantity: str = "te"           # te|ne (thomson) ; tit|rotct (cer) ; ti|omega|emiss (hirex)
+    system:   str = "all"          # thomson view(s) core|tangential|divertor (DIII-D) or core|edge
+    #                              # (C-Mod)|list|'all'; for CER, the flavor: cerq(QUICK)|cera(AUTO)|
+    #                              # cerf(FIT); for hirex, the line(s): w|x|z|lya1|j|mo4d
     scale:    float = 1.0          # raw-unit -> display (e.g. 1e-3 eV->keV)
     ylabel:   str = ""             # y-axis label; put any units here (e.g. r"$T_e$ [keV]")
     ylim:     tuple | None = None
@@ -139,9 +146,9 @@ class ProfilePanel:
     alpha:    float = 0.85         # point/line opacity for this panel (e.g. 0.5 to de-emphasize)
 
     def __post_init__(self):       # fail fast on a misplaced/typo'd argument
-        if self.source not in ("thomson", "cer"):
+        if self.source not in ("thomson", "cer", "hirex"):
             raise ValueError(
-                f"ProfilePanel source must be 'thomson' or 'cer' (got {self.source!r}). "
+                f"ProfilePanel source must be 'thomson', 'cer' or 'hirex' (got {self.source!r}). "
                 "A CER flavor goes in `system`, e.g. ProfilePanel('cer', 'tit', system='cera').")
         if self.source == "cer":           # system = flavor, or a list of flavors to overlay
             flavs = self.system if isinstance(self.system, (list, tuple)) else [self.system]
@@ -150,12 +157,18 @@ class ProfilePanel:
                 raise ValueError(
                     f"CER ProfilePanel `system` is the flavor — one of {_CER_FLAVORS} "
                     f"('all' = CERQUICK), or a list of them to overlay; got {bad}.")
+        elif self.source == "hirex":       # system = HIREXSR line, or a list of lines to overlay
+            lines = self.system if isinstance(self.system, (list, tuple)) else [self.system]
+            bad = [s for s in lines if s not in _HIREX_LINES]
+            if bad:
+                raise ValueError(f"hirex ProfilePanel `system` is the line — one of {_HIREX_LINES} "
+                                 f"(or a list of them); got {bad}.")
         else:                      # thomson: a view, a list of views, or 'all'
             views = self.system if isinstance(self.system, (list, tuple)) else [self.system]
-            bad = [v for v in views if v not in ("core", "tangential", "divertor", "all")]
+            bad = [v for v in views if v not in ("core", "tangential", "divertor", "edge", "all")]
             if bad:
                 raise ValueError(
-                    "Thomson ProfilePanel `system` must be core|tangential|divertor|'all' "
+                    "Thomson ProfilePanel `system` must be core|tangential|divertor|edge|'all' "
                     f"(or a list of those); got {bad}.")
 
 
@@ -211,6 +224,17 @@ def _parse_windows(shade):
     return [tuple(w) for w in shade]
 
 
+def _backend(machine="diiid", connection=None):
+    """(Connection, Fetcher) classes of `machine` ('diiid'|'cmod'); a passed connection's
+    own machine wins, so e.g. a CMODConnection draws C-Mod data without `machine=`."""
+    if connection is not None:
+        machine = connection.MACHINE
+    if machine == "diiid":
+        return DIIIDConnection, DIIIDFetcher
+    mod = importlib.import_module(f"mitim_tools.experiment_tools.{machine}.retrieval")
+    return mod.Connection, mod.Fetcher
+
+
 def overview(shots, layout, name: str = "overview",
              t_window: tuple | None = DEFAULT_TWINDOW, max_points: int = 4000,
              use_cache: bool = True, cache_dir: str | Path | None = None,
@@ -219,7 +243,7 @@ def overview(shots, layout, name: str = "overview",
              labels: list | None = None, shade: tuple | list | None = None,
              vlines: list | None = None, fig=None,
              label_scale: float = 1.0, line_scale: float = 1.0, marker_scale: float = 1.0,
-             save_dir: str | Path | None = None, show: bool = True):
+             save_dir: str | Path | None = None, show: bool = True, machine: str = "diiid"):
     """Fetch the layout's signals for each shot (one connection) and plot them.
 
     `shade` shades a time window (or list of windows) on every time-trace panel,
@@ -235,6 +259,8 @@ def overview(shots, layout, name: str = "overview",
     Pass `fig` to draw into an existing figure (e.g. a `GUItools.FigureNotebook`
     tab) instead of creating one; pass `connection` (a DIIIDConnection) to reuse
     ONE tunnel across several overview()/profiles() calls (polite to the server).
+    `machine` ('diiid' | 'cmod') selects the retrieval backend; a passed `connection`
+    carries its own machine and wins. All times are in ms for every machine.
 
     Returns `(fig, axes)` — the Figure and the list of all its subplot axes (in
     creation order) — and does NOT close the figure, so you can keep plotting.
@@ -263,14 +289,15 @@ def overview(shots, layout, name: str = "overview",
                 print(f"  ! equilibrium {tree}@{etime:.0f}ms #{shot}: {str(excp)[:45]}")
                 eq_data[key] = None
 
+    Connection, Fetcher = _backend(machine, connection)
     own_conn = connection is None
     conn = connection if connection is not None else \
-        DIIIDConnection(server=server, tunnel_host=tunnel_host)
+        Connection(server=server, tunnel_host=tunnel_host)
     try:
         for shot in shots:
             print(f"* fetching #{shot} ...")
-            fetcher = DIIIDFetcher(shot, connection=conn, max_points=max_points,
-                                   use_cache=use_cache, cache_dir=cache_dir)
+            fetcher = Fetcher(shot, connection=conn, max_points=max_points,
+                              use_cache=use_cache, cache_dir=cache_dir)
             res = {}
             for sp in specs:
                 try:
@@ -292,6 +319,9 @@ def overview(shots, layout, name: str = "overview",
                         variants = []
                         if pp.source == "thomson":     # NB: distinct name from the outer trace `specs`
                             vspecs = [(None, pp.system)]
+                        elif pp.source == "hirex":     # one entry per HIREXSR line
+                            lines = pp.system if isinstance(pp.system, (list, tuple)) else [pp.system]
+                            vspecs = [(f"HIREXSR {ln}", ln) for ln in lines]
                         else:                        # CER: one entry per flavor (non-flavor -> CERQUICK)
                             flavs = pp.system if isinstance(pp.system, (list, tuple)) else [pp.system]
                             flab = pp.flavor_labels or {}     # user overrides for the legend
@@ -303,6 +333,10 @@ def overview(shots, layout, name: str = "overview",
                                     pr = fetcher.fetch_thomson_profile(
                                         ptime, pp.quantity, sysn, window=pc.window, t_window=win,
                                         average=pc.average)
+                                elif pp.source == "hirex":
+                                    pr = fetcher.fetch_hirex_profile(
+                                        ptime, pp.quantity, sysn, window=pc.window, t_window=win,
+                                        average=pc.average)
                                 else:
                                     pr = fetcher.fetch_cer_profile(
                                         ptime, pp.quantity, channels=pp.channels or range(1, 49),
@@ -310,7 +344,7 @@ def overview(shots, layout, name: str = "overview",
                                 variants.append((vlabel, pr))
                             except Exception as excp:
                                 print(f"  ! profile {pp.source}.{pp.quantity}"
-                                      f"{('/' + sysn) if pp.source == 'cer' else ''} #{shot}: {str(excp)[:45]}")
+                                      f"{('/' + sysn) if pp.source in ('cer', 'hirex') else ''} #{shot}: {str(excp)[:45]}")
                         prof_data[(ci, shot, wi, pi)] = variants
     finally:
         if own_conn:
@@ -933,8 +967,9 @@ def _separatrix_legs(ax, ed, color, lw=1.0):
     """Draw the divertor separatrix legs: contour psi_N = 1 on a sub-grid spanning
     the A-file strike points to ~10 cm past the active X-point, and mark the active
     X-point. No-op for a limited plasma. `lw` scales the line widths."""
-    lower = (1 < ed.rxpt1 < 2) and ed.zvsin < 0 and ed.zvsout < 0
-    upper = (1 < ed.rxpt2 < 2) and ed.zvsin > 0 and ed.zvsout > 0
+    r0, r1 = float(ed.rgrid.min()), float(ed.rgrid.max())       # X-point inside the EFIT R grid
+    lower = (r0 < ed.rxpt1 < r1) and ed.zvsin < 0 and ed.zvsout < 0
+    upper = (r0 < ed.rxpt2 < r1) and ed.zvsin > 0 and ed.zvsout > 0
     if lower:
         zxpt, (z0, z1) = ed.zxpt1, (float(ed.zgrid.min()), ed.zxpt1 + 0.1)
         rxpt = ed.rxpt1
@@ -1028,8 +1063,11 @@ def _draw_profile_panel(ax, prof_data, eq_data, shots, pc, c, pi, pp, windows, c
                     continue
                 t = centers[wi] if centers else pc.time
                 ed = eq_data.get((sh, t, pc.tree))
-                if rho_kind:
-                    x = ed.rho_of(prof.r, prof.z, rho_kind) if ed is not None else np.full(prof.r.size, np.nan)
+                if rho_kind and ed is None:
+                    x = np.full(prof.r.size, np.nan)
+                elif rho_kind:                   # flux-grid profiles (HIREXSR) carry psin; else map (R, Z)
+                    x = (ed.rho_of_psin(prof.psin, rho_kind) if prof.psin is not None
+                         else ed.rho_of(prof.r, prof.z, rho_kind))
                 else:
                     x = prof.z if coord == "Z" else prof.r
                 m = np.isfinite(x)

@@ -94,5 +94,15 @@
         },
         "cores_per_node":  8,
         "gpus_per_node": 0
+    },
+    "mdsplus": {
+        "cmod": {
+            "tunnel_host":  "mfews",
+            "mds_server":   "alcdata.psfc.mit.edu:8000"
+        },
+        "diiid": {
+            "tunnel_host":  null,
+            "mds_server":   "atlas.gat.com:8000"
+        }
     }
 }
