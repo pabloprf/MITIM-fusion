@@ -42,7 +42,7 @@ from mitim_tools.experiment_tools.diiid.plotting import (
 # USER SETTINGS — edit these
 # ----------------------------------------------------------------------------
 shots = [207958, 207959]                 # DIII-D shot(s) to overlay
-tunnel_host = None                        # None = connect directly (GA host/VPN); else YOUR ssh jump host
+tunnel_host = None                        # None = config_user.json "mdsplus" block, else direct (GA host/VPN); off-site: YOUR ssh jump host
 cache_dir = __mitimroot__ / "tests" / "scratch" / "diiid_fetcher"   # where to cache fetches
 # ----------------------------------------------------------------------------
 

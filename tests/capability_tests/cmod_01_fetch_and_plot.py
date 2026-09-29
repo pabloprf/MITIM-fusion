@@ -27,9 +27,10 @@ Key teaching points:
        tree node (`\\ANALYSIS::TOP:EFIT.RESULTS.A_EQDSK:KAPPA`, `SPECTROSCOPY::\\twopi_foil`).
     2. C-Mod stores time in SECONDS; the fetcher converts everything to ms, so
        t_window / shade / Equilibrium(time=...) are all in ms, exactly as for DIII-D.
-    3. Ip and B_T are stored NEGATIVE at C-Mod -> Trace(..., abs=True).
-    4. The C-Mod EFIT lives in the ANALYSIS tree -> Equilibrium(tree="ANALYSIS"),
-       Profiles(..., tree="ANALYSIS").
+    3. Machine defaults travel with the connection: the EFIT tree (ANALYSIS), the
+       default time window (0-2000 ms) and the sign of Ip/B_T (stored negative at C-Mod;
+       the 'ip'/'bt' aliases return them positive for the standard direction).
+    4. `fetcher.inventory(t_window=...)` gives a found / not-found row per signal.
     5. Profiles: Thomson views are 'core', 'edge' or 'all' (Te in eV, ne in m^-3,
        mapped to rho through EFIT from their (R, Z)); HIREXSR ('hirex') profiles
        come on a psi_N grid, per spectral line ('z'/'w'/'x' He-like Ar, whole
@@ -48,13 +49,13 @@ from mitim_tools.experiment_tools.diiid.plotting import (
 # ----------------------------------------------------------------------------
 shots = [1120210021, 1120210007]        # N-seeded / unseeded ohmic, 5.4 T (Ennever thesis)
 tunnel_host = None                       # None = config_user.json "mdsplus" block, else direct (inside PSFC);
-                                         # off-site put YOUR ssh alias here, e.g. "mfews15"
+                                         # off-site put YOUR ssh alias here (a passwordless ~/.ssh/config entry)
 cache_dir = __mitimroot__ / "tests" / "scratch" / "cmod_fetcher"   # where to cache fetches
 eq_shot, eq_time = 1120615015, 960.0     # equilibrium example (shot, time [ms])
 # ----------------------------------------------------------------------------
 
 fn = FigureNotebook("C-Mod experimental data")
-common = dict(shots=shots, t_window=(0, 1800), shade=(900, 1100),
+common = dict(shots=shots, shade=(900, 1100),
               colors=["red", "blue"], labels=["N-seeded", "unseeded"],
               cache_dir=cache_dir, show=False)
 
@@ -63,8 +64,8 @@ with CMODConnection(tunnel_host=tunnel_host) as conn:
 
     # --- Tab 1: a broad "overview" set, one signal per panel (auto 3-column grid)
     overview(layout=[
-        Panel(r"$|I_p|$ [MA]",          [Trace("ip", scale=1e-6, abs=True)]),
-        Panel(r"$|B_T|$ [T]",           [Trace("bt", abs=True)]),
+        Panel(r"$I_p$ [MA]",          [Trace("ip", scale=1e-6)]),
+        Panel(r"$B_T$ [T]",           [Trace("bt")]),
         Panel(r"$\bar{n}_e$ [$10^{20}$m$^{-3}$]", [Trace("nebar", scale=1e-20)]),
         Panel(r"$W_{MHD}$ [kJ]",        [Trace("wmhd", scale=1e-3)]),
         Panel(r"$P_{rad}$ [MW]",        [Trace("prad", scale=1e-6), Trace("prad_2pi", scale=1e-6, avg=20)]),
@@ -79,24 +80,27 @@ with CMODConnection(tunnel_host=tunnel_host) as conn:
         Profiles([
             ProfilePanel("thomson", "te", "all", scale=1e-3,  ylabel=r"$T_e$ [keV]"),
             ProfilePanel("thomson", "ne", "all", scale=1e-20, ylabel=r"$n_e$ [$10^{20}$m$^{-3}$]"),
-        ], coord="rho", tree="ANALYSIS", rho_max=1.1),
+        ], coord="rho", rho_max=1.1),
         Profiles([
             ProfilePanel("hirex", "ti", ["z", "lya1"], ylabel=r"$T_i$ [keV]", ylim=(0, 2.5)),
             ProfilePanel("hirex", "omega", ["z", "lya1"], ylabel=r"$f_\phi = v_\phi/2\pi R$ [kHz]",
                          ylim=(-20, 20)),
-        ], coord="rho", tree="ANALYSIS", rho_max=1.1),
-        Equilibrium(tree="ANALYSIS"),   # time=None -> middle of the shade window
+        ], coord="rho", rho_max=1.1),
+        Equilibrium(),                  # time=None -> middle of the shade window; tree -> ANALYSIS
     ], name="profiles", connection=conn, fig=fn.add_figure(label="Profiles"), **common)
 
     # --- Tab 3: equilibrium example, single shot at a given time, and its g-file
     overview(shots=[eq_shot], layout=[
-        [Panel(r"$|I_p|$ [MA]", [Trace("ip", scale=1e-6, abs=True)]),
+        [Panel(r"$I_p$ [MA]", [Trace("ip", scale=1e-6)]),
          Panel(r"$\kappa$", [Trace("kappa")]),
          Panel(r"$q_{95}$", [Trace("q95")], ylim=(2, 8))],
-        Equilibrium(tree="ANALYSIS", time=eq_time),
-    ], name="equilibrium", t_window=(0, 1800), connection=conn, cache_dir=cache_dir,
+        Equilibrium(time=eq_time),
+    ], name="equilibrium", connection=conn, cache_dir=cache_dir,
        show=False, fig=fn.add_figure(label="Equilibrium"))
-    gfile = CMODFetcher(eq_shot, connection=conn, cache_dir=cache_dir).fetch_geqdsk(eq_time)
+    f = CMODFetcher(eq_shot, connection=conn, cache_dir=cache_dir)
+    gfile = f.fetch_geqdsk(eq_time)
     print(f"* g-file for #{eq_shot} @ {eq_time:.0f} ms -> {gfile}")
+    for name, row in f.inventory(t_window=(900, 1100)).items():   # found / not-found per signal
+        print(f"  {name:>9s}: {row}")
 
 fn.show()

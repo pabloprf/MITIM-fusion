@@ -49,7 +49,6 @@ Connecting to the server:
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import numpy as np
 
@@ -109,6 +108,11 @@ class DIIIDFetcher(MDSFetcher):
 
     CONNECTION = DIIIDConnection
     DEFAULT_CACHE = __mitimroot__ / "tests" / "scratch" / "diiid_fetcher"
+    T_WINDOW = (1300.0, 5000.0)       # [ms]
+    T_REF = 4000.0                    # [ms]
+    EFIT = dict(tree="EFIT01", g=r"\{tree}::TOP.RESULTS.GEQDSK", a=r"\{tree}::TOP.RESULTS.AEQDSK",
+                time_axis=0, a_scale={}, no_xpoint=None)       # time base in ms, A-file in m
+    TS_ALL = ("core", "tangential")
 
     # ---- signal resolution (findsig -> ptdata2 -> pseudo cascade) -----------
     def _assign(self, spec: str) -> str:
@@ -124,7 +128,7 @@ class DIIIDFetcher(MDSFetcher):
                 return f"PTDATA:{rest.strip()}"
         return super()._assign(spec)
 
-    def _assign_bare(self, spec: str) -> str:
+    def _resolve_bare(self, spec: str) -> str:
         """`findsig` is the DIII-D signal finder: it returns the proper node and
         sets `_fstree` to the tree (e.g. wmhd -> EFIT01:\\WMHD). It aborts for
         true PTDATA pointnames (ip, bt, ece...), which then go through ptdata2.
@@ -146,123 +150,6 @@ class DIIIDFetcher(MDSFetcher):
 
         self.conn.get(f'_s = pseudo("{spec}",{self.shot})')
         return f"PSEUDO:{spec}"
-
-    # ---- EFIT equilibrium (2D, one time slice) ------------------------------
-    def fetch_equilibrium(self, time: float, tree: str = "EFIT01") -> EquilibriumData:
-        """EFIT flux-surface snapshot nearest `time` [ms] from `tree`.
-
-        Returns normalized ψ on the R,Z grid plus the LCFS, magnetic axis,
-        vessel and A-file X-points/strike points. Cached on disk.
-
-        CRITICAL: mdsthin returns the time axis REVERSED relative to the server's
-        storage order, so the python time index must be applied to FULL python
-        arrays (`arr[it]`), NEVER to a server-side `[it]` subscript — the latter
-        silently returns a DIFFERENT time slice. Self-consistent but wrong-time.
-        """
-        cached = self._eq_cache_load(tree, time)
-        if cached is not None:
-            self.n_from_cache += 1
-            print(f"Using cached equilibrium for tree {tree} at time {time}")
-            return cached
-
-        self.n_from_server += 1
-        self.conn.openTree(tree, self.shot)
-        G = rf"\{tree}::TOP.RESULTS.GEQDSK"
-        gtime = np.atleast_1d(self._value(f"{G}:GTIME")).astype(float)
-        it = int(np.argmin(np.abs(gtime - time)))
-        t_act = float(gtime[it])
-
-        # full arrays, indexed in python; PSIRZ python shape is (ntime, nz, nr)
-        psi = np.asarray(self._value(f"{G}:PSIRZ"), float)[it]
-        d0 = np.atleast_1d(self._value(f"dim_of({G}:PSIRZ,0)")).astype(float)
-        d1 = np.atleast_1d(self._value(f"dim_of({G}:PSIRZ,1)")).astype(float)
-
-        simag = float(np.atleast_1d(self._value(f"{G}:SSIMAG"))[it])
-        sibry = float(np.atleast_1d(self._value(f"{G}:SSIBRY"))[it])
-        rax = float(np.atleast_1d(self._value(f"{G}:RMAXIS"))[it])
-        zax = float(np.atleast_1d(self._value(f"{G}:ZMAXIS"))[it])
-
-        # R is the all-positive grid; Z spans negative.
-        rgrid, zgrid = (d0, d1) if d1.min() < d0.min() else (d1, d0)
-        # orient the slice to [nz, nr] by matching the psi extremum to the axis
-        PSI = orient_psi(psi, rgrid, zgrid, simag, sibry, rax, zax)
-        psiN = (PSI - simag) / (sibry - simag)
-
-        nb = int(np.atleast_1d(self._value(f"{G}:NBBBS"))[it])
-        rb = np.asarray(self._value(f"{G}:RBBBS"), float)[it][:nb]
-        zb = np.asarray(self._value(f"{G}:ZBBBS"), float)[it][:nb]
-
-        qfull = np.asarray(self._value(f"{G}:QPSI"), float)  # q on uniform ψ grid (for ρ_tor)
-        qpsi = (qfull[it] if qfull.ndim == 2 and qfull.shape[0] == gtime.size
-                else qfull[:, it] if qfull.ndim == 2 else qfull)
-
-        lim = np.asarray(self._value(f"{G}:LIM"), float)     # vessel/limiter (R,Z) points
-        wr, wz = (lim[0], lim[1]) if lim.shape[0] == 2 else (lim[:, 0], lim[:, 1])
-
-        # A-file X-points (RXPT1/2) and divertor strike points (RVS*/ZVS*) [m],
-        # indexed with the A-file's own time base (python full array).
-        A = rf"\{tree}::TOP.RESULTS.AEQDSK"
-        try:
-            atime = np.atleast_1d(self._value(f"{A}:ATIME")).astype(float)
-            ita = int(np.argmin(np.abs(atime - time)))
-        except Exception:
-            ita = it
-
-        def asc(node):
-            try:
-                return float(np.atleast_1d(self._value(f"{A}:{node}"))[ita])
-            except Exception:
-                return float("nan")
-
-        ed = EquilibriumData(
-            self.shot, tree, t_act, rgrid, zgrid, psiN, rb, zb, rax, zax, wr, wz,
-            asc("RXPT1"), asc("ZXPT1"), asc("RXPT2"), asc("ZXPT2"),
-            asc("RVSIN"), asc("ZVSIN"), asc("RVSOUT"), asc("ZVSOUT"), qpsi)
-        self._eq_cache_save(tree, time, ed)
-        return ed
-
-    def fetch_geqdsk(self, time: float, tree: str = "EFIT01", path=None) -> Path:
-        """Write a standard GEQDSK (g-file) for the EFIT slice nearest `time` [ms].
-
-        Reads the full `\\<tree>::TOP.RESULTS.GEQDSK` node group (ψ(R,Z), the 1D
-        fpol/pres/ffprim/pprime/q profiles, the scalars, boundary and limiter) and
-        writes a self-contained g-file in SI units, readable by `gs_tools.GEQtools`
-        / megpy / OMFIT. The time slice is taken with PYTHON full-array indexing
-        (mdsthin reverses the time axis). Returns the output path.
-        """
-        self.conn.openTree(tree, self.shot)
-        G = rf"\{tree}::TOP.RESULTS.GEQDSK"
-        gtime = np.atleast_1d(self._value(f"{G}:GTIME")).astype(float)
-        it = int(np.argmin(np.abs(gtime - time))); t_act = float(gtime[it])
-
-        sc = lambda n: float(np.atleast_1d(self._value(f"{G}:{n}"))[it])    # per-time scalar
-        def prof(n):                                   # per-time 1D profile -> (nw,)
-            a = np.asarray(self._value(f"{G}:{n}"), float)
-            return a[it] if (a.ndim == 2 and a.shape[0] == gtime.size) else (a[:, it] if a.ndim == 2 else a)
-
-        psi = np.asarray(self._value(f"{G}:PSIRZ"), float)[it]
-        d0 = np.atleast_1d(self._value(f"dim_of({G}:PSIRZ,0)")).astype(float)
-        d1 = np.atleast_1d(self._value(f"dim_of({G}:PSIRZ,1)")).astype(float)
-        rgrid, zgrid = (d0, d1) if d1.min() < d0.min() else (d1, d0)
-        simag, sibry, rax, zax = sc("SSIMAG"), sc("SSIBRY"), sc("RMAXIS"), sc("ZMAXIS")
-        PSI = orient_psi(psi, rgrid, zgrid, simag, sibry, rax, zax)   # -> [nz, nr]
-
-        nb = int(np.atleast_1d(self._value(f"{G}:NBBBS"))[it])
-        rb = np.asarray(self._value(f"{G}:RBBBS"), float)[it][:nb]
-        zb = np.asarray(self._value(f"{G}:ZBBBS"), float)[it][:nb]
-        lim = np.asarray(self._value(f"{G}:LIM"), float)
-        rl, zl = (lim[0], lim[1]) if lim.shape[0] == 2 else (lim[:, 0], lim[:, 1])
-
-        data = dict(case=f"EFIT {tree} #{self.shot} {t_act:.0f}ms", nw=rgrid.size, nh=zgrid.size,
-                    rdim=sc("XDIM"), zdim=sc("ZDIM"), rcentr=sc("RZERO"), rleft=float(rgrid.min()),
-                    zmid=sc("ZMID"), rmaxis=rax, zmaxis=zax, simag=simag, sibry=sibry,
-                    bcentr=sc("BCENTR"), current=sc("CPASMA"), psirz=PSI,
-                    fpol=prof("FPOL"), pres=prof("PRES"), ffprime=prof("FFPRIM"),
-                    pprime=prof("PPRIME"), qpsi=prof("QPSI"),
-                    rbbbs=rb, zbbbs=zb, rlim=np.asarray(rl, float), zlim=np.asarray(zl, float))
-        path = Path(path) if path is not None else (self.cache_dir / f"g{self.shot}.{int(round(t_act)):05d}")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return _write_geqdsk(path, data)
 
     # ---- CER channel profile (value vs R,Z at one time) ---------------------
     def fetch_cer_profile(self, time: float, quantity: str = "tit",
@@ -409,51 +296,19 @@ class DIIIDFetcher(MDSFetcher):
                             "R": float(np.nanmedian(r.data)), "Z": float(np.nanmedian(z.data))})
         return out
 
-    # ---- Thomson-scattering profile (Te / ne vs R,Z at one time) ------------
-    def fetch_thomson_profile(self, time: float, quantity: str = "te", system="core",
-                              window: float = 100.0, t_window=None,
-                              average: bool = True) -> ChannelProfile:
-        """Thomson-scattering profile: Te or ne vs (R, Z) per channel, time-averaged.
-
-        Reads the 2D BLESSED arrays `\\ELECTRONS::TOP.TS.BLESSED.<SYSTEM>:{TEMP|DENSITY}`
-        plus its stored error `:{TEMP|DENSITY}_E` and `:R`/`:Z`/`:TIME` (all cached via
-        `_value_cached`). Averages over [time-window, time+window] — or the explicit
-        `t_window=(t0,t1)` if given — and drops channels with no valid (>0) sample.
-        The per-channel error bar is the stored measurement error (`_E`) averaged
-        over the window (the typical per-measurement uncertainty).
-
-        `system` may be one of 'core'|'tangential'|'divertor', a LIST of them, or
-        'all' (= core+tangential). Each channel is tagged by view ('C#','T#','D#').
-        `quantity` 'te'->TEMP [eV], 'ne'->DENSITY [m^-3]. Points sorted by R. With
-        `average=False` every time sample in the window is kept (scatter, error=None).
-        """
-        systems = (["core", "tangential"] if system == "all"
-                   else [system] if isinstance(system, str) else list(system))
-        node = "TEMP" if quantity.lower() in ("te", "temp") else "DENSITY"
-        t0, t1 = t_window if t_window is not None else (time - window, time + window)
-        Rs, Zs, Vs, Es, Tg, units = [], [], [], [], [], ""
-        for sysname in systems:
-            base = rf"\ELECTRONS::TOP.TS.BLESSED.{sysname.upper()}"
-            try:                                  # a TS view can be absent on a given shot
-                val2d, units = self._value_cached(f"{base}:{node}", tree="ELECTRONS")
-                err2d, _ = self._value_cached(f"{base}:{node}_E", tree="ELECTRONS")
-                R, _ = self._value_cached(f"{base}:R", tree="ELECTRONS")
-                Z, _ = self._value_cached(f"{base}:Z", tree="ELECTRONS")
-                tarr, _ = self._value_cached(f"{base}:TIME", tree="ELECTRONS")
-            except Exception as e:
-                print(f"  ! TS {sysname} unavailable for #{self.shot}: {str(e)[:45]}")
-                continue
-            pts = reduce_channels(val2d, err2d, R, Z, tarr, t0, t1, sysname[0].upper(), average)
-            if average or pts[0].size:
-                for acc, a in zip((Rs, Zs, Vs, Es, Tg), pts):
-                    acc.append(a)
-        empty = np.array([])
-        R, Z, V, E, Tg = (np.concatenate(a) if a else empty for a in (Rs, Zs, Vs, Es, Tg))
-        order = np.argsort(R)
-        return ChannelProfile(self.shot, 0.5 * (t0 + t1), f"{'+'.join(systems)}.{node.lower()}",
-                              np.arange(R.size)[order], R[order], Z[order], V[order], units,
-                              label=f"TS {'+'.join(systems)} {quantity}", tag=Tg[order],
-                              error=(E[order] if average else None))
+    # ---- Thomson scattering (BLESSED arrays) ---------------------------------
+    def _thomson_arrays(self, system: str, q: str):
+        """`\\ELECTRONS::TOP.TS.BLESSED.<SYSTEM>:{TEMP|DENSITY}` (Te [eV], ne [m^-3]) with its stored
+        error `:{TEMP|DENSITY}_E` and `:R`/`:Z`/`:TIME` [ms] (all cached via `_value_cached`).
+        Systems: core | tangential | divertor ('all' = core+tangential)."""
+        base = rf"\ELECTRONS::TOP.TS.BLESSED.{system.upper()}"
+        node = "TEMP" if q == "te" else "DENSITY"
+        val2d, units = self._value_cached(f"{base}:{node}", tree="ELECTRONS")
+        err2d, _ = self._value_cached(f"{base}:{node}_E", tree="ELECTRONS")
+        R, _ = self._value_cached(f"{base}:R", tree="ELECTRONS")
+        Z, _ = self._value_cached(f"{base}:Z", tree="ELECTRONS")
+        tarr, _ = self._value_cached(f"{base}:TIME", tree="ELECTRONS")
+        return val2d, err2d, R, Z, tarr, units
 
 
 # generic names by which the machine-agnostic plotting resolves this backend

@@ -1,6 +1,6 @@
 """DIIIDExperiment: object-oriented DIII-D discharge analysis on top of the DIIIDFetcher retrieval.
 
-    with DIIIDExperiment(207959, time=4000.0, tunnel_host="cybele") as exp:
+    with DIIIDExperiment(207959, time=4000.0) as exp:   # access from config_user.json "mdsplus" or tunnel_host=
         exp.overview()                      # fetch + plot engineering/kinetic traces
         exp.plot_cer_coverage()             # CER (rho, t) coverage
         fit = exp.fit_ti(robust=True)       # QUICKFIT (map2grid) profile fit at `time`
@@ -147,7 +147,7 @@ def _with_conn(exp, kw):
 class DIIIDExperiment(DIIIDFetcher):
     """Per-shot DIII-D discharge: retrieval (inherited) + fitting, concentration, input.gacode, plots."""
 
-    def __init__(self, shot, time=4000.0, avg=200.0, t_range=(1400.0, 4150.0), tunnel_host="cybele",
+    def __init__(self, shot, time=4000.0, avg=200.0, t_range=(1400.0, 4150.0), tunnel_host=None,
                  cache_dir=None, connection=None, use_cache=True, tree="EFIT01"):
         self.time = float(time)
         self.avg = float(avg)

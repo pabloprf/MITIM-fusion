@@ -63,7 +63,7 @@ shot        = 207959                      # DIII-D shot to analyze
 time        = 4000.0                      # ms — extraction time (fit node / profile export)
 avg         = 200.0                       # ms — half-window averaging for overview traces
 t_range     = (1400.0, 4150.0)            # ms — fit window fed to map2grid
-tunnel_host = "cybele"                    # None on a GA host/VPN; else YOUR ssh jump host
+tunnel_host = None                        # None = config_user.json "mdsplus" block, else direct (GA host/VPN); off-site: YOUR ssh jump host
 cache_dir   = __mitimroot__ / "tests" / "scratch" / "diiid_experiment"
 # For to_gacode on a puffed shot, name the puffed impurity + its onset time so the
 # extra Zeff above frozen Carbon is attributed to it (None,None = intrinsic Carbon only):

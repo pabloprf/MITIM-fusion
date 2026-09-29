@@ -1,8 +1,9 @@
 """DIII-D overview plotting (layout, scaling, colors, overlay).
 
-`overview(...)` is machine-agnostic: `machine="cmod"` (or passing a CMODConnection)
+`overview(...)` is machine-agnostic: passing a CMODConnection (or `machine="cmod"`)
 draws Alcator C-Mod data through `experiment_tools.cmod.retrieval` with the same
 layout classes (C-Mod adds the Thomson 'edge' view and a 'hirex' ProfilePanel source).
+Machine defaults (EFIT tree, time window, snapshot time) come from the fetcher class.
 
 All the "how to draw it" lives here so the analysis scripts only declare
 *what* to plot. Data model — two small dataclasses:
@@ -30,7 +31,8 @@ from __future__ import annotations
 
 import importlib
 import math
-from dataclasses import dataclass, field
+import sys
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -43,8 +45,9 @@ from scipy.interpolate import RegularGridInterpolator
 from mitim_tools.experiment_tools.diiid.retrieval import DIIIDConnection, DIIIDFetcher
 from IPython import embed
 
-# Default display window [ms]; pass t_window=None to auto-detect from Ip.
-DEFAULT_TWINDOW = (1300.0, 5000.0)
+# DIII-D default display window [ms] (each machine's is its fetcher's T_WINDOW); pass
+# t_window=None to auto-detect from Ip.
+DEFAULT_TWINDOW = DIIIDFetcher.T_WINDOW
 
 _NCOL = 3
 _TRACE_LS = ["-", "--", ":", "-."]
@@ -120,9 +123,10 @@ class Panel:
 class Equilibrium:
     """Layout marker for a whole column showing EFIT flux surfaces at `time` [ms]
     (R,Z), overlaying every shot in its color. `levels` are the ψ_N contours.
-    `time=None` -> use the middle of the overview `shade` window (else 4000 ms)."""
+    `time=None` -> use the middle of the overview `shade` window (else the machine's
+    T_REF, 4000 ms at DIII-D); `tree=None` -> the machine's EFIT tree (EFIT01, ANALYSIS)."""
     time:        float | None = None
-    tree:        str = "EFIT01"
+    tree:        str | None = None
     levels:      tuple = tuple(round(v, 3) for v in np.arange(0.03, 1.0, 0.03))  # interior psi_N
     nscrape:     int = 4           # number of SOL flux surfaces to draw outside the LCFS
     deltascrape: float = 0.01      # SOL flux-surface spacing [m] at the outboard midplane
@@ -181,9 +185,9 @@ class Profiles:
     `average=False` instead plots EVERY time sample in the window (a scatter cloud
     per channel, no error bars) — handy to see the raw spread."""
     panels:    list                # list of ProfilePanel
-    tree:      str = "EFIT01"
+    tree:      str | None = None   # None -> the machine's EFIT tree
     coord:     str = "rho"
-    time:      float = 4000.0      # used (with window) only if no shade window is given
+    time:      float | None = None  # used (with window) only if no shade window is given (None -> T_REF)
     window:    float = 100.0
     errorbars: bool = True
     rho_max:   float | None = None  # drop points past this ρ (e.g. 1.0 to hide the noisy SOL)
@@ -226,17 +230,24 @@ def _parse_windows(shade):
 
 def _backend(machine="diiid", connection=None):
     """(Connection, Fetcher) classes of `machine` ('diiid'|'cmod'); a passed connection's
-    own machine wins, so e.g. a CMODConnection draws C-Mod data without `machine=`."""
-    if connection is not None:
-        machine = connection.MACHINE
-    if machine == "diiid":
-        return DIIIDConnection, DIIIDFetcher
-    mod = importlib.import_module(f"mitim_tools.experiment_tools.{machine}.retrieval")
+    own module wins, so e.g. a CMODConnection draws C-Mod data without `machine=`."""
+    mod = (sys.modules[type(connection).__module__] if connection is not None
+           else importlib.import_module(f"mitim_tools.experiment_tools.{machine}.retrieval"))
     return mod.Connection, mod.Fetcher
 
 
+def _with_machine_defaults(layout, Fetcher):
+    """Fill what Equilibrium/Profiles columns leave as None with the machine defaults
+    (EFIT tree, snapshot time)."""
+    if not _is_columnar(layout):
+        return layout
+    fill = lambda c: replace(c, tree=c.tree or Fetcher.EFIT["tree"],
+                             time=Fetcher.T_REF if c.time is None else c.time)
+    return [fill(c) if isinstance(c, (Equilibrium, Profiles)) else c for c in layout]
+
+
 def overview(shots, layout, name: str = "overview",
-             t_window: tuple | None = DEFAULT_TWINDOW, max_points: int = 4000,
+             t_window: tuple | None | str = "default", max_points: int = 4000,
              use_cache: bool = True, cache_dir: str | Path | None = None,
              tunnel_host: str | None = None, server: str | None = None,
              connection=None, colors: list | None = None,
@@ -260,7 +271,8 @@ def overview(shots, layout, name: str = "overview",
     tab) instead of creating one; pass `connection` (a DIIIDConnection) to reuse
     ONE tunnel across several overview()/profiles() calls (polite to the server).
     `machine` ('diiid' | 'cmod') selects the retrieval backend; a passed `connection`
-    carries its own machine and wins. All times are in ms for every machine.
+    carries its own machine and wins. All times are in ms for every machine;
+    `t_window="default"` is the machine's T_WINDOW, None auto-detects it from Ip.
 
     Returns `(fig, axes)` — the Figure and the list of all its subplot axes (in
     creation order) — and does NOT close the figure, so you can keep plotting.
@@ -269,6 +281,10 @@ def overview(shots, layout, name: str = "overview",
     """
     if isinstance(shots, int):
         shots = [shots]
+    Connection, Fetcher = _backend(machine, connection)
+    layout = _with_machine_defaults(layout, Fetcher)
+    if isinstance(t_window, str):
+        t_window = Fetcher.T_WINDOW
     specs = _all_specs(_flatten(layout))
     cols = list(layout) if _is_columnar(layout) else []
     eq_cols = [c for c in cols if isinstance(c, Equilibrium)]
@@ -289,7 +305,6 @@ def overview(shots, layout, name: str = "overview",
                 print(f"  ! equilibrium {tree}@{etime:.0f}ms #{shot}: {str(excp)[:45]}")
                 eq_data[key] = None
 
-    Connection, Fetcher = _backend(machine, connection)
     own_conn = connection is None
     conn = connection if connection is not None else \
         Connection(server=server, tunnel_host=tunnel_host)
@@ -307,7 +322,7 @@ def overview(shots, layout, name: str = "overview",
                     res[sp] = None
             results[shot] = res
             for eq in eq_cols:                        # one slice per window (None->middle)
-                for et in (centers or [eq.time if eq.time is not None else 4000.0]):
+                for et in (centers or [eq.time]):
                     _fetch_eq(fetcher, shot, et, eq.tree)
             for ci, pc in prof_cols:                  # radial-profile columns, per window
                 for wi, win in (list(enumerate(windows)) or [(0, None)]):
@@ -1170,7 +1185,7 @@ def _render(results, columns, shots, name="overview",
     xref = None
     for c, col in enumerate(columns):
         if isinstance(col, Equilibrium):          # one boundary per (shot, window)
-            ts = centers if centers else [col.time if col.time is not None else 4000.0]
+            ts = centers if centers else [col.time]
             series = []
             for si, sh in enumerate(shots):
                 for wi, t in enumerate(ts):

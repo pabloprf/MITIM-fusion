@@ -255,6 +255,8 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **C-Mod TRANSP/MAESTRO paths import again off the PSFC workstations**: `CMODtools` imported `eqtools` from a hardcoded workstation path at module load, so the C-Mod branches of `NMLtools` (namelist structures, ICRF antennas), `TRANSPbeat` and `TRANSPhelpers` failed with `ModuleNotFoundError` anywhere else. The workstation-only retrieval (MDSplus trees, IDL, scrunch2) and its scripts are removed; `getTRANSP_MDS` now reads TRANSP runs through `CMODConnection`.
+
 *   🐛 **PORTALS-CGYRO submission robustness fixes** (found by a code audit of the reattach / stall-rescue /
     in-place-rescue paths): batched CGYRO evaluations no longer raise `TypeError` on the shipped namelist
     (`run_over_plasmas` now accepts `rescue_interrupted` and `load_balance`); a status poll no longer drops

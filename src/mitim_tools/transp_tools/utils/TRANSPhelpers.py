@@ -1611,7 +1611,6 @@ def populateFromMDS(self, runidMDS):
         self.runid,
         folderWork=self.FolderTRANSP,
         toric_mpi=self.mpisettings["toricmpi"],
-        shotnumber=self.shotnumberReal,
     )
 
 def defaultbasedMDS(self, outtims=None, MITIMmodified=False):

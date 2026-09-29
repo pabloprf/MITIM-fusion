@@ -97,7 +97,7 @@
     },
     "mdsplus": {
         "cmod": {
-            "tunnel_host":  "mfews",
+            "tunnel_host":  "<ssh alias that reaches alcdata:8000>",
             "mds_server":   "alcdata.psfc.mit.edu:8000"
         },
         "diiid": {

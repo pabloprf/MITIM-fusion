@@ -11,7 +11,7 @@ Access (where the MDSplus server is and how to reach it), resolved per machine:
     1. explicit kwargs:  server="host:port" (connect straight there), or
                          tunnel_host=<~/.ssh/config alias> (+ optional mds_server=)
     2. config_user.json top-level block, keyed by machine:
-           "mdsplus": {"cmod":  {"tunnel_host": "mfews15", "mds_server": "alcdata.psfc.mit.edu:8000"},
+           "mdsplus": {"cmod":  {"tunnel_host": "<your ssh alias>", "mds_server": "alcdata.psfc.mit.edu:8000"},
                        "diiid": {"tunnel_host": null,      "mds_server": "atlas.gat.com:8000"}}
        (read only when neither `server` nor `tunnel_host` is passed)
     3. direct connection to the machine's default `MDS_SERVER` (on-site / VPN).
@@ -182,6 +182,22 @@ def orient_psi(psi, rgrid, zgrid, simag, sibry, raxis, zaxis):
     err_zr = abs(rgrid[jj] - raxis) + abs(zgrid[ii] - zaxis)   # psi is [Z, R]
     err_rz = abs(rgrid[ii] - raxis) + abs(zgrid[jj] - zaxis)   # psi is [R, Z]
     return psi if err_zr <= err_rz else psi.T                 # -> [nz, nr]
+
+
+def _at_time(a, it, nt, axis=0):
+    """Time slice `it` of an EFIT array: 1D -> as is; 2D -> along `axis` (the machine's time
+    axis) when its length is nt, else along the other end."""
+    a = np.asarray(a, float)
+    if a.ndim < 2:
+        return a
+    ax = axis if a.shape[axis] == nt else (-1 if axis == 0 else 0)
+    return np.take(a, it, axis=ax)
+
+
+def _scalar_at(a, it):
+    """Per-time EFIT scalar at `it`; a shot-constant scalar (size 1) is returned as is."""
+    a = np.atleast_1d(a)
+    return float(a[it] if a.size > 1 else a[0])
 
 
 def reduce_channels(val2d, err2d, R, Z, tarr, t0, t1, tag_prefix, average=True):
@@ -387,13 +403,26 @@ class MDSConnection:
 class MDSFetcher:
     """Per-shot MDSplus fetcher base (shares an MDSConnection across shots).
 
-    Subclasses set CONNECTION (their MDSConnection subclass) and DEFAULT_CACHE, and
-    implement `_assign_bare` (how a bare signal name resolves) and, if the machine's
-    time base is not ms, `_time` (converts a fetched time axis to ms).
+    Everything machine-independent lives here: signal fetch (server-side resampling,
+    disk cache, alias table), the EFIT equilibrium / g-file reader and the Thomson
+    window reduction. A machine subclass is mostly declarative (the class attributes
+    below) plus its own hooks: `_resolve_bare` (bare names not in SIGNALS),
+    `_thomson_arrays` (where its Thomson data lives) and machine-only diagnostics.
     """
 
     CONNECTION = MDSConnection
     DEFAULT_CACHE = __mitimroot__ / "tests" / "scratch" / "mds_fetcher"
+    TIME_TO_MS = 1.0          # stored time unit -> ms (C-Mod stores seconds: 1e3)
+    T_WINDOW = None           # default display window [ms] for overview()
+    T_REF = None              # default snapshot time [ms] when no analysis window is given
+    # bare name -> (spec, units, factor): units override the tree tag; factor multiplies the
+    # data client-side (after the cache), e.g. -1 to show a negatively stored Ip as positive.
+    SIGNALS = {}
+    # EFIT layout. g/a: G-/A-file node groups ({tree} is filled in). time_axis: python axis of
+    # time in the 2D (profile, time) arrays when unambiguous (0: (nt, n); -1: (n, nt)).
+    # a_scale: A-file node -> factor to m. no_xpoint: A-file X-point sentinel (x <= it -> NaN).
+    EFIT = dict(tree=None, g=None, a=None, time_axis=0, a_scale={}, no_xpoint=None)
+    TS_ALL = ()               # Thomson systems that system='all' expands to
 
     def __init__(self, shot: int, connection: MDSConnection | None = None,
                  max_points: int = 4000, use_cache: bool = True,
@@ -438,8 +467,8 @@ class MDSFetcher:
         return np.asarray(r)
 
     def _time(self, t):
-        """Machine time axis -> ms (identity: the stored time base is already ms)."""
-        return t
+        """Machine time axis -> ms (untouched when the stored time base is already ms)."""
+        return t if self.TIME_TO_MS == 1.0 else np.asarray(t, float) * self.TIME_TO_MS
 
     # ---- public fetch -------------------------------------------------------
     def fetch_signal(self, spec: str, label: str = "", name: str = "",
@@ -447,8 +476,19 @@ class MDSFetcher:
         """Fetch a signal spec as a Signal (value + time [ms] + units).
 
         Large traces are resampled on the server to <= max_points before
-        transfer. Results are cached to disk unless use_cache is False.
+        transfer. Results are cached to disk unless use_cache is False. A SIGNALS
+        alias gets its verified units and its display factor applied.
         """
+        sig = self._fetch_signal(spec, label, name, max_points)
+        alias = self.SIGNALS.get(spec.lower())
+        if alias is not None:
+            sig.units = alias[1]
+            if alias[2] != 1:
+                sig.data = np.asarray(sig.data) * alias[2]
+                sig.source = f"{sig.source} (x{alias[2]:g})"
+        return sig
+
+    def _fetch_signal(self, spec, label="", name="", max_points=None) -> Signal:
         mp = self.max_points if max_points is None else max_points
         name = name or spec
 
@@ -492,6 +532,22 @@ class MDSFetcher:
                 out[key] = None
         return out
 
+    def inventory(self, specs=None, t_window=None) -> dict:
+        """Found / not-found report: {name: row} for `specs` (default: every SIGNALS alias),
+        row = "n=<samples> t=[t0,t1]ms <mean in t_window><units>" or "MISSING (<reason>)"."""
+        rows = {}
+        for spec in (specs or self.SIGNALS):
+            try:
+                s = self.fetch_signal(spec)
+                row = f"n={s.data.size} t=[{s.time.min():.0f},{s.time.max():.0f}]ms"
+                if t_window is not None:
+                    m = (s.time >= t_window[0]) & (s.time <= t_window[1])
+                    row += f" <{np.nanmean(s.data[m]) if m.any() else np.nan:.3g}>{s.units}"
+                rows[spec] = row
+            except Exception as e:
+                rows[spec] = f"MISSING ({str(e)[:60]})"
+        return rows
+
     # ---- signal resolution --------------------------------------------------
     def _assign(self, spec: str) -> str:
         """Resolve `spec` and assign it to server-side `_s`; return provenance.
@@ -509,8 +565,13 @@ class MDSFetcher:
         return self._assign_bare(spec)
 
     def _assign_bare(self, spec: str) -> str:
-        raise ValueError(f"'{spec}' is not a <TREE>::<expr> spec and {type(self).__name__} "
-                         "has no bare-name resolution")
+        """A bare name: a SIGNALS alias, else the machine's own resolution (`_resolve_bare`)."""
+        alias = self.SIGNALS.get(spec.lower())
+        return self._assign(alias[0]) if alias is not None else self._resolve_bare(spec)
+
+    def _resolve_bare(self, spec: str) -> str:
+        raise ValueError(f"unknown signal '{spec}' for {type(self).__name__}: use one of "
+                         f"{sorted(self.SIGNALS)} or a '\\TREE::NODE' spec")
 
     def _server_reduce(self, max_points: int):
         """Resample `_s` on the server to <= max_points (only if it is larger).
@@ -615,6 +676,145 @@ class MDSFetcher:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             np.savez(path, data=data, units=np.array(units))
         return data, units
+
+    # ---- EFIT equilibrium (2D, one time slice) ------------------------------
+    def _efit_slice(self, time: float, tree: str):
+        """Raw G-file quantities of the EFIT slice nearest `time` [ms] (SI: m, Wb/rad).
+
+        CRITICAL: mdsthin returns arrays with the dimension order REVERSED vs the server,
+        so the time index is applied to FULL python arrays (`arr[it]`), NEVER as a server-side
+        `[it]` subscript — the latter silently returns a DIFFERENT time slice. PSIRZ is
+        (nt, nz, nr) on every machine; the 2D (profile, time) arrays use EFIT['time_axis'].
+        """
+        G = self.EFIT["g"].format(tree=tree)
+        self.conn.openTree(tree, self.shot)
+        gtime = self._time(np.atleast_1d(self._value(f"{G}:GTIME")).astype(float))
+        it = int(np.argmin(np.abs(gtime - time)))
+        v = lambda n: np.asarray(self._value(f"{G}:{n}"), float)
+        at = lambda n: _at_time(v(n), it, gtime.size, self.EFIT["time_axis"])
+        sc = lambda n: _scalar_at(v(n), it)
+
+        psi = v("PSIRZ")[it]
+        d0 = np.atleast_1d(self._value(f"dim_of({G}:PSIRZ,0)")).astype(float)
+        d1 = np.atleast_1d(self._value(f"dim_of({G}:PSIRZ,1)")).astype(float)
+        rgrid, zgrid = (d0, d1) if d1.min() < d0.min() else (d1, d0)   # R all-positive; Z spans < 0
+        simag, sibry, rax, zax = sc("SSIMAG"), sc("SSIBRY"), sc("RMAXIS"), sc("ZMAXIS")
+        nb = int(np.atleast_1d(self._value(f"{G}:NBBBS"))[it])
+        lim = v("LIM")                                     # vessel/limiter (R,Z) points
+        rl, zl = (lim[0], lim[1]) if lim.shape[0] == 2 else (lim[:, 0], lim[:, 1])
+        return dict(G=G, it=it, t_act=float(gtime[it]), rgrid=rgrid, zgrid=zgrid,
+                    psi=orient_psi(psi, rgrid, zgrid, simag, sibry, rax, zax),   # -> [nz, nr]
+                    simag=simag, sibry=sibry, rax=rax, zax=zax,
+                    rb=at("RBBBS")[:nb], zb=at("ZBBBS")[:nb], qpsi=at("QPSI"),
+                    rlim=rl, zlim=zl, at=at, sc=sc)
+
+    def fetch_equilibrium(self, time: float, tree: str | None = None) -> EquilibriumData:
+        """EFIT flux-surface snapshot nearest `time` [ms] from `tree` (default EFIT['tree']).
+
+        Returns normalized ψ on the R,Z grid plus the LCFS, magnetic axis, vessel and the
+        A-file X-points/strike points [m] (converted per EFIT['a_scale'], sentinel ->
+        NaN per EFIT['no_xpoint']). Cached on disk.
+        """
+        tree = tree or self.EFIT["tree"]
+        cached = self._eq_cache_load(tree, time)
+        if cached is not None:
+            self.n_from_cache += 1
+            print(f"Using cached equilibrium for tree {tree} at time {time}")
+            return cached
+
+        self.n_from_server += 1
+        s = self._efit_slice(time, tree)
+        psiN = (s["psi"] - s["simag"]) / (s["sibry"] - s["simag"])
+
+        # A-file X-points (RXPT1/2) and divertor strike points (RVS*/ZVS*), indexed with
+        # the A-file's own time base (python full array).
+        A = self.EFIT["a"].format(tree=tree)
+        try:
+            atime = self._time(np.atleast_1d(self._value(f"{A}:ATIME")).astype(float))
+            ita = int(np.argmin(np.abs(atime - time)))
+        except Exception:
+            ita = s["it"]
+
+        def asc(node):
+            try:
+                x = float(np.ravel(self._value(f"{A}:{node}"))[ita])
+            except Exception:
+                return float("nan")
+            if self.EFIT["no_xpoint"] is not None and x <= self.EFIT["no_xpoint"]:
+                return float("nan")
+            return x * self.EFIT["a_scale"].get(node, 1.0)
+
+        ed = EquilibriumData(
+            self.shot, tree, s["t_act"], s["rgrid"], s["zgrid"], psiN, s["rb"], s["zb"],
+            s["rax"], s["zax"], s["rlim"], s["zlim"],
+            asc("RXPT1"), asc("ZXPT1"), asc("RXPT2"), asc("ZXPT2"),
+            asc("RVSIN"), asc("ZVSIN"), asc("RVSOUT"), asc("ZVSOUT"), s["qpsi"])
+        self._eq_cache_save(tree, time, ed)
+        return ed
+
+    def fetch_geqdsk(self, time: float, tree: str | None = None, path=None) -> Path:
+        """Write a standard GEQDSK (g-file) for the EFIT slice nearest `time` [ms].
+
+        Reads the G-file node group (ψ(R,Z), the 1D fpol/pres/ffprim/pprime/q profiles, the
+        scalars, boundary and limiter) and writes a self-contained g-file in SI units with the
+        signs as stored, readable by `gs_tools.GEQtools` / megpy / OMFIT. Returns the path.
+        """
+        tree = tree or self.EFIT["tree"]
+        s = self._efit_slice(time, tree)
+        at, sc = s["at"], s["sc"]
+        data = dict(case=f"EFIT {tree} #{self.shot} {s['t_act']:.0f}ms",
+                    nw=s["rgrid"].size, nh=s["zgrid"].size,
+                    rdim=sc("XDIM"), zdim=sc("ZDIM"), rcentr=sc("RZERO"), rleft=float(s["rgrid"].min()),
+                    zmid=sc("ZMID"), rmaxis=s["rax"], zmaxis=s["zax"], simag=s["simag"], sibry=s["sibry"],
+                    bcentr=sc("BCENTR"), current=sc("CPASMA"), psirz=s["psi"],
+                    fpol=at("FPOL"), pres=at("PRES"), ffprime=at("FFPRIM"),
+                    pprime=at("PPRIME"), qpsi=s["qpsi"], rbbbs=s["rb"], zbbbs=s["zb"],
+                    rlim=np.asarray(s["rlim"], float), zlim=np.asarray(s["zlim"], float))
+        path = Path(path) if path is not None else (self.cache_dir / f"g{self.shot}.{int(round(s['t_act'])):05d}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return _write_geqdsk(path, data)
+
+    # ---- Thomson-scattering profile (Te / ne vs R,Z at one time) ------------
+    def _thomson_arrays(self, system: str, q: str):
+        """Machine hook: (value2d, error2d, R, Z, time [ms], units) of Thomson `system` for
+        q='te'|'ne', value/error over (channel, time) with 0 = no measurement."""
+        raise NotImplementedError(f"{type(self).__name__} has no Thomson scattering")
+
+    def fetch_thomson_profile(self, time: float, quantity: str = "te", system="core",
+                              window: float = 100.0, t_window=None,
+                              average: bool = True) -> ChannelProfile:
+        """Thomson-scattering profile: Te or ne vs (R, Z) per channel, time-averaged.
+
+        Averages over [time-window, time+window] — or the explicit `t_window=(t0,t1)` if
+        given — and drops channels with no valid (>0) sample; the error bar is the stored
+        measurement error averaged over the window. `system` is one view, a list of views, or
+        'all' (= TS_ALL); channels are tagged '<first letter of the view><index>'. Points
+        sorted by R. With `average=False` every time sample in the window is kept (scatter,
+        error=None). Where each view's data lives: the machine's `_thomson_arrays`.
+        """
+        systems = (list(self.TS_ALL) if system == "all"
+                   else [system] if isinstance(system, str) else list(system))
+        q = "te" if quantity.lower() in ("te", "temp") else "ne"
+        t0, t1 = t_window if t_window is not None else (time - window, time + window)
+        Rs, Zs, Vs, Es, Tg, units = [], [], [], [], [], ""
+        for sysname in systems:
+            try:                                  # a TS view can be absent on a given shot
+                val2d, err2d, R, Z, tarr, units = self._thomson_arrays(sysname, q)
+            except Exception as e:
+                print(f"  ! TS {sysname} unavailable for #{self.shot}: {str(e)[:45]}")
+                continue
+            pts = reduce_channels(val2d, err2d, R, Z, tarr, t0, t1, sysname[0].upper(), average)
+            if average or pts[0].size:
+                for acc, a in zip((Rs, Zs, Vs, Es, Tg), pts):
+                    acc.append(a)
+        empty = np.array([])
+        R, Z, V, E, Tg = (np.concatenate(a) if a else empty for a in (Rs, Zs, Vs, Es, Tg))
+        order = np.argsort(R)
+        return ChannelProfile(self.shot, 0.5 * (t0 + t1),
+                              f"{'+'.join(systems)}.{'temp' if q == 'te' else 'density'}",
+                              np.arange(R.size)[order], R[order], Z[order], V[order], units,
+                              label=f"TS {'+'.join(systems)} {quantity}", tag=Tg[order],
+                              error=(E[order] if average else None))
 
     # ---- equilibrium disk cache ---------------------------------------------
     def _eq_cache_path(self, tree: str, time: float) -> Path:
