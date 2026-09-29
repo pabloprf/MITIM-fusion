@@ -1022,9 +1022,17 @@ class mitim_job:
         print(f'\t* Creating{" remote" if self.ssh is not None else ""} folder:')
         print(f"\t\t{self.folderExecution}")
 
-        command = f"mkdir -p {self.folderExecution}"
+        # Success is read from a stdout marker, not from stderr (a bashrc may print there on every command).
+        # A failed mkdir (e.g. "Disk quota exceeded") otherwise only surfaces later as a bare sftp FileNotFoundError.
+        command = f"mkdir -p {self.folderExecution} && echo MITIM_MKDIR_OK"
 
         output, error = self.execute(command)
+
+        if output is None:
+            raise RuntimeError(f"[MITIM] No response while creating the{' remote' if self.ssh is not None else ''} scratch folder {self.folderExecution} (command timed out)")
+        if b"MITIM_MKDIR_OK" not in output:
+            stderr = (error or b"").decode(errors="replace").strip()
+            raise RuntimeError(f"[MITIM] Could not create the{' remote' if self.ssh is not None else ''} scratch folder {self.folderExecution}: {stderr or '<no stderr>'}")
 
         return output, error
 
