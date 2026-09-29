@@ -142,6 +142,15 @@ def read_harvest_file():
     s = load_settings()
     return s["preferences"].get("harvest_file", None)
 
+def read_mdsplus_access(machine):
+    '''top-level "mdsplus": {<machine>: {"tunnel_host", "mds_server"}} block (experiment_tools.MDStools);
+    {} when not configured or when there is no config file (MDSplus access does not need one)'''
+    try:
+        s = load_settings()
+    except FileNotFoundError:
+        return {}
+    return (s.get("mdsplus") or {}).get(machine) or {}
+
 def read_dpi():
     s = load_settings()
     if "dpi_notebook" in s["preferences"]:
