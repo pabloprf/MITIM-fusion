@@ -64,6 +64,8 @@ def compute_box_and_nradial(
     L_x=90.0,
     N_radial=256,
     min_box_size=100,
+    fft_friendly=True,
+    fft_tol=0.06,
 ):
     """
     Pick CGYRO BOX_SIZE and N_RADIAL from local equilibrium quantities.
@@ -76,6 +78,10 @@ def compute_box_and_nradial(
     rmin is r/a (i.e., the CGYRO RMIN parameter), ky_min is the CGYRO KY
     parameter (k_theta * rho_s at the surface). Returns (BOX_SIZE, N_RADIAL)
     as Python ints.
+
+    fft_friendly: move the pair to the nearest one whose radial FFT length is fast
+    (see fft_friendly_grid); fft_tol is the largest relative change allowed in box
+    length and in kx_max.
     """
 
     # Only the magnitude of the magnetic shear sets the box-length scale:
@@ -115,7 +121,63 @@ def compute_box_and_nradial(
         r_test += 1
     n_radial_out = int(r_test * box_size)
 
+    if fft_friendly:
+        box_size, n_radial_out = fft_friendly_grid(box_size, n_radial_out, tol=fft_tol)
+
     return int(box_size), n_radial_out
+
+
+def _is_smooth(n, max_prime=7):
+    for p in (2, 3, 5, 7):
+        if p > max_prime:
+            break
+        while n % p == 0:
+            n //= p
+    return n == 1
+
+
+def fft_friendly_grid(box_size, n_radial, tol=0.06, max_prime=7):
+    """
+    Nearest (BOX_SIZE, N_RADIAL) to the given pair whose nonlinear radial FFT length is fast.
+
+    CGYRO's radial FFT has 3*N_RADIAL/2 points and CGYRO flags any prime factor above 7
+    ("WARNING: large prime factor" in out.cgyro.info). Such lengths cost ~20% more per radius on
+    GPUs (cuFFT). Because N_RADIAL is a multiple of BOX_SIZE, a BOX_SIZE with a large prime
+    (31, 38=2*19, ...) can only be fixed by moving BOX_SIZE itself.
+
+    Candidates keep N_RADIAL even and a multiple of BOX_SIZE, and change the box length
+    (L_x/rho_s = BOX_SIZE/(KY*|s|), so proportional to BOX_SIZE) and kx_max (proportional to
+    (N_RADIAL/2-1)/BOX_SIZE) by at most `tol` each. The pair with the smallest worst-case change
+    wins; ties go to the smaller N_RADIAL, then to more factors of 2. A pair that is already fast,
+    or has no candidate within `tol`, is returned unchanged.
+    """
+    box_size, n_radial = int(box_size), int(n_radial)
+    if n_radial % 2 == 0 and _is_smooth(3 * n_radial // 2, max_prime):
+        return box_size, n_radial
+
+    kx0 = (n_radial / 2 - 1) / box_size
+    best = None
+    for b in range(max(1, math.floor(box_size * (1 - tol))), math.ceil(box_size * (1 + tol)) + 1):
+        for n in range(b, 2 * n_radial + 1, b):
+            if n % 2 or not _is_smooth(3 * n // 2, max_prime):
+                continue
+            dev = round(max(abs(b / box_size - 1), abs(((n / 2 - 1) / b) / kx0 - 1)), 9)
+            if dev > tol:
+                continue
+            key = (dev, n, -(n & -n))
+            if best is None or key < best[0]:
+                best = (key, b, n)
+
+    if best is None:
+        print(f"\t\t* BOX_SIZE={box_size} N_RADIAL={n_radial}: radial FFT length {3 * n_radial // 2} has a prime "
+              f"factor > {max_prime} and no fast grid lies within {tol:.0%} in box length and kx_max; kept", typeMsg="w")
+        return box_size, n_radial
+
+    _, b, n = best
+    print(f"\t\t* FFT-friendly grid: BOX_SIZE {box_size} -> {b}, N_RADIAL {n_radial} -> {n} "
+          f"(radial FFT {3 * n_radial // 2} -> {3 * n // 2}; box length {b / box_size - 1:+.1%}, "
+          f"kx_max {((n / 2 - 1) / b) / kx0 - 1:+.1%})", typeMsg="i")
+    return b, n
 
 
 class CGYROlinear_scan:

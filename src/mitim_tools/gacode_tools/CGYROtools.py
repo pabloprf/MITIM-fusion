@@ -1710,7 +1710,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         (along with KY=ky_min) into a copy of extraOptions as per-rho arrays.
         """
 
-        allowed_keys = {'ky_min', 'L_x', 'N_radial', 'min_box_size'}
+        allowed_keys = {'ky_min', 'L_x', 'N_radial', 'min_box_size', 'fft_friendly', 'fft_tol'}
         opts = dict(self._preprocess_options) if self._preprocess_options else {}
         unknown = set(opts) - allowed_keys
         if unknown:
@@ -1722,6 +1722,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         L_x           = opts.get('L_x', 90.0)
         N_radial      = opts.get('N_radial', 256)
         min_box_size  = opts.get('min_box_size', 100)
+        fft_friendly  = opts.get('fft_friendly', True)
+        fft_tol       = opts.get('fft_tol', 0.06)
 
         extraOptions = copy.deepcopy(extraOptions)
 
@@ -1757,6 +1759,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 L_x=L_x,
                 N_radial=N_radial,
                 min_box_size=min_box_size,
+                fft_friendly=fft_friendly,
+                fft_tol=fft_tol,
             )
 
             print(
