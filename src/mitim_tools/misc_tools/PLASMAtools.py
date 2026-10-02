@@ -1290,7 +1290,8 @@ def calculateKappaLimit_interpolated(epsilon, delta, inductance, betap, feedback
     Feedback is  highly machine, and triangularity dependent. Generally feedback increases with triangularity. The value of this parameter
     represents a decision about the capability of the vertical instability constrol system. Adjusting this would be a good place to start 
     if trying to match higher fidelity results. For the machiens in the paper, these vary between 1.0 and 3.25. 
-    The paper gives an expression for delta = 0, delta = 0.33, delta = 0.50, and delta = 0.70 so the thresholds are put these in the middle of their respective ranges.
+    The paper gives an expression for delta = 0, delta = 0.33, delta = 0.50, and delta = 0.70 so an interpolation is used. 
+    This function is only valid for positive triangularity values.
     """
     k0, k1 = 0, 0
 
@@ -1378,7 +1379,7 @@ def calculateKappaLimit_interpolated(epsilon, delta, inductance, betap, feedback
         k0 = k0_low + (k0_high - k0_low) * ((delta - 0.50) / (0.70 - 0.50))
         k1 = k1_low + (k1_high - k1_low) * ((delta - 0.50) / (0.70 - 0.50))
 
-    if delta >= 0.7:
+    elif delta >= 0.7:
         k0 = 1.0 + 0.63 * (inductance ** (1.2)) * (feedback) ** 1.14 * (
             1 + wallrad
         ) ** (-6.67)
