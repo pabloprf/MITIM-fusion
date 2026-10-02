@@ -538,3 +538,157 @@ def plot_profiles(data):
     
     plt.tight_layout()
     plt.show()
+
+# ************************************************************************************************************************************************
+# input.gacode -> VMEC++ input
+# ************************************************************************************************************************************************
+
+VMECPP_NDFMAX = 101  # VMEC++ limit on spline knots per profile (am_aux_*, ai_aux_*, ac_aux_*)
+
+def _mxh_moments(profiles):
+    '''
+    MXH moments of a gacode_state on its radial grid, in the GEQtools.from_mxh_to_RZ convention:
+        cn = [shape_cos0 (tilt), shape_cos1, ...]
+        sn = [0, arcsin(delta), -zeta, shape_sin3, ...]
+    Every shape_cos{n}/shape_sin{n} present is used (the order is not fixed at 6).
+    '''
+    P = profiles.profiles
+    zeros = np.zeros(P["rho(-)"].size)
+
+    n_max = 2
+    while f"shape_cos{n_max + 1}(-)" in P or f"shape_sin{n_max + 1}(-)" in P:
+        n_max += 1
+
+    cn = np.column_stack([P.get(f"shape_cos{n}(-)", zeros) for n in range(n_max + 1)])
+    sn = np.column_stack(
+        [zeros, np.arcsin(P["delta(-)"]), -P.get("zeta(-)", zeros)]
+        + [P.get(f"shape_sin{n}(-)", zeros) for n in range(3, n_max + 1)]
+    )
+
+    return P["rmaj(m)"], P["rmin(m)"], P["kappa(-)"], P.get("zmag(m)", zeros), cn, sn
+
+def gacode_to_vmec_input(
+    profiles,
+    mpol = 16,
+    ns_array = (25, 51, 101, 201),
+    ftol_array = None,
+    niter = 20000,
+    lasym = True,
+    n_theta = 2048,
+    n_knots = VMECPP_NDFMAX,
+    ):
+    '''
+    Fixed-boundary, iota-driven (ncurr = 0) vmecpp.VmecInput from a gacode_state
+    (PROFILEStools.gacode_state). Everything comes straight from the state (no EQDSK, F or psi):
+
+        boundary rbc/zbs (+rbs/zbc)     Fourier series of the rho = 1 MXH surface in the MXH angle
+                                        (spectrally fast: for a strongly shaped boundary the tail
+                                        beyond m = 16 is ~2e-7 m, while an equal-arclength angle
+                                        still leaves ~6 cm)
+        pressure                        ptot(Pa) on s = rho^2       (akima spline)
+        iota                            1/q(-)   on s = rho^2       (akima spline)
+        phiedge                         2*pi*torfluxa(Wb/radian)
+
+    rho(-) is sqrt(normalized toroidal flux), i.e. exactly VMEC's s = rho^2, so no radial remapping
+    is needed. Profiles are resampled uniformly in rho onto n_knots (VMEC++ accepts at most 101).
+    |q| and |torfluxa| are used, so VMEC's own sign convention applies to the output (e.g. ctor < 0).
+
+    Notes:
+        - VMEC's radial grid is uniform in s, so the first radial cell spans rho < 1/sqrt(ns-1).
+          q structure inside it (e.g. a steep on-axis dip) is not resolved; raise ns if it matters.
+        - Save the input with .save(path) (VMEC++ JSON), runnable as "python -m vmecpp <path>".
+
+    Inputs:
+        profiles:       PROFILEStools.gacode_state
+        mpol:           poloidal modes m = 0..mpol-1 for both the boundary and the solution
+        ns_array:       VMEC multigrid radial resolutions
+        ftol_array:     force tolerance per ns_array entry (default: logspace 1e-10 .. 1e-14)
+        niter:          max iterations per multigrid step
+        lasym:          keep the up-down asymmetric terms (rbs, zbc, axis Z offset)
+        n_theta:        uniform MXH-angle samples for the boundary Fourier transform
+        n_knots:        profile spline knots (<= 101)
+    '''
+
+    import vmecpp
+    from mitim_tools.gs_tools import GEQtools
+    from scipy.interpolate import PchipInterpolator
+
+    P = profiles.profiles
+
+    if n_knots > VMECPP_NDFMAX:
+        raise ValueError(f"VMEC++ accepts at most {VMECPP_NDFMAX} profile knots, got {n_knots}")
+    for key in ("q(-)", "ptot(Pa)", "torfluxa(Wb/radian)"):
+        if key not in P:
+            raise KeyError(f"gacode state has no '{key}', required for the VMEC input")
+    if ftol_array is None:
+        ftol_array = np.logspace(-10, -14, len(ns_array))
+    if len(ftol_array) != len(ns_array):
+        raise ValueError("ftol_array needs one entry per ns_array entry")
+
+    # ---------------------------------------------------------------------------------------------
+    # Boundary: Fourier series of the rho = 1 MXH surface in the MXH angle
+    #   (Z = Z0 + kappa*a*sin(theta) is counter-clockwise, so zbs[1] > 0 as VMEC expects)
+    # ---------------------------------------------------------------------------------------------
+
+    R0, a, kappa, Z0, cn, sn = _mxh_moments(profiles)
+
+    thetas = 2 * np.pi * np.arange(n_theta) / n_theta
+    Rb, Zb = GEQtools.from_mxh_to_RZ(R0[-1:], a[-1:], kappa[-1:], Z0[-1:], cn[-1:], sn[-1:], thetas=thetas)
+
+    cR, cZ = np.fft.rfft(Rb[0]) / n_theta, np.fft.rfft(Zb[0]) / n_theta
+    scale = np.where(np.arange(mpol) == 0, 1.0, 2.0)
+    rbc, rbs = scale * cR[:mpol].real, -scale * cR[:mpol].imag
+    zbc, zbs = scale * cZ[:mpol].real, -scale * cZ[:mpol].imag
+    rbs[0] = zbs[0] = 0.0
+
+    tail = 2 * np.sum(np.abs(cR[mpol:]) + np.abs(cZ[mpol:]))
+    if tail > 1e-4:
+        print(f"\t- Boundary Fourier tail beyond m = {mpol - 1} is {tail:.1e} m, consider a larger mpol", typeMsg='w')
+
+    # ---------------------------------------------------------------------------------------------
+    # Profiles: n_knots uniform in rho, handed to VMEC in s = rho^2
+    # ---------------------------------------------------------------------------------------------
+
+    rho = P["rho(-)"]
+    rho_k = np.linspace(0.0, 1.0, n_knots)
+    s_k = rho_k**2
+    p_k = np.maximum(PchipInterpolator(rho, P["ptot(Pa)"])(rho_k), 0.0)
+    q_k = PchipInterpolator(rho, np.abs(P["q(-)"]))(rho_k)
+
+    # ---------------------------------------------------------------------------------------------
+    # VMEC++ input
+    # ---------------------------------------------------------------------------------------------
+
+    col = lambda v: np.asarray(v, dtype=float).reshape(mpol, 1)  # (mpol, 2*ntor+1) with ntor = 0
+
+    kw = dict(
+        lasym=lasym,
+        nfp=1,
+        mpol=mpol,
+        ntor=0,
+        ns_array=np.asarray(ns_array, dtype=int),
+        ftol_array=np.asarray(ftol_array, dtype=float),
+        niter_array=np.full(len(ns_array), niter, dtype=int),
+        phiedge=2 * np.pi * abs(float(np.atleast_1d(P["torfluxa(Wb/radian)"])[0])),
+        ncurr=0,
+        pmass_type="akima_spline",
+        am=np.zeros(1),
+        am_aux_s=s_k,
+        am_aux_f=p_k,
+        pres_scale=1.0,
+        gamma=0.0,
+        piota_type="akima_spline",
+        ai=np.zeros(1),
+        ai_aux_s=s_k,
+        ai_aux_f=1.0 / q_k,
+        raxis_c=np.array([R0[0]]),
+        zaxis_s=np.zeros(1),
+        rbc=col(rbc),
+        zbs=col(zbs),
+    )
+    if lasym:
+        kw.update(raxis_s=np.zeros(1), zaxis_c=np.array([Z0[0]]), rbs=col(rbs), zbc=col(zbc))
+
+    print(f"\t- VMEC++ input from input.gacode: mpol = {mpol}, ns = {list(ns_array)}, lasym = {lasym}, phiedge = {kw['phiedge']:.4f} Wb")
+
+    return vmecpp.VmecInput(**kw)
