@@ -1280,6 +1280,122 @@ def calculateKappaLimit(epsilon, delta, inductance, betap, feedback=2.25, wallra
     return kmax
 
 
+
+
+def calculateKappaLimit_interpolated(epsilon, delta, inductance, betap, feedback=2.25, wallrad=0.1):
+    """
+    Equation is from Lee et al., NF, 2017
+    Wallrad (or DELTA_0 in the paper) is the outer gap between the plasma and the wall normalized by minor radius. (b/a = 1 + DELTA_0). 
+    This seems to be between ~0.05 and ~0.2 in present day experiments, so 0.1 is a good baseline.
+    Feedback is  highly machine, and triangularity dependent. Generally feedback increases with triangularity. The value of this parameter
+    represents a decision about the capability of the vertical instability constrol system. Adjusting this would be a good place to start 
+    if trying to match higher fidelity results. For the machiens in the paper, these vary between 1.0 and 3.25. 
+    The paper gives an expression for delta = 0, delta = 0.33, delta = 0.50, and delta = 0.70 so the thresholds are put these in the middle of their respective ranges.
+    """
+    k0, k1 = 0, 0
+
+    if delta < 0.33:
+        k0_low = 1.0 + 0.54 * (inductance ** (-0.68)) * (feedback) ** 0.62 * (
+            1 + wallrad
+        ) ** (-3.52)
+        k1_low = (
+            0.04
+            * (inductance) ** (-6.98)
+            * (betap) ** (-2.67)
+            * (feedback) ** (-1.47)
+            * (1 + wallrad) ** (1.84)
+        )
+
+        k0_high = 1.0 + 0.54 * (inductance ** (-0.47)) * (feedback) ** 0.71 * (
+            1 + wallrad
+        ) ** (-4.0)
+        k1_high = (
+            0.35
+            * (inductance) ** (-1.42)
+            * (betap) ** (-0.04)
+            * (feedback) ** (-0.27)
+            * (1 + wallrad) ** (0.42)
+        )
+
+        # weighted average between low and high based on delta (k0 is true for delta = 0, k1 is true for delta = 0.33)
+        k0 = k0_low + (k0_high - k0_low) * (delta / 0.33)
+        k1 = k1_low + (k1_high - k1_low) * (delta / 0.33)
+
+    elif delta < 0.50:
+        
+         
+        k0_low = 1.0 + 0.54 * (inductance ** (-0.47)) * (feedback) ** 0.71 * (
+            1 + wallrad
+        ) ** (-4.0)
+        k1_low = (
+            0.35
+            * (inductance) ** (-1.42)
+            * (betap) ** (-0.04)
+            * (feedback) ** (-0.27)
+            * (1 + wallrad) ** (0.42)
+        )
+
+        k0_high = 1.0 + 0.55 * (inductance ** (-0.08)) * (feedback) ** 0.82 * (
+            1 + wallrad
+        ) ** (-4.74)
+        k1_high = (
+            0.41
+            * (inductance) ** (-1.21)
+            * (betap) ** (0.06)
+            * (feedback) ** (-0.18)
+            * (1 + wallrad) ** (0.68)
+        )
+
+        # weighted average between low and high based on delta (k0 is true for delta = 0.33, k1 is true for delta = 0.50)
+        k0 = k0_low + (k0_high - k0_low) * ((delta - 0.33) / (0.50 - 0.33))
+        k1 = k1_low + (k1_high - k1_low) * ((delta - 0.33) / (0.50 - 0.33))
+
+    elif delta < 0.70: 
+
+        k0_low = 1.0 + 0.55 * (inductance ** (-0.08)) * (feedback) ** 0.82 * (
+            1 + wallrad
+        ) ** (-4.74)
+        k1_low = (
+            0.41
+            * (inductance) ** (-1.21)
+            * (betap) ** (0.06)
+            * (feedback) ** (-0.18)
+            * (1 + wallrad) ** (0.68)
+        )
+
+        k0_high = 1.0 + 0.63 * (inductance ** (1.2)) * (feedback) ** 1.14 * (
+            1 + wallrad
+        ) ** (-6.67)
+        k1_high = (
+            0.52
+            * (inductance) ** (-2.00)
+            * (betap) ** (0.17)
+            * (feedback) ** (-0.5)
+            * (1 + wallrad) ** (2.32)
+        )
+
+        # weighted average between low and high based on delta (k0 is true for delta = 0.50, k1 is true for delta = 0.70)
+        k0 = k0_low + (k0_high - k0_low) * ((delta - 0.50) / (0.70 - 0.50))
+        k1 = k1_low + (k1_high - k1_low) * ((delta - 0.50) / (0.70 - 0.50))
+
+    if delta >= 0.7:
+        k0 = 1.0 + 0.63 * (inductance ** (1.2)) * (feedback) ** 1.14 * (
+            1 + wallrad
+        ) ** (-6.67)
+        k1 = (
+            0.52
+            * (inductance) ** (-2.00)
+            * (betap) ** (0.17)
+            * (feedback) ** (-0.5)
+            * (1 + wallrad) ** (2.32)
+        )
+
+    kmax = k0 + k1 * ((2 * epsilon) / (1 + epsilon**2)) ** 2
+
+    return kmax
+
+
+
 def calculateHeatFluxWidth_Brunner(press_atm):
     return 0.91 * (press_atm) ** (-0.48)  # mm
 
