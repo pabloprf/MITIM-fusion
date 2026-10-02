@@ -255,6 +255,13 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **Batch runs survive SLURM step refusals instead of dying at a prompt**: inside an allocation, a dispatch whose
+    srun was refused ("Unable to create step ... Job/step already completing or completed", seen on Perlmutter for the
+    NEO call of PORTALS-CGYRO chain links) is re-run after 60/120/240 s, with `scontrol show job`/`squeue -s` logged to
+    `mitim_slurm_snapshot.txt` and the driver log; if outputs are still missing, a non-interactive run raises a clear
+    `MissingOutputsError` instead of the "Not all expected files received" prompt, and the outer repeat no longer re-sends
+    output-only folders (the cause of `FileNotFoundError: input.neo`).
+
 *   🐛 **C-Mod TRANSP/MAESTRO paths import again off the PSFC workstations**: `CMODtools` imported `eqtools` from a hardcoded workstation path at module load, so the C-Mod branches of `NMLtools` (namelist structures, ICRF antennas), `TRANSPbeat` and `TRANSPhelpers` failed with `ModuleNotFoundError` anywhere else. The workstation-only retrieval (MDSplus trees, IDL, scrunch2) and its scripts are removed; `getTRANSP_MDS` now reads TRANSP runs through `CMODConnection`.
 
 *   🐛 **PORTALS-CGYRO submission robustness fixes** (found by a code audit of the reattach / stall-rescue /
