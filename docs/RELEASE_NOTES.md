@@ -24,6 +24,12 @@ DESCRIPTION
     physics or grids and never deletes data, and it writes one line per action to `Outputs/agent_actions.log`.
     For a watch lasting days: `claude --bg --agent portals-cgyro "Watch <run folder> on <ssh alias>"`.
 
+*   💥 **Opt-in pruning of CGYRO restart files once a PORTALS run converges.** New namelist knob
+    `transport.options.cgyro.prune_restarts_at_convergence` (default `false`): when the run stops on a
+    convergence criterion, the restart files of every evaluation except the result one are deleted
+    (outputs, traces and harvest records are untouched). `mitim_prune_portals <folder> [--apply]
+    [--keep best|last] [--force]` does the same on a finished run, dry-run by default.
+
 *   💥 **Live view of the CGYRO evaluation still running, in `mitim_plot_portals --complete`.** A new
     "CGYRO live" tab reads the in-progress outputs of the evaluation in flight and plots one column per
     radius: Qe/Qi/Ge traces with the run's own averaging window (mean +/- sigma) and turbulence-only
