@@ -180,6 +180,20 @@ def fft_friendly_grid(box_size, n_radial, tol=0.06, max_prime=7):
     return b, n
 
 
+def self_connected_modes(box_size, n_radial, n_toroidal):
+    """
+    Toroidal mode indices n in 1..N_TOROIDAL-1 (ky = n*KY) that connect to themselves after one poloidal turn.
+
+    At the ends of the field line CGYRO connects radial index ir to ir +- n*BOX_SIZE modulo N_RADIAL
+    (cgyro_rhs.F90: itorbox = itor*box_size*sign_qs, modulo(ir +- itorbox - 1, n_radial)). Mode n therefore
+    visits N_RADIAL / gcd(N_RADIAL, n*BOX_SIZE) radial indices, one per poloidal turn; when that count is 1
+    its parallel domain is a single turn that closes on itself. With N_RADIAL = r*BOX_SIZE the count is
+    r / gcd(r, n), so no simulated mode closes on itself once r >= N_TOROIDAL.
+    """
+    box_size, n_radial = int(box_size), int(n_radial)
+    return [n for n in range(1, int(n_toroidal)) if n_radial // math.gcd(n_radial, n * box_size) == 1]
+
+
 class CGYROlinear_scan:
     def __init__(self, labels, results, irho = 0):   
 

@@ -1448,6 +1448,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             )
             return extraOptions
 
+        self._warn_self_connected_modes(resolved, n_tor_list)
+
         # CGYRO aborts at startup unless the MPI rank count (= resources_per_call) is a
         # multiple of the number of toroidal groups, N_TOROIDAL/TOROIDALS_PER_PROC (which
         # also requires TOROIDALS_PER_PROC to divide N_TOROIDAL). The smallest valid
@@ -1589,6 +1591,32 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             extraOptions['TOROIDALS_PER_PROC'] = coerced
 
         return extraOptions
+
+    def _warn_self_connected_modes(self, resolved, n_tor_list):
+        """
+        Nonlinear multi-mode runs: warn, per radius, when a simulated toroidal mode connects to itself after
+        one poloidal turn (CGYROutils.self_connected_modes) on the BOX_SIZE / N_RADIAL / N_TOROIDAL that will
+        be written (preprocessing result or values set by hand in extraOptions). Changes nothing.
+        """
+        box_list, _ = resolved.as_list('BOX_SIZE', cast=int)
+        nr_list, _ = resolved.as_list('N_RADIAL', cast=int)
+        if box_list is None or nr_list is None or int(resolved.get('NONLINEAR_FLAG', 0)) != 1:
+            return
+        n_rho = max(len(self.rhos), len(box_list), len(nr_list), len(n_tor_list))
+        grids = zip(*(resolved.broadcast(v, n_rho) for v in (box_list, nr_list, n_tor_list)))
+        for i, (box, nr, nt) in enumerate(grids):
+            closed = CGYROutils.self_connected_modes(box, nr, nt)
+            if not closed:
+                continue
+            where = f"rho={self.rhos[i]:.4f}" if len(self.rhos) == n_rho else f"radius #{i}"
+            print(
+                f"\t- [preprocess] {where}: BOX_SIZE={box} and N_RADIAL={nr} (N_RADIAL/BOX_SIZE={nr / box:g}) make toroidal "
+                f"mode(s) n={closed} of N_TOROIDAL={nt} (ky = n*KY) connect to themselves after one poloidal turn (CGYRO "
+                f"links radial index ir to ir +- n*BOX_SIZE modulo N_RADIAL at the ends of the field line), so the flux of "
+                f"those modes can be set by the grid and not by the plasma. No simulated mode closes on itself once "
+                f"N_RADIAL/BOX_SIZE >= N_TOROIDAL.",
+                typeMsg="w",
+            )
 
     def _enforce_print_step(self, extraOptions, code_settings=None):
         """
