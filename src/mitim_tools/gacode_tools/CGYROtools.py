@@ -1345,11 +1345,13 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # Pre-process BOX_SIZE / N_RADIAL from local equilibrium if requested.
         # Model yaml (input.cgyro.models.yaml) can supply per-model defaults;
         # user-supplied self._preprocess_options override on a per-key basis.
+        # fft_friendly / fft_tol only tune the preprocessing: alone they do not switch it on
+        # (a model without preprocess_options, e.g. "Linear", keeps its KY / BOX_SIZE / N_RADIAL).
         from mitim_tools.gacode_tools.utils import GACODEdefaults
         model_preprocess = GACODEdefaults.getCGYROpreprocessDefaults(kwargs.get("code_settings"))
         user_preprocess = getattr(self, "_preprocess_options", None) or {}
         merged_preprocess = {**model_preprocess, **user_preprocess}
-        if merged_preprocess:
+        if model_preprocess or set(user_preprocess) - {'fft_friendly', 'fft_tol'}:
             saved_preprocess = getattr(self, "_preprocess_options", None)
             self._preprocess_options = merged_preprocess
             try:
@@ -1750,6 +1752,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         Compute BOX_SIZE and N_RADIAL per rho from the caller-provided
         ky_min plus Q, S, RMIN from self.inputs_files[rho], and inject them
         (along with KY=ky_min) into a copy of extraOptions as per-rho arrays.
+        fft_friendly is off unless given (the PORTALS namelist template sets it to true).
         """
 
         allowed_keys = {'ky_min', 'L_x', 'N_radial', 'min_box_size', 'fft_friendly', 'fft_tol'}
@@ -1764,7 +1767,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         L_x           = opts.get('L_x', 90.0)
         N_radial      = opts.get('N_radial', 256)
         min_box_size  = opts.get('min_box_size', 100)
-        fft_friendly  = opts.get('fft_friendly', True)
+        fft_friendly  = opts.get('fft_friendly', False)
         fft_tol       = opts.get('fft_tol', 0.06)
 
         extraOptions = copy.deepcopy(extraOptions)

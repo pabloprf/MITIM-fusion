@@ -9,11 +9,11 @@ DESCRIPTION
     whole nodes, with one SLURM array element per radius. A rank count that no `TOROIDALS_PER_PROC` fits to the grid
     now stops with the counts that do fit (on GPU too). Example: `tests/capability_tests/cgyro_08_run_cpu.py`.
 
-*   💥 **FFT-friendly CGYRO radial grid, on by default.** `preprocess_options.fft_friendly` moves `BOX_SIZE`/`N_RADIAL`
-    to the nearest grid with a fast radial FFT length (11-28% cheaper per a/cs on A100 where the old length had a
-    large prime), within `fft_tol` (6%) in box length and kx_max. Switch it off in the PORTALS namelist under
-    `transport.options.cgyro.run.preprocess_options`; a changed grid needs a cold start. MITIM also warns when a
-    simulated toroidal mode connects to itself (`N_RADIAL/BOX_SIZE` below `N_TOROIDAL` and dividing n).
+*   💥 **FFT-friendly CGYRO radial grid.** `transport.options.cgyro.run.preprocess_options.fft_friendly` (true in the
+    PORTALS namelist template, off when the key is absent) moves `BOX_SIZE`/`N_RADIAL` to the nearest grid with a fast
+    radial FFT length (11-28% cheaper per a/cs on A100 where the old length had a large prime), within `fft_tol` (6%)
+    in box length and kx_max; a changed grid needs a cold start. MITIM also warns when a simulated toroidal mode
+    connects to itself (`N_RADIAL/BOX_SIZE` below `N_TOROIDAL` and dividing n).
 
 *   🖥️ **Typed GPU requests in SLURM machine blocks**: new optional key `gres` in a machine's `slurm` block of
     `config_user.json` (e.g. `"gres": "gpu:a100:4"`) writes `#SBATCH --gres=...` instead of `--gpus-per-node`, for

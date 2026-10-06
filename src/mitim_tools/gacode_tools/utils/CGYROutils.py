@@ -64,7 +64,7 @@ def compute_box_and_nradial(
     L_x=90.0,
     N_radial=256,
     min_box_size=100,
-    fft_friendly=True,
+    fft_friendly=False,
     fft_tol=0.06,
 ):
     """
@@ -79,9 +79,9 @@ def compute_box_and_nradial(
     parameter (k_theta * rho_s at the surface). Returns (BOX_SIZE, N_RADIAL)
     as Python ints.
 
-    fft_friendly: move the pair to the nearest one whose radial FFT length is fast
-    (see fft_friendly_grid); fft_tol is the largest relative change allowed in box
-    length and in kx_max.
+    fft_friendly (default False: the plain recipe above): move the pair to the nearest
+    one whose radial FFT length is fast (see fft_friendly_grid); fft_tol is the largest
+    relative change allowed in box length and in kx_max.
     """
 
     # Only the magnitude of the magnetic shear sets the box-length scale:

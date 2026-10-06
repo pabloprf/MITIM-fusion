@@ -26,9 +26,10 @@
     N_THETA: 24
   # preprocess_options: MITIM sets KY, BOX_SIZE and N_RADIAL per radius (CGYROutils.compute_box_and_nradial)
   #   ky_min, L_x (target box length in rho_s), N_radial (target radial modes), min_box_size.
-  #   fft_friendly (default true): when the radial FFT length 3*N_RADIAL/2 has a prime factor > 7
-  #   (CGYRO's "large prime factor" warning, ~20% slower per radius on GPU), move to the nearest
-  #   fast (BOX_SIZE, N_RADIAL), changing box length and kx_max by at most fft_tol (default 0.06).
+  #   fft_friendly (off when absent; the PORTALS namelist template sets it to true under
+  #   transport.options.cgyro.run.preprocess_options): when the radial FFT length 3*N_RADIAL/2 has a
+  #   prime factor > 7 (CGYRO's "large prime factor" warning, ~20% slower per radius on GPU), move to the
+  #   nearest fast (BOX_SIZE, N_RADIAL), changing box length and kx_max by at most fft_tol (default 0.06).
   #   Changing the grid needs a cold start: restart files carry it.
   preprocess_options:
     ky_min: 0.053
