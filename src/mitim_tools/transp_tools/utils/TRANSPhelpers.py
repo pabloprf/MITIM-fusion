@@ -825,10 +825,10 @@ class transp_input_time:
         self._produce_structures_from_variables(
             self.c_original.Rmajor[it],
             self.c_original.a[it], 
-            self.c_original.kappa[it], 
-            self.c_original.Ymag[it], 
+            self.c_original.kappa[it],
             self.c_original.delta[it],
             self.c_original.zeta[it],
+            self.c_original.Ymag[it],
             )
 
     def _produce_structures_from_variables(self, R, a, kappa, delta, zeta, z0, vv_relative_a=0.25, antenna_a=0.02):
@@ -1232,9 +1232,9 @@ class transp_input_time:
             self.p.profiles['rcentr(m)'][0],
             self.p.derived['a'],
             self.p.profiles['kappa(-)'][-1],
-            self.p.profiles['zmag(m)'][0],
             self.p.profiles['delta(-)'][-1],
             self.p.profiles['zeta(-)'][-1],
+            self.p.profiles['zmag(m)'][0],
             )
 
 # ----------------------------------------------------------------------------------------------------------

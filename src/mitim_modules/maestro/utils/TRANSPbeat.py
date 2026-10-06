@@ -1098,10 +1098,13 @@ class transp_beat(beat):
         # shrinking ones (ITER seed -> ARC-class, ~1.6-1.8x), but not a strong shrink: an ITER seed -> SPARC target
         # (3.5x smaller) breaks at ~2/3 of the morph whatever the transition window or geometry time step
         # (flux-coordinate cells collapse in teq_inv/polar1). Refuse it up front; the 2x limit sits between those cases
+        # 1% tolerance: derived['a'] drifts by ~1e-5 from beat to beat, so a seed at exactly 2x (ITER on an
+        # a = 1.00 m target) must not be accepted or refused on round-off
         a_target = float(self.profiles_current.derived['a'])
-        if a > 2.0 * a_target:
+        a_limit = 2.0 * a_target * 1.01
+        if a > a_limit:
             seeds = {'CMOD': 0.22, 'D3D': 0.6, 'ITER': 2.0}
-            smaller = [k for k, v in sorted(seeds.items(), key = lambda kv: -kv[1]) if v <= 2.0 * a_target]
+            smaller = [k for k, v in sorted(seeds.items(), key = lambda kv: -kv[1]) if v <= a_limit]
             raise ValueError(f'[MITIM] machine_initialization = {machine_initialization} (a = {a:.2f} m) is {a/a_target:.1f}x larger than the target '
                              f'(a = {a_target:.2f} m): TEQ cannot follow such a shrinking morph. Use a seed no larger than ~2x the target'
                              + (f', e.g. {smaller[0]}' if smaller else ''))

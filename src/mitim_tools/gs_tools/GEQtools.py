@@ -59,8 +59,13 @@ class MITIMgeqdsk:
             # megpy traces every flux surface around ALL the O-points it finds in PSIRZ; a free-boundary grid (e.g. FreeGS
             # with its coils inside the box) can carry spurious vacuum O-points, and the tracer then fails to broadcast
             print('> Reading geqdsk derived quantities failed, retrying with the magnetic axis as the only O-point', typeMsg='w')
-            with _single_o_point(self.g.raw['rmaxis'], self.g.raw['zmaxis']):
-                self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine)
+            try:
+                with _single_o_point(self.g.raw['rmaxis'], self.g.raw['zmaxis']):
+                    self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine)
+            except Exception:
+                # A failure in here is not caught by the bare except below, so the refine rung has to be repeated
+                print('> Reading geqdsk derived quantities failed, trying increasing refine parameter', typeMsg='w')
+                self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine+1)
         except:
             print('> Reading geqdsk derived quantities failed, trying increasing refine parameter', typeMsg='w')
             self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine+1)
