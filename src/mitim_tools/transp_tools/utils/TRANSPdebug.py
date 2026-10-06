@@ -189,6 +189,10 @@ def _classify_context(pre_lines):
             ctx += ", with an invalid field interpolation flagged just before the trap"
         return ctx
     if "GFRAME" in text:
+        # GFRAME prints its moments checksum when the geometry step COMPLETED: a trap after that line is in the
+        # next module (e.g. the heater's plasma-state psi(R,Z) grid at the first NUBEAM call), not in GFRAME
+        if "MOMENTS CHECKSUM" in text:
+            return "the step right after a completed geometry-frame update (GFRAME finished; e.g. the heater's plasma-state update at the first NUBEAM call)"
         return "the geometry-frame update (GFRAME)"
     if any(s in text for s in ("PRGCHK", "curvature ratio", "EQBDY_CHECK")):
         return "the plasma-boundary geometry check (PRGCHK)"

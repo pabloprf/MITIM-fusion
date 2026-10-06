@@ -265,6 +265,10 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **TRANSP no longer crashes with a floating-point error at the first NUBEAM call**: the limiter and vessel handed
+    to TRANSP were a placeholder circle of radius 2·R0, far enough from a small machine-initialization seed for the
+    psi(R,Z) extrapolation to overflow (seen on MAESTRO designs with a = 1.0 m, R/a = 4.0). They are now a rounded box
+    enclosing the plasma boundary of every time slice with a 0.3·a margin (`TRANSPhelpers.enclosing_wall`).
 *   🐛 **MAESTRO Lengyel beat no longer shifts fast-ion temperatures**: the new separatrix temperature is applied to
     electrons and thermal ions only. Fast species were shifted by their own edge value (2/3 W/n where n -> 0, which a
     TRANSP conversion can leave at thousands of keV), giving negative alpha temperatures and a total pressure
