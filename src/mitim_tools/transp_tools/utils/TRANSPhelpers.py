@@ -350,6 +350,16 @@ class transp_run:
                     geos.append(self.geometry[time])
             self.geometry_select = geos[structures_position]
 
+            # One wall for the whole run: it must enclose the plasma at EVERY time (e.g. the small machine-initialization
+            # seed at t = 0 AND the flattop target), with a modest margin. TRANSP extrapolates the equilibrium out to a box
+            # around the limiter when NUBEAM first asks the plasma state for psi(R,Z); a wall ~50 plasma minor radii
+            # away (the former placeholder: a circle of radius 2*R0 centred at 2*R0, touching R = 0) made that
+            # extrapolation overflow (SIGFPE in eqi_xtrz -> r8bloata0 at the first NUBEAM alpha call, t = 0.01 s)
+            seps = [g for g in (self.geometry[time] for time in self.times if time in self.geometry) if 'R_sep' in g]
+            if len(seps) > 0:
+                self.geometry_select = dict(self.geometry_select)
+                set_wall_structures(*enclosing_wall([g['R_sep'] for g in seps], [g['Z_sep'] for g in seps]), geometry = self.geometry_select)
+
             self.namelist_variables['VVRmom'] = ', '.join([f'{x:.8e}' for x in self.geometry_select['VVRmom']])
             self.namelist_variables['VVZmom'] = ', '.join([f'{x:.8e}' for x in self.geometry_select['VVZmom']])
 
@@ -799,10 +809,10 @@ class transp_input_time:
         self._produce_structures_from_variables(
             self.c_original.Rmajor[it],
             self.c_original.a[it], 
-            self.c_original.kappa[it], 
-            self.c_original.Ymag[it], 
+            self.c_original.kappa[it],
             self.c_original.delta[it],
             self.c_original.zeta[it],
+            self.c_original.Ymag[it],
             )
 
     def _produce_structures_from_variables(self, R, a, kappa, delta, zeta, z0, vv_relative_a=0.25, antenna_a=0.02):
@@ -823,27 +833,10 @@ class transp_input_time:
         # Limiters
         # --------------------------------------------------------------
 
-        #TODO: Fix-----------------------------------------------------
-        R, a, kappa, delta, zeta, z0 = R*2, R*2, 1.0, 0.0, 0.0, 0.0
-        # -------------------------------------------------------------
-        
-        vv = GEQtools.mitim_flux_surfaces()
-        vv.reconstruct_from_miller(R, a, kappa, delta, zeta, z0)
-        rvv , zvv= vv.R[0,:], vv.Z[0,:]
-
-        # --------------------------------------------------------------
-        # VV moments
-        # --------------------------------------------------------------
-
-        self.geometry['VVRmom'], self.geometry['VVZmom'], rvv_fit_cm, zvv_fit_cm = decomposeMoments(
-            rvv*100.0 , zvv*100.0,
-            r_ini = [R*100.0, a*100.0, 3.0], z_ini = [0.0, a*kappa*100.0, -3.0], verbose_level =5)
-
-        # --------------------------------------------------------------
-        # Limiters
-        # --------------------------------------------------------------
-
-        self.geometry['R_lim'], self.geometry['Z_lim'] = rvv, zvv
+        # Wall around THIS slice's plasma (the ufile writer replaces it by a wall enclosing every slice)
+        lcfs = GEQtools.mitim_flux_surfaces()
+        lcfs.reconstruct_from_miller(R, a, kappa, z0, delta, zeta)
+        set_wall_structures(*enclosing_wall([lcfs.R[0,:]], [lcfs.Z[0,:]]), geometry = self.geometry)
 
     def from_freegs(self, time, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, Paux_MW = 11.0):
 
@@ -1218,9 +1211,9 @@ class transp_input_time:
             self.p.profiles['rcentr(m)'][0],
             self.p.derived['a'],
             self.p.profiles['kappa(-)'][-1],
-            self.p.profiles['zmag(m)'][0],
             self.p.profiles['delta(-)'][-1],
             self.p.profiles['zeta(-)'][-1],
+            self.p.profiles['zmag(m)'][0],
             )
 
 # ----------------------------------------------------------------------------------------------------------
@@ -1322,6 +1315,39 @@ def addLimiters_NML(namelistPath, rs, zs, centerP, ax=None):
         ax.plot(
             x / 100.0, y / 100.0, 100, "-o", markersize=0.5, lw=0.5, c="k", label="lims"
         )
+
+def enclosing_wall(Rs, Zs, margin_fraction = 0.3, exponent = 4.0, n_points = 200):
+    '''
+    Wall contour [m] enclosing every plasma boundary in the lists Rs, Zs: a rounded box (superellipse of the given
+    exponent) around their joint extent, padded by margin_fraction x the largest boundary minor radius. The inner leg
+    stays at >= half the innermost plasma R, never at R = 0.
+    '''
+
+    R, Z = np.concatenate([np.asarray(r) for r in Rs]), np.concatenate([np.asarray(z) for z in Zs])
+    margin = margin_fraction * max(0.5 * (np.max(r) - np.min(r)) for r in Rs)
+
+    Rlo, Rhi = max(R.min() - margin, 0.5 * R.min()), R.max() + margin
+    Zlo, Zhi = Z.min() - margin, Z.max() + margin
+
+    theta = np.linspace(0, 2 * np.pi, n_points, endpoint=False)
+    c, s = np.cos(theta), np.sin(theta)
+    rvv = 0.5 * (Rhi + Rlo) + 0.5 * (Rhi - Rlo) * np.sign(c) * np.abs(c) ** (2.0 / exponent)
+    zvv = 0.5 * (Zhi + Zlo) + 0.5 * (Zhi - Zlo) * np.sign(s) * np.abs(s) ** (2.0 / exponent)
+
+    return rvv, zvv
+
+def set_wall_structures(rvv, zvv, geometry):
+    '''
+    VV moments (namelist, used by TORIC) and limiter contour (LIM ufile) from one wall contour [m], into `geometry`
+    '''
+
+    Rc, A = 0.5 * (rvv.max() + rvv.min()), 0.5 * (rvv.max() - rvv.min())
+    Zc, B = 0.5 * (zvv.max() + zvv.min()), 0.5 * (zvv.max() - zvv.min())
+    geometry['VVRmom'], geometry['VVZmom'], rvv_fit_cm, zvv_fit_cm = decomposeMoments(
+        rvv*100.0 , zvv*100.0,
+        r_ini = [Rc*100.0, A*100.0, 3.0], z_ini = [Zc*100.0, B*100.0, -3.0], verbose_level =5)
+
+    geometry['R_lim'], geometry['Z_lim'] = rvv, zvv
 
 def addLimiters_UF(UFilePath, rs, zs, ax=None, numLim=100):
     # ----- ----- ----- ----- -----
@@ -1611,7 +1637,6 @@ def populateFromMDS(self, runidMDS):
         self.runid,
         folderWork=self.FolderTRANSP,
         toric_mpi=self.mpisettings["toricmpi"],
-        shotnumber=self.shotnumberReal,
     )
 
 def defaultbasedMDS(self, outtims=None, MITIMmodified=False):

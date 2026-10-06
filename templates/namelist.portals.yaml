@@ -647,6 +647,24 @@ transport:
       # later as a restart_from_folder source needs "all").
       keep_files: "pickle" 
 
+      # Wipe the CGYRO restart files once the run has converged, keeping only those of the
+      # result evaluation (the one PORTALS reports and writes to Outputs/input.gacode_final_*,
+      # which may not be the last one run). Default false.
+      #   Deleted: bin.cgyro.restart* (including any .old) found anywhere under
+      #     Execution/Evaluation.*/transport_simulation_folder/ and
+      #     Initialization/initialization_simple_relax/portals_sr_ev_*/transport_simulation_folder/
+      #     (base_cgyro, extra_cgyro, multi-fidelity and per-plasma subfolders).
+      #   Kept: the result evaluation's restarts (and the simple-relax files its symlinks point to),
+      #     and everything else: outputs, traces, inputs, fluxes_*.json, restart_sources.json.
+      #     Harvest is unaffected (records never hold restarts).
+      #   When: only when the run stops because a convergence criterion was met ("Optimization
+      #     considered converged": Ricci, residual or DV variation). Never when it stops on
+      #     maximum_iterations without converging or crashes, so such a run can still be extended
+      #     with warm starts.
+      #   IRREVERSIBLE: the pruned evaluations can no longer seed restart_from_cases/restart_from_folder.
+      # For a finished run, `mitim_prune_portals <folder>` applies the same pruning (dry-run by default).
+      prune_restarts_at_convergence: false
+
     # *********************************************************************************************************
     # GX
     # *********************************************************************************************************

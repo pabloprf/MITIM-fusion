@@ -1,350 +1,13 @@
-import sys
-import shutil
-import socket
+"""C-Mod TRANSP helpers: namelist structures, first wall, ICRF antennas, namelist
+translation, and the TRANSP-tree reader (namelist + input UFILEs of a C-Mod run).
+Experimental data (EFIT, Thomson, HIREXSR, ...) lives in `experiment_tools.cmod.retrieval`.
+"""
+
 import numpy as np
-import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import FARMINGtools, MATHtools, IOtools, GRAPHICStools
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.transp_tools import UFILEStools
 from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from mitim_tools import __mitimroot__
-from IPython import embed
-
-"""
-------------------------------------------------------------------------------------------------
-Packages that may fail
-------------------------------------------------------------------------------------------------
-"""
-try:
-    import MDSplus
-except ModuleNotFoundError:
-    print("Could not load MDSplus", typeMsg="w")
-
-sys.path.insert(0, "/home/sciortino/usr/python3modules/eqtools3")
-import eqtools
-
-# ------------------------------------------------------------------------------------------------
-
-
-def getMDS_timevar(shot, tree, var):
-    print(f"\t>> Extracting {var} from {tree} tree for shot {shot}")
-
-    tree = MDSplus.Tree(tree, shot)
-    Z = tree.getNode(var).record.data()
-    t = tree.getNode(var).getData().dim_of(0).data()
-
-    return Z, t
-
-
-def getMDS_2Dvar(shot, tree, var):
-    print(f"\t>> Extracting {var} (2D) from {tree} tree for shot {shot}")
-
-    tree = MDSplus.Tree(tree, shot)
-    Z = tree.getNode(var).record.data()
-    t = tree.getNode(var).getData().dim_of(0).data()
-    x = tree.getNode(var).getData().dim_of(1).data()
-
-    return Z, t, x
-
-
-class experiment:
-    def __init__(self, shot):
-        self.shot = shot
-
-    def get1Dtraces(self):
-        print(" >> Gathering CMOD experimental data (1D)")
-
-        self.Wexp, self.Wexp_t = getMDS_timevar(
-            self.shot, "analysis", "\efit_aeqdsk:wplasm"
-        )
-        self.q95, self.q95_t = getMDS_timevar(
-            self.shot, "analysis", "\efit_aeqdsk:qpsib"
-        )
-        self.neL, self.neL_t = getMDS_timevar(
-            self.shot, "electrons", "\ELECTRONS::TOP.TCI.RESULTS.INVERSION:NEBAR_EFIT"
-        )
-        self.Bp, self.Bp_t = getMDS_timevar(
-            self.shot, "analysis", "\\analysis::top:efit.results.a_eqdsk:betap"
-        )
-        self.Li, self.Li_t = getMDS_timevar(
-            self.shot, "analysis", "\\analysis::top:efit.results.a_eqdsk:ali"
-        )
-        self.Li2Bp = self.Li / 2.0 + self.Bp
-        Psurf, self.Vsurf_t = getMDS_timevar(
-            self.shot, "analysis", "\efit_aeqdsk:sibdry"
-        )
-        self.Vsurf = MATHtools.deriv(self.Vsurf_t, Psurf * 2 * np.pi)
-
-        try:
-            self.neut, neut_t = getMDS_timevar(
-                self.shot,
-                "particles",
-                "\particles::top.neutrons.global.results:neut_rate",
-            )
-        except:
-            print("Could not grab neutrons... returning zeros")
-            self.neut_t = self.Wexp_t
-            self.neut = np.zeros(len(self.Wexp_t))
-
-    def get2Dprofiles(self):
-        self.getECE()
-        self.getTS()
-
-    def write_gfile(self, time, name="~/gfile.geq"):
-        e = eqtools.CModEFITTree(self.shot, tree="analysis")
-        eqtools.filewriter.gfile(e, time, name=name)
-
-    # -----------------------------------------------------------------------------------------------------------------------
-    # OPERATIONS
-    # -----------------------------------------------------------------------------------------------------------------------
-
-    def getECE(self):
-        R, Te, t = [], [], []
-        for i in [1, 2, 3, 4, 5, 6, 7, 8, 9]:
-            Te1, Te_t1 = getMDS_timevar(
-                self.shot, "electrons", f"\\ELECTRONS::gpc_te{i}"
-            )
-            R1, R_t1 = getMDS_timevar(self.shot, "electrons", f"\\ELECTRONS::gpc_r{i}")
-            R1_mod = np.interp(Te_t1, R_t1, R1)
-            R.append(R1_mod)
-            Te.append(Te1)
-            t.append(Te_t1)
-
-        self.R_ECE, self.Te_ECE, self.TeError_ECE = (
-            np.array(R),
-            np.array(Te),
-            np.array(Te) * 0.1,
-        )
-        self.t_ECE = np.array(t)
-
-    def getTS(self):
-        # ------------------------------------------------------------------------------------------------------------------------------------------
-        # Grab data
-        # ------------------------------------------------------------------------------------------------------------------------------------------
-
-        # Edge
-        neE, neE_t = getMDS_timevar(
-            self.shot, "electrons", "\ELECTRONS::TOP.YAG_EDGETS.RESULTS:NE"
-        )
-        RE, _ = getMDS_timevar(
-            self.shot, "electrons", "\ELECTRONS::TOP.YAG_EDGETS.RESULTS:RMID"
-        )  # Time is the same
-        neErrorE, _ = getMDS_timevar(
-            self.shot, "electrons", "\ELECTRONS::TOP.YAG_EDGETS.RESULTS:NE:ERROR"
-        )  # Time is the same
-
-        TeE, _ = getMDS_timevar(
-            self.shot, "electrons", "\ELECTRONS::TOP.YAG_EDGETS.RESULTS:TE"
-        )  # Time is the same
-        TeErrorE, _ = getMDS_timevar(
-            self.shot, "electrons", "\ELECTRONS::TOP.YAG_EDGETS.RESULTS:TE:ERROR"
-        )  # Time is the same
-
-        # Core
-        neC, neC_t = getMDS_timevar(
-            self.shot, "electrons", "\ELECTRONS::TOP.YAG_NEW.RESULTS.PROFILES:NE_RZ"
-        )
-        RC, _ = getMDS_timevar(
-            self.shot, "electrons", "\ELECTRONS::TOP.YAG_NEW.RESULTS.PROFILES:R_MID_T"
-        )  # Time is the same
-        neErrorC, _ = getMDS_timevar(
-            self.shot, "electrons", "\ELECTRONS::TOP.YAG_NEW.RESULTS.PROFILES:NE_ERR"
-        )  # Time is the same
-
-        TeC, _ = getMDS_timevar(
-            self.shot, "electrons", "\ELECTRONS::TOP.YAG_NEW.RESULTS.PROFILES:TE_RZ"
-        )  # Time is the same
-        TeErrorC, _ = getMDS_timevar(
-            self.shot, "electrons", "\ELECTRONS::TOP.YAG_NEW.RESULTS.PROFILES:TE_ERR"
-        )  # Time is the same
-
-        # ------------------------------------------------------------------------------------------------------------------------------------------
-        # Units converstion
-        # ------------------------------------------------------------------------------------------------------------------------------------------
-
-        neE = neE * 1e-20
-        neErrorE = neErrorE * 1e-20
-        TeE = TeE * 1e-3
-        TeErrorE = TeErrorE * 1e-3
-        neC = neC * 1e-20
-        neErrorC = neErrorC * 1e-20
-
-        # ------------------------------------------------------------------------------------------------------------------------------------------
-        # Merging
-        # ------------------------------------------------------------------------------------------------------------------------------------------
-
-        # Bring core to edge time
-        for i in range(neC.shape[0]):
-            neC[i, :] = np.interp(neE_t, neC_t, neC[i, :])
-            TeC[i, :] = np.interp(neE_t, neC_t, TeC[i, :])
-            RC[i, :] = np.interp(neE_t, neC_t, RC[i, :])
-            neErrorC[i, :] = np.interp(neE_t, neC_t, neErrorC[i, :])
-            TeErrorC[i, :] = np.interp(neE_t, neC_t, TeErrorC[i, :])
-
-        self.ne_TS = np.append(neC, neE, axis=0)
-        self.Te_TS = np.append(TeC, TeE, axis=0)
-        self.neError_TS = np.append(neErrorC, neErrorE, axis=0)
-        self.TeError_TS = np.append(TeErrorC, TeErrorE, axis=0)
-        self.R_TS = np.append(RC, RE, axis=0)
-        self.t_TS = neE_t
-
-        # # Order positions
-        # self.ne_TS 			= np.array([a for _,a in sorted(zip(R,ne))])
-        # self.Te_TS 			= np.array([a for _,a in sorted(zip(R,Te))])
-        # self.neError_TS 	= np.array([a for _,a in sorted(zip(R,neError))])
-        # self.TeError_TS 	= np.array([a for _,a in sorted(zip(R,TeError))])
-        # self.R_TS 			= np.array([a for _,a in sorted(zip(R,R))])
-
-    def sliceTS(self, time, avt=0):
-        from mitim_tools.transp_tools.CDFtools import timeAverage
-
-        self.time = time
-        self.avt = avt
-
-        it1 = np.argmin(np.abs(self.t_TS - (self.time - self.avt)))
-        it2 = np.argmin(np.abs(self.t_TS - (self.time + self.avt))) + 1
-
-        self.ne_TS_sliced = np.zeros(self.ne_TS.shape[0])
-        self.Te_TS_sliced = np.zeros(self.Te_TS.shape[0])
-        self.neError_TS_sliced = np.zeros(self.ne_TS.shape[0])
-        self.TeError_TS_sliced = np.zeros(self.Te_TS.shape[0])
-        self.R_TS_sliced = np.zeros(self.R_TS.shape[0])
-        for c in range(self.Te_TS_sliced.shape[0]):
-            self.ne_TS_sliced[c] = timeAverage(
-                self.t_TS[it1:it2], self.ne_TS[c, it1:it2]
-            )
-            self.Te_TS_sliced[c] = timeAverage(
-                self.t_TS[it1:it2], self.Te_TS[c, it1:it2]
-            )
-            self.neError_TS_sliced[c] = timeAverage(
-                self.t_TS[it1:it2], self.neError_TS[c, it1:it2]
-            )
-            self.TeError_TS_sliced[c] = timeAverage(
-                self.t_TS[it1:it2], self.TeError_TS[c, it1:it2]
-            )
-            self.R_TS_sliced[c] = timeAverage(self.t_TS[it1:it2], self.R_TS[c, it1:it2])
-
-        (
-            self.rhopol_TS_sliced,
-            self.rhotor_TS_sliced,
-            self.roa_TS_sliced,
-        ) = self.changegrid(self.R_TS_sliced, self.time)
-
-    def sliceECE(self, time, avt=0):
-        from mitim_tools.transp_tools.CDFtools import timeAverage
-
-        self.time = time
-        self.avt = avt
-
-        self.Te_ECE_sliced = np.zeros(self.Te_ECE.shape[0])
-        self.TeError_ECE_sliced = np.zeros(self.Te_ECE.shape[0])
-        self.R_ECE_sliced = np.zeros(self.R_ECE.shape[0])
-        for c in range(self.Te_ECE_sliced.shape[0]):
-            it1 = np.argmin(np.abs(self.t_ECE[c] - (self.time - self.avt)))
-            it2 = np.argmin(np.abs(self.t_ECE[c] - (self.time + self.avt))) + 1
-            self.Te_ECE_sliced[c] = timeAverage(
-                self.t_ECE[c, it1:it2], self.Te_ECE[c, it1:it2]
-            )
-            self.TeError_ECE_sliced[c] = timeAverage(
-                self.t_ECE[c, it1:it2], self.TeError_ECE[c, it1:it2]
-            )
-            self.R_ECE_sliced[c] = timeAverage(
-                self.t_ECE[c, it1:it2], self.R_ECE[c, it1:it2]
-            )
-
-        (
-            self.rhopol_ECE_sliced,
-            self.rhotor_ECE_sliced,
-            self.roa_ECE_sliced,
-        ) = self.changegrid(self.R_ECE_sliced, self.time)
-
-    def slice2Dprofiles(self, time, avt=0):
-        self.sliceTS(time, avt=avt)
-        self.sliceECE(time, avt=avt)
-
-    def changegrid(self, Rmid, time):
-        e = eqtools.CModEFITTree(self.shot, tree="analysis")
-
-        rhopol = np.sqrt(e.rmid2psinorm(Rmid, time))
-        rhotor = np.sqrt(e.rmid2phinorm(Rmid, time))
-        roa = e.rmid2roa(Rmid, time)
-
-        return rhopol, rhotor, roa
-
-    # -----------------------------------------------------------------------------------------------------------------------
-    # PLOTTING
-    # -----------------------------------------------------------------------------------------------------------------------
-
-    def plotProfiles(self):
-        plt.ion()
-        fig, axs = plt.subplots(nrows=2, figsize=(5, 8))
-
-        ax = axs[0]
-        try:
-            ax.errorbar(
-                self.rhotor_TS_sliced,
-                self.Te_TS_sliced,
-                yerr=self.TeError_TS_sliced,
-                c="r",
-                label="TS",
-                markersize=5,
-                capsize=3.0,
-                fmt="s",
-                elinewidth=0.5,
-                capthick=0.5,
-            )
-        except:
-            pass
-        try:
-            ax.errorbar(
-                self.rhotor_ECE_sliced,
-                self.Te_ECE_sliced,
-                yerr=self.TeError_ECE_sliced,
-                c="b",
-                label="ECE",
-                markersize=5,
-                capsize=3.0,
-                fmt="s",
-                elinewidth=0.5,
-                capthick=0.5,
-            )
-        except:
-            pass
-
-        ax.set_xlabel("$\\rho_N$")
-        ax.set_xlim([0, 1])
-        ax.set_ylabel("$T_e$ (keV)")
-        ax.set_ylim(bottom=0)
-        GRAPHICStools.addDenseAxis(ax)
-        ax.legend()
-
-        ax = axs[1]
-        try:
-            ax.errorbar(
-                self.rhotor_TS_sliced,
-                self.ne_TS_sliced,
-                yerr=self.neError_TS_sliced,
-                c="r",
-                label="TS",
-                markersize=5,
-                capsize=3.0,
-                fmt="s",
-                elinewidth=0.5,
-                capthick=0.5,
-            )
-        except:
-            pass
-        ax.set_xlabel("$\\rho_N$")
-        ax.set_xlim([0, 1])
-        ax.set_ylabel("$n_e$ ($10^{20}m^{-3}$)")
-        ax.set_ylim(bottom=0)
-        GRAPHICStools.addDenseAxis(ax)
-
-        axs[0].set_title(f"Kinetic profiles @ t = {self.time:.2f} (+-{self.avt}) s")
-
-
-# ------------------------------------------------------------------------------------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
 def defineTRANSPnmlStructures():
@@ -756,275 +419,75 @@ def updateTRANSPfromNML(nml_old, nml_new, folderWork, MITIMmodified=False):
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-def getTRANSP_MDS(
-    runid, runid_new, folderWork="~/scratch/test/", toric_mpi=1, shotnumber=None
-):
+_UF_INPUTS = ["bol", "ner", "ter", "ti2", "vp2", "cur", "saw", "ntx", "rbz", "vsf", "zef", "mry", "rfp"]
+
+
+def getTRANSP_MDS(runid, runid_new, folderWork="~/scratch/test/", toric_mpi=1,
+                  connection=None, tunnel_host=None):
+    """Write the namelist and input UFILEs of C-Mod TRANSP run `runid` (the "transp" tree on
+    alcdata) into `folderWork` as run `runid_new`. Reads through a CMODConnection (mdsthin):
+    pass `connection` to reuse one, or `tunnel_host` off-site (see experiment_tools.MDStools)."""
+    from mitim_tools.experiment_tools.cmod.retrieval import CMODConnection
+
     folderWork = IOtools.expandPath(folderWork)
     if not folderWork.exists():
         IOtools.askNewFolder(folderWork)
 
-    tree = MDSplus.Tree("transp", int(runid))
+    own = connection is None
+    connection = connection or CMODConnection(tunnel_host=tunnel_host)
+    try:
+        conn = connection.conn
+        conn.openTree("transp", int(runid))
 
-    # Namelist
-    nml = tree.getNode("NAME_LIST").record.data()
+        # Namelist
+        nml = np.atleast_1d(conn.get(r"\TRANSP::TOP:NAME_LIST").data())
+        nml_file = folderWork / f"{runid_new}TR.DAT"
+        with open(nml_file, "w") as f:
+            for line in nml:
+                f.write((line.decode("UTF-8") if isinstance(line, bytes) else str(line)) + "\n")
 
-    nml_file = folderWork / f"{runid_new}TR.DAT"
-    with open(nml_file, "w") as f:
-        for i in range(len(nml)):
-            f.write(nml[i].decode("UTF-8") + "\n")
+        IOtools.changeValue(nml_file, "NSHOT", runid, [], "=")
+        IOtools.changeValue(nml_file, "KMDSPLUS", None, [], "=")
+        if toric_mpi > 1:
+            IOtools.changeValue(nml_file, "ntoric_pserve", 1, [], "=")
 
-    IOtools.changeValue(nml_file, "NSHOT", runid, [], "=")
-    IOtools.changeValue(nml_file, "KMDSPLUS", None, [], "=")
-
-    if toric_mpi > 1:
-        IOtools.changeValue(nml_file, "ntoric_pserve", 1, [], "=")
-
-    # UFILES
-    names = [
-        "bol",
-        "ner",
-        "ter",
-        "ti2",
-        "vp2",
-        "cur",
-        "saw",
-        "ntx",
-        "rbz",
-        "vsf",
-        "zef",
-        "mry",
-        "rfp",
-        "vp2",
-    ]
-    nomry = False
-    for name in names:
-        print(f"Reading {name}")
-        nameMDS = name.upper()
-        labelX = None
-        if name in ["ter", "ti2", "ner", "bol", "vp2"]:
-            labelX = " r/a                           "
-        try:
-            uf = nodeToUF(
-                runid, name, nameMDS, folderWork, inputs=".INPUTS:", labelX=labelX
-            )
-            IOtools.changeValue(nml_file, "PRE" + nameMDS, "'MIT'", [], "=")
-        except:
-            print("\t~~ Could not retrieve")
-            if name == "mry":
-                nomry = True
-
-    # If MRY wasn't populated, run my own equilribium scruncher
-    if nomry and shotnumber is not None:
-        print("** Because MRY was not produced, run scrunch2 to produce MMX")
-        ff = folderWork / "scrunch"
-        ff.mkdir(parents=True, exist_ok=True)
-        getMMX(shotnumber, runid, ff)
-        IOtools.changeValue(nml_file, "premry", None, [], "=")
-        IOtools.changeValue(nml_file, "extmry", None, [], "=")
-        shutil.copy2(ff / f"MIT{runid}.MMX", folderWork)
-        IOtools.changeValue(nml_file, "premmx", '"MIT"', [], "=")
-        IOtools.changeValue(nml_file, "extmmx", '"MMX"', [], "=")
+        # UFILES
+        for name in _UF_INPUTS:
+            print(f"Reading {name}")
+            labelX = " r/a                           " if name in ["ter", "ti2", "ner", "bol", "vp2"] else None
+            try:
+                nodeToUF(conn, runid, name, name.upper(), folderWork, labelX=labelX)
+                IOtools.changeValue(nml_file, "PRE" + name.upper(), "'MIT'", [], "=")
+            except Exception:
+                print("\t~~ Could not retrieve")
+                if name == "mry":
+                    print("\t~~ No MRY stored for this run: provide the equilibrium UFILE (MRY/MMX) yourself",
+                          typeMsg="w")
+    finally:
+        if own:
+            connection.close()
 
 
-def nodeToUF(runid, name, nameMDS, folderWork, inputs=".INPUTS:", labelX=None):
+def nodeToUF(conn, runid, name, nameMDS, folderWork, inputs=r"\TRANSP::TOP.INPUTS:", labelX=None):
+    """One TRANSP-tree input node -> UFILE MIT<runid>.<nameMDS> (conn: mdsthin connection with
+    the transp tree open). mdsthin returns arrays with reversed (C-order) dims, hence the transposes."""
     uf = UFILEStools.UFILEtransp(scratch=name, labelX=labelX)
+    node = inputs + nameMDS
+    val = lambda e: np.asarray(conn.get(e).data())
 
-    tree = MDSplus.Tree("transp", int(runid))
-
-    uf.Variables["Z"] = tree.getNode(inputs + nameMDS).record.data()
-
+    uf.Variables["Z"] = val(node)
     if uf.dim == 1:
-        uf.Variables["X"] = tree.getNode(inputs + nameMDS).record.dim_of(0).data()
+        uf.Variables["X"] = val(f"dim_of({node},0)")
     elif uf.dim == 2:
-        uf.Variables["X"] = tree.getNode(inputs + nameMDS).record.dim_of(1).data()
-        uf.Variables["Y"] = tree.getNode(inputs + nameMDS).record.dim_of(0).data()
-
+        uf.Variables["X"] = val(f"dim_of({node},1)")
+        uf.Variables["Y"] = val(f"dim_of({node},0)")
         uf.Variables["Z"] = np.transpose(uf.Variables["Z"])
-
     elif uf.dim == 3:
-        uf.Variables["X"] = tree.getNode(inputs + nameMDS).record.dim_of(0).data()
-        uf.Variables["Y"] = tree.getNode(inputs + nameMDS).record.dim_of(1).data()
-        uf.Variables["Q"] = tree.getNode(inputs + nameMDS).record.dim_of(2).data()
-
+        uf.Variables["X"] = val(f"dim_of({node},0)")
+        uf.Variables["Y"] = val(f"dim_of({node},1)")
+        uf.Variables["Q"] = val(f"dim_of({node},2)")
         uf.Variables["Z"] = np.transpose(uf.Variables["Z"])
 
     filename = folderWork / f"MIT{runid}.{nameMDS}"
-
     uf.writeUFILE(filename)
-
     return uf
-
-
-def compareMDSandCDF(runidMDS, CDFclass):
-    c = CDFclass
-
-    # Compare to original
-    tree = MDSplus.Tree("transp", int(runidMDS))
-
-    # In time
-    varCompare = [
-        "TE",
-        "TI",
-        "NE",
-        "PEICH",
-        "PIICH",
-        "PEICH",
-        "PIICH",
-        "Q",
-        "Q",
-        "UTOTL",
-        "OMEGA",
-        "PRAD",
-        "UTHRM",
-        "UMINPA",
-        "UMINPA",
-        "DN0WD",
-    ]
-    xpos = [0, 0, 0, 0, 0, 0.5, 0.5, 0, 0.5, 0.5, 0, 0, 0.5, 0, 0.25, 0.9]
-
-    plt.ion()
-    fig = plt.figure(figsize=(15, 9))
-    axs = GRAPHICStools.producePlotsGrid(
-        len(varCompare), fig=fig, hspace=0.6, wspace=0.6, sharex=False, sharey=False
-    )
-    for cont, var in enumerate(varCompare):
-        ax = axs[cont]
-
-        t = tree.getNode(".TRANSP_OUT:TE0").record.dim_of(0).data()
-        z = tree.getNode(".TRANSP_OUT:" + var).record.data()
-        x = tree.getNode(".TRANSP_OUT:X").record.data()
-        ix = np.argmin(np.abs(x - xpos[cont]))
-        ax.plot(t, z[:, ix], c="b")
-
-        t = c.f["TIME"][:]
-        z = c.f[var][:]
-        x = c.f["X"][:]
-        ix = np.argmin(np.abs(x - xpos[cont]))
-        ax.plot(t, z[:, ix], c="r")
-
-        ax.set_title(var + "," + str(xpos[cont]))
-
-    # In  rho
-    varCompare = [
-        "OMEGA",
-        "TE",
-        "TI",
-        "NE",
-        "PEICH",
-        "PIICH",
-        "PCNDE",
-        "PCOND",
-        "PRAD",
-        "CUR",
-        "Q",
-        "ZEFFI",
-        "ND",
-        "UMINPP",
-        "UMINPA",
-        "DN0WD",
-    ]
-    ts = [-1] * len(varCompare)  # [0]*len(varCompare)
-
-    plt.ion()
-    fig = plt.figure(figsize=(15, 9))
-    axs = GRAPHICStools.producePlotsGrid(
-        len(varCompare), fig=fig, hspace=0.6, wspace=0.6, sharex=False, sharey=False
-    )
-    for cont, var in enumerate(varCompare):
-        ax = axs[cont]
-
-        if ts[cont] == -1:
-            ts0 = c.f["TIME"][:][-1]
-        else:
-            ts0 = ts[cont]
-
-        z = tree.getNode(".TRANSP_OUT:" + var).record.data()
-        t = tree.getNode(".TRANSP_OUT:TE0").record.dim_of(0).data()
-        x = tree.getNode(".TRANSP_OUT:X").record.data()
-        it = np.argmin(np.abs(t - ts0))
-        ax.plot(x[it], z[it], c="b")
-
-        t = c.f["TIME"][:]
-        z = c.f[var][:]
-        x = c.f["X"][:]
-        it = np.argmin(np.abs(t - ts0))
-        ax.plot(x[it], z[it], "--", c="r")
-
-        ax.set_title(var + "," + str(ts0) + "s")
-
-
-def getZeff_neo(
-    shotNumber,
-    folder=IOtools.expandPath("~/"),
-    routine=__mitimroot__ / "scripts" / "zeff_neo",
-):
-    with open(folder + "/idl_in", "w") as f:
-        f.write(f".r {routine}\n\n")
-        f.write(f"openr,1,'{folder}/shot.dat'\n")
-        f.write("shot = strarr(1)\n")
-        f.write("readf,1,shot\n")
-        f.write("close,1\n")
-        f.write(f"zeff_neo,{shotNumber},z,t\n")
-        f.write(f"openw,1,'{folder}/t.dat'\n")
-        f.write(f"openw,2,'{folder}/z.dat'\n")
-        f.write("printf,1,t\n")
-        f.write("printf,2,z\n")
-        f.write("close,1\n")
-        f.write("close,2\n")
-
-    with open(folder + "/shot.dat", "w") as f:
-        f.write(str(shotNumber))
-
-    Command = f"cd {folder} && idl < idl_in"
-    # FIX
-    error, result = FARMINGtools.runCommand_remote(
-        Command, machine=socket.gethostname()
-    )
-
-    with open(folder + "/t.dat", "r") as f:
-        aux = f.readlines()
-    t = []
-    for i in aux:
-        t.extend([float(j) for j in i.split()])
-    t = np.array(t)
-
-    with open(folder + "/z.dat", "r") as f:
-        aux = f.readlines()
-    zeff = []
-    for i in aux:
-        zeff.extend([float(j) for j in i.split()])
-    zeff = np.array(zeff)
-
-    (folder / "t.dat").unlink(missing_ok=True)
-    (folder / "z.dat").unlink(missing_ok=True)
-
-    return zeff, t
-
-
-def getMMX(shotNumber, runid, folderWork):
-    folderWork = IOtools.expandPath(folderWork)
-    folderScratch = folderWork / "scr_mmx"
-
-    if not folderScratch.exists():
-        IOtools.askNewFolder(folderScratch)
-
-    with open(folderScratch / "scrunch.in", "w") as f:
-        f.write(f"CMOD\n{shotNumber}\nA\nA\nQ\nY\nP\nPRF\nW\nQ")
-
-    Command = f"cd {folderScratch} && scrunch2 < scrunch.in"
-    # FIX
-    error, result = FARMINGtools.runCommand_remote(
-        Command, machine=socket.gethostname()
-    )
-    if result is not None:
-        GSerror = []
-        for i in result:
-            if "estimated relative GS error in data" in i:
-                GSerror.append(float(i.split()[-1]))
-        GSerrormax = np.max(GSerror)
-        print(f" >> Maximum relative GS error in data: {GSerrormax}")
-
-    for ufile in ["PLF", "PF0", "TRF", "PRS", "QPR", "LIM", "GRB", "MMX"]:
-        (folderScratch / f"MIT{str(shotNumber)[-6:]}.{ufile}").replace(folderWork / f"MIT{runid}.{ufile}")
-
-    IOtools.shutil_rmtree(folderScratch)

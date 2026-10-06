@@ -3,6 +3,7 @@ Set of tools to farm out simulations to run in either remote clusters or locally
 """
 
 from tqdm import tqdm
+import os
 import shlex
 import shutil
 import string
@@ -20,7 +21,7 @@ from pathlib import Path
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from mitim_tools.misc_tools import IOtools, CONFIGread
+from mitim_tools.misc_tools import IOtools, CONFIGread, LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
@@ -57,6 +58,52 @@ New handling of jobs in remote or local clusters. Example use:
     job.run()
 
 """
+
+# Inside a live allocation, SLURM can refuse new steps for a while ("Unable to create step for
+# job N: Job/step already completing or completed") although the job is RUNNING. When a dispatch
+# comes back without its outputs and its stderr shows this, full_process re-runs it after each of
+# these waits (seconds), on top of attempts_execution.
+SRUN_STEP_REFUSAL_WAITS = (60, 120, 240)
+SRUN_STEP_REFUSAL_PATTERNS = ("Unable to create step for job", "Job/step already completing or completed")
+
+
+def slurm_job_snapshot(folder, note):
+    '''
+    Inside a SLURM allocation (SLURM_JOB_ID set), append what the controller says about this job and
+    its steps to <folder>/mitim_slurm_snapshot.txt, so a step refusal can be traced (e.g. in a NERSC ticket).
+    '''
+    job_id = os.environ.get("SLURM_JOB_ID")
+    if not job_id:
+        return
+    texts = []
+    with open(Path(folder) / "mitim_slurm_snapshot.txt", "a") as f:
+        f.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} {note} =====\n")
+        for cmd in (["scontrol", "show", "job", job_id], ["squeue", "-s", "-j", job_id, "-o", "%i %T %M %N"]):
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+                texts.append(res.stdout + res.stderr)
+            except (OSError, subprocess.TimeoutExpired) as e:
+                texts.append(f"[failed: {e}]\n")
+            f.write(f"$ {' '.join(cmd)}\n{texts[-1]}")
+    # The tmp folder holding the file is removed when a re-run succeeds, so the driver log gets the key fields too
+    keys = [tok for tok in texts[0].split() if tok.split("=")[0] in ("JobState", "Reason", "RunTime", "TimeLimit", "EndTime")]
+    steps = [line.strip() for line in texts[1].splitlines()[1:] if line.strip()]
+    print(f"\t* SLURM snapshot ({note}): {' '.join(keys) or texts[0].strip()[:200]} | steps: {'; '.join(steps) or 'none'}", typeMsg="w")
+
+
+def srun_step_refusals(error):
+    '''Number of SLURM step-creation refusals in a dispatch's stderr (bytes, or None when nothing came back).'''
+    if not error:
+        return 0
+    return sum(any(p in line for p in SRUN_STEP_REFUSAL_PATTERNS)
+               for line in error.decode("utf-8", errors="ignore").splitlines())
+
+
+class MissingOutputsError(LOGtools.InteractiveTerminalError):
+    '''
+    A dispatch did not bring back its expected outputs in a session that cannot answer the retry
+    prompt. Subclass of InteractiveTerminalError so every existing batch handler treats it as before.
+    '''
 
 @dataclass
 class RetryPolicy:
@@ -769,9 +816,11 @@ class mitim_job:
 
             # ~~~~~~ Execute
             execution_counter = 0
+            refusal_reruns, refusals_seen = 0, 0
             received, output, error = False, None, None
 
-            while execution_counter < attempts_execution:
+            # A re-run after a SLURM step refusal is not a spent attempt
+            while execution_counter < attempts_execution + refusal_reruns:
 
                 if execute_flag and self.scheduler is not None and self.ssh is None:
                     output, error = b"", b""
@@ -809,9 +858,18 @@ class mitim_job:
 
                 if received:
                     break
-                else:
-                    if execution_counter < attempts_execution:
-                        print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter}/{attempts_execution})")
+
+                refusals = srun_step_refusals(error)
+                refusals_seen += refusals
+                if refusals and refusal_reruns < len(SRUN_STEP_REFUSAL_WAITS):
+                    wait = SRUN_STEP_REFUSAL_WAITS[refusal_reruns]
+                    refusal_reruns += 1
+                    print(f"\t* SLURM refused {refusals} job step(s) ('{SRUN_STEP_REFUSAL_PATTERNS[0]}') and outputs are missing: "
+                          f"re-running the same dispatch in {wait}s (step-refusal re-run {refusal_reruns}/{len(SRUN_STEP_REFUSAL_WAITS)})", typeMsg="w")
+                    slurm_job_snapshot(self.folder_local, f"step refusal, before re-run {refusal_reruns}")
+                    time.sleep(wait)
+                elif execution_counter < attempts_execution + refusal_reruns:
+                    print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter - refusal_reruns}/{attempts_execution})")
 
             # ~~~~~~ Remove scratch folder
             if received:
@@ -826,7 +884,20 @@ class mitim_job:
                 if output is not None:
                     self._write_debugging_files(output, error)
 
-                cont = print(f"\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written in '{self.folder_local / 'mitim_farming.err'}')",typeMsg="q")
+                try:
+                    cont = print(f"\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written in '{self.folder_local / 'mitim_farming.err'}')",typeMsg="q")
+                except LOGtools.InteractiveTerminalError:
+                    # Non-interactive session (no tty, or stdout redirected to a log): say why instead of a bare prompt error
+                    if refusals_seen:
+                        slurm_job_snapshot(self.folder_local, "step refusal, giving up")
+                    refused = (f" SLURM refused {refusals_seen} job step(s) ('{SRUN_STEP_REFUSAL_PATTERNS[0]}') and "
+                               f"{refusal_reruns} re-run(s) after waits of {SRUN_STEP_REFUSAL_WAITS[:refusal_reruns]}s did not help."
+                               if refusals_seen else "")
+                    raise MissingOutputsError(
+                        f"[MITIM] Dispatch in {self.folderExecution} did not return its expected outputs after "
+                        f"{execution_counter} execution(s).{refused} Scratch folder kept; stdout/stderr in "
+                        f"{self.folder_local / 'mitim_farming.out'} / {self.folder_local / 'mitim_farming.err'}"
+                    ) from None
                 if not cont:
                     print("[MITIM] Stopped with embed(), you can look at output and error",typeMsg="w",)
                     embed()
@@ -834,10 +905,12 @@ class mitim_job:
         print(f"\t-------------- Finished process (took {IOtools.getTimeDifference(time_init)}) --------------\n")
 
     def _write_debugging_files(self, output, error, extra_name=""):
-            with open(self.folder_local / f"mitim_farming{extra_name}.out", "w") as f:
-                f.write(output.decode("utf-8"))
-            with open(self.folder_local / f"mitim_farming{extra_name}.err", "w") as f:
-                f.write(error.decode("utf-8"))
+            # Append, so a repeated dispatch does not overwrite the stderr of the attempt that first failed
+            stamp = f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n"
+            with open(self.folder_local / f"mitim_farming{extra_name}.out", "a") as f:
+                f.write(stamp + output.decode("utf-8"))
+            with open(self.folder_local / f"mitim_farming{extra_name}.err", "a") as f:
+                f.write(stamp + error.decode("utf-8"))
 
     @property
     def retry(self):
@@ -2036,6 +2109,7 @@ class SbatchScript:
         self.exclude         = self.allocation.setdefault("exclude", None)
         self.account         = self.allocation.setdefault("account", None)
         self.constraint      = self.allocation.setdefault("constraint", None)
+        self.gres            = self.allocation.setdefault("gres", None)   # e.g. "gpu:a100:4": typed GPU request, for partitions that reject the untyped --gpus-per-node
         memory_req_by_config = self.allocation.setdefault("mem", None)
         request_exclusive_node = self.allocation.setdefault("exclusive", False)
 
@@ -2100,7 +2174,9 @@ class SbatchScript:
             lines.append(f"#SBATCH --cpus-per-task {self.cpuspertask}")
         if self.gpuspertask is not None:
             lines.append(f"#SBATCH --gpus-per-task {self.gpuspertask}")
-        if self.gpuspernode is not None:
+        if self.gres is not None:
+            lines.append(f"#SBATCH --gres={self.gres}")   # sbatch refuses --gres=gpu together with --gpus-per-node
+        elif self.gpuspernode is not None:
             lines.append(f"#SBATCH --gpus-per-node={self.gpuspernode}")
         if self.exclude is not None:
             lines.append(f"#SBATCH --exclude={self.exclude}")
