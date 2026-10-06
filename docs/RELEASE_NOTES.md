@@ -265,6 +265,10 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **MAESTRO Lengyel beat no longer shifts fast-ion temperatures**: the new separatrix temperature is applied to
+    electrons and thermal ions only. Fast species were shifted by their own edge value (2/3 W/n where n -> 0, which a
+    TRANSP conversion can leave at thousands of keV), giving negative alpha temperatures and a total pressure
+    (`ptot`, beta_N) below the thermal one in chains without a pedestal top.
 *   🐛 **PORTALS-CGYRO auto-resubmit no longer cancels a queued element as "stalled"**: the per-radius SLURM-state
     guard now falls back to `squeue` when `sacct` has no record yet (a job submitted seconds earlier), so a PENDING
     element whose folder holds older files (interrupted run kept for the in-place rescue, requeue) is left alone
