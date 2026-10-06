@@ -341,6 +341,21 @@ transport:
         code_settings: "Nonlinear_reduced1"
         extraOptions: {}
 
+        # Per-key overrides of the model's preprocess_options (templates/input.cgyro.models.yaml:
+        # ky_min, L_x, N_radial, min_box_size, fft_friendly, fft_tol), from which MITIM sets KY, BOX_SIZE
+        # and N_RADIAL per radius. Keys not given here keep the model's values.
+        #   fft_friendly : (default true) move BOX_SIZE / N_RADIAL to the nearest grid with a fast radial
+        #                  FFT length (3*N_RADIAL/2 without prime factors above 7), changing box length and
+        #                  kx_max by at most fft_tol each. false keeps the plain recipe. A changed grid needs
+        #                  a cold start: restart files carry the grid.
+        #   fft_tol      : (default 0.06) largest relative change allowed in box length and in kx_max.
+        # Left commented out on purpose: any key given here switches the preprocessing on, also for models
+        # that define no preprocess_options (e.g. "Linear"), whose KY / BOX_SIZE / N_RADIAL would then be
+        # overwritten. Uncomment only with a model that has a preprocess_options block.
+        # preprocess_options:
+        #   fft_friendly: true
+        #   fft_tol: 0.06
+
         # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
 
