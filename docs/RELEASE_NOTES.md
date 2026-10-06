@@ -4,6 +4,17 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **Nonlinear CGYRO on CPU-only machines.** On machine blocks with `gpus_per_node: 0`, `resources_per_call` is
+    CPU cores per radius, split into MPI ranks x `allocation.omp_threads_cpu` threads; radii larger than a node take
+    whole nodes, with one SLURM array element per radius. A rank count that no `TOROIDALS_PER_PROC` fits to the grid
+    now stops with the counts that do fit (on GPU too). Example: `tests/capability_tests/cgyro_08_run_cpu.py`.
+
+*   💥 **FFT-friendly CGYRO radial grid, on by default.** `preprocess_options.fft_friendly` moves `BOX_SIZE`/`N_RADIAL`
+    to the nearest grid with a fast radial FFT length (11-28% cheaper per a/cs on A100 where the old length had a
+    large prime), within `fft_tol` (6%) in box length and kx_max. Switch it off in the PORTALS namelist under
+    `transport.options.cgyro.run.preprocess_options`; a changed grid needs a cold start. MITIM also warns when a
+    simulated toroidal mode connects to itself (`N_RADIAL/BOX_SIZE` below `N_TOROIDAL` and dividing n).
+
 *   🖥️ **Typed GPU requests in SLURM machine blocks**: new optional key `gres` in a machine's `slurm` block of
     `config_user.json` (e.g. `"gres": "gpu:a100:4"`) writes `#SBATCH --gres=...` instead of `--gpus-per-node`, for
     partitions that only accept typed GPU requests (heterogeneous GPU pools, multi-partition submissions).
@@ -264,6 +275,9 @@ DESCRIPTION
     elements from their own checkpoint, and multi-GPU radii that scale ~ideally (2.06x/4.07x on 2/4 A100).
 
 ### Bug Fixes
+
+*   🐛 **GK flux averaging: the autocorrelation lag is now the first 1/e crossing of the ACF**, not the lag closest
+    to 1/e anywhere in it. Error bars shrink where the old estimate had picked a late lag.
 
 *   🐛 **TRANSP no longer crashes with a floating-point error at the first NUBEAM call**: the limiter and vessel handed
     to TRANSP were a placeholder circle of radius 2·R0, far enough from a small machine-initialization seed for the
