@@ -265,6 +265,11 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **PORTALS-CGYRO auto-resubmit no longer cancels a queued element as "stalled"**: the per-radius SLURM-state
+    guard now falls back to `squeue` when `sacct` has no record yet (a job submitted seconds earlier), so a PENDING
+    element whose folder holds older files (interrupted run kept for the in-place rescue, requeue) is left alone
+    instead of being scancelled and its single rescue attempt spent.
+
 *   🐛 **Batch runs survive SLURM step refusals instead of dying at a prompt**: inside an allocation, a dispatch whose
     srun was refused ("Unable to create step ... Job/step already completing or completed", seen on Perlmutter for the
     NEO call of PORTALS-CGYRO chain links) is re-run after 60/120/240 s, with `scontrol show job`/`squeue -s` logged to
