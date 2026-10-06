@@ -875,7 +875,7 @@ class MITIM_BO:
         self.save()
         
         # Finalize the evaluation
-        self.optimization_object.finalize_evaluation()
+        self.optimization_object.finalize_evaluation(converged=self.converged)
 
         print(f"- Complete MITIM workflow took {IOtools.getTimeDifference(timeBeginning)} ~~")
         print("\n **********************************************************************************************************************")

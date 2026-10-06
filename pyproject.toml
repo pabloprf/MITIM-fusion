@@ -72,6 +72,13 @@ lengyel = [
   "extended-lengyel",
   "radas",
 ]
+mds = [
+  "mdsthin",
+]
+quickfit = [   # DIII-D profile fitting via Tomas Odstrcil's map2grid; clone https://github.com/odstrcilt/quickfit next to MITIM-fusion (../quickfit) or set $QUICKFIT_PATH
+  # NOTE: quickfit itself is NOT pip-installable (no build metadata upstream) -> download/clone it yourself; this extra only pins its PyPI dependency
+  "scikit-sparse<0.5",
+]
 test = [
   "pytest",
   "coverage",
@@ -113,6 +120,7 @@ mitim_scp = "mitim_tools.misc_tools.scripts.retrieve_files:main"    # e.g. mitim
 mitim_check_maestro = "mitim_modules.maestro.scripts.check_maestro:main"
 mitim_clean_maestro = "mitim_modules.maestro.scripts.clean_maestro:main" # e.g. mitim_clean_maestro FOLDER1 FOLDER2
 mitim_prune_maestro = "mitim_modules.maestro.scripts.prune_maestro:main" # replicate keep_all_files:false on a finished run; e.g. mitim_prune_maestro FOLDER1 --apply
+mitim_prune_portals = "mitim_modules.portals.scripts.prune_portals:main" # replicate prune_restarts_at_convergence:true on a finished run; e.g. mitim_prune_portals FOLDER1 --apply
 mitim_plot_harvest = "mitim_tools.harvest_tools.HARVESTtools:main_plot"   # [file] [--code tglf] [--x RLTS_2 --y Qi] [--noplot]
 mitim_harvester = "mitim_tools.harvest_tools.HARVESTtools:main_harvester" # push the staged records of (dead) runs [--rebuild]; --from-disk: rebuild those of runs made WITHOUT harvest
 

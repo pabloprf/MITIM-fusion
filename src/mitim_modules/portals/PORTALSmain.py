@@ -479,6 +479,12 @@ class portals(STRATEGYtools.opt_evaluator):
             except Exception as e:
                 print(f"- harvest push failed ({type(e).__name__}: {e}); staging kept in Outputs/harvest, push later with `mitim_harvester {self.folder}`", typeMsg="w")
 
+        # Opt-in: drop the CGYRO restart blobs of every evaluation but the result one (only on convergence, so a run
+        # stopped by maximum_iterations can still be extended with warm starts)
+        if kwargs.get("converged", False) and self.portals_parameters["transport"]["options"].get("cgyro", {}).get("prune_restarts_at_convergence", False):
+            from mitim_modules.portals.scripts.prune_portals import prune_cgyro_restarts
+            prune_cgyro_restarts(self.folder, portals.ibest, apply=True)
+
 def runModelEvaluator(
     self,
     FolderEvaluation,

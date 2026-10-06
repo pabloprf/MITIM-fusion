@@ -582,26 +582,29 @@ def _slurm_elapsed_seconds(token):
 def _slurm_state_for_target(job, target):
     '''
     (state, seconds running) for `target` (a "<jobid>" or "<jobid>_<idx>" string), queried via
-    `sacct -X --format=State,Elapsed`. For a requeued element sacct reports only its latest instance,
-    so the elapsed time counts from the latest (re)start. state is the uppercased token, or None if
-    sacct produced no useful output (e.g. site without sacct, jobid too old to be in the accounting
-    window); the caller treats None as "no signal -- continue with the existing decision tree"
-    rather than as a terminal verdict. seconds is None unless the state is RUNNING.
+    `sacct -X --format=State,Elapsed`, then `squeue -j -o "%T|%M"` when sacct has nothing: a job
+    submitted seconds ago has no accounting record yet but is already in the queue, and without this
+    fallback a PENDING element whose folder holds old files (an interrupted run kept for the in-place
+    rescue, a requeue) was cancelled as stalled before it ever started. For a requeued element sacct
+    reports only its latest instance, so the elapsed time counts from the latest (re)start. state is
+    the uppercased token, or None if neither command produced useful output (e.g. site without sacct
+    and a job that already left the queue); the caller treats None as "no signal -- continue with the
+    existing decision tree" rather than as a terminal verdict. seconds is None unless the state is RUNNING.
     '''
-    cmd = f'sacct -j {target} -X --format=State,Elapsed -n -P'
-    try:
-        out, _err = job.execute(cmd, printYN=False)
-    except Exception as e:
-        print(f"\t    * sacct query for {target} failed ({type(e).__name__}: {e}); proceeding without per-task slurm-state guard", typeMsg='w')
-        return None, None
-    if isinstance(out, bytes):
-        out = out.decode(errors='replace')
-    out = (out or "").strip()
-    if not out:
-        return None, None
-    # Multiple lines possible (sacct emits one row per step). The first non-empty
-    # line is the parent task state — what we actually care about.
-    first = out.splitlines()[0].strip()
+    first = ""
+    for cmd in (f'sacct -j {target} -X --format=State,Elapsed -n -P', f'squeue -h -j {target} -o "%T|%M"'):
+        try:
+            out, _err = job.execute(cmd, printYN=False)
+        except Exception as e:
+            print(f"\t    * {cmd.split()[0]} query for {target} failed ({type(e).__name__}: {e}); proceeding without per-task slurm-state guard", typeMsg='w')
+            return None, None
+        if isinstance(out, bytes):
+            out = out.decode(errors='replace')
+        # Multiple lines possible (sacct emits one row per step). The first non-empty
+        # line is the parent task state — what we actually care about.
+        first = next((l.strip() for l in (out or "").splitlines() if l.strip()), "")
+        if first:
+            break
     if not first:
         return None, None
     state_token, _, elapsed_token = first.partition("|")

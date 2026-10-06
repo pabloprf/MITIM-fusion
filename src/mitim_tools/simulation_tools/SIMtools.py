@@ -1339,16 +1339,17 @@ class mitim_simulation:
                     execute_case_flag=executes,
                     )
                 break
-            except LOGtools.InteractiveTerminalError:
-                # A failed retrieval already removed the local rho folders (they are
-                # both the staged inputs and the retrieval targets), so a repeat would
-                # die in the tarball step with a confusing FileNotFoundError.
-                if any(not Path(f).exists() for f in folders):
+            except LOGtools.InteractiveTerminalError as exc:
+                # A failed retrieval removes the local rho folders (they are both the staged
+                # inputs and the retrieval targets) and may recreate them holding only partial
+                # outputs, so test for the input file itself: a repeat without it re-sends
+                # outputs-only folders and fails again (e.g. NEO's FileNotFoundError 'input.neo').
+                if any(not (Path(f) / settings.input_file).exists() for f in folders):
                     raise RuntimeError(
                         f"[MITIM] {settings.code.upper()} run did not return its expected outputs and the staged "
                         f"inputs under {settings.tmpFolder} are gone; not retrying. Check {settings.tmpFolder}/mitim_farming.err "
-                        f"and the code's own logs in the scratch folder."
-                    )
+                        f"and the code's own logs in the scratch folder. Cause: {exc}"
+                    ) from exc
                 if attempts >= 1:
                     # The retry was already spent; a second failure is not random,
                     # and falling through would organize results of a run that never produced them
