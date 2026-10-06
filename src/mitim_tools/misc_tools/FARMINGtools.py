@@ -2101,6 +2101,7 @@ class SbatchScript:
         self.exclude         = self.allocation.setdefault("exclude", None)
         self.account         = self.allocation.setdefault("account", None)
         self.constraint      = self.allocation.setdefault("constraint", None)
+        self.gres            = self.allocation.setdefault("gres", None)   # e.g. "gpu:a100:4": typed GPU request, for partitions that reject the untyped --gpus-per-node
         memory_req_by_config = self.allocation.setdefault("mem", None)
         request_exclusive_node = self.allocation.setdefault("exclusive", False)
 
@@ -2165,7 +2166,9 @@ class SbatchScript:
             lines.append(f"#SBATCH --cpus-per-task {self.cpuspertask}")
         if self.gpuspertask is not None:
             lines.append(f"#SBATCH --gpus-per-task {self.gpuspertask}")
-        if self.gpuspernode is not None:
+        if self.gres is not None:
+            lines.append(f"#SBATCH --gres={self.gres}")   # sbatch refuses --gres=gpu together with --gpus-per-node
+        elif self.gpuspernode is not None:
             lines.append(f"#SBATCH --gpus-per-node={self.gpuspernode}")
         if self.exclude is not None:
             lines.append(f"#SBATCH --exclude={self.exclude}")
