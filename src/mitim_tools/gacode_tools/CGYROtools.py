@@ -1,6 +1,8 @@
 import os
+import json
 import shutil
 import string
+import tempfile
 import datetime
 from dataclasses import dataclass, field
 from enum import Enum
@@ -96,9 +98,11 @@ class Watchdog:
 
     MANUAL, BUDGET, STOP = "manual", "budget", "stop"
 
-    def __init__(self, rho_dir, mode=None, min_time=0.0, minutes_per_call=None, template=None):
+    def __init__(self, rho_dir, mode=None, min_time=0.0, minutes_per_call=None, template=None, guard=False):
         self.rho_dir = rho_dir
         self.mode = mode or self.MANUAL
+        # cost guard (CostGuard): main radii only, an extra case has no target of its own
+        self.guard = bool(guard) and self.mode != self.STOP
         self.min_time = float(min_time)
         self.template = _WATCHDOG_BASH if template is None else template
         if self.mode == self.BUDGET and minutes_per_call is None:
@@ -106,13 +110,13 @@ class Watchdog:
         self.budget_s = int(float(minutes_per_call) * 60) if self.mode == self.BUDGET else 0
 
     @classmethod
-    def from_load_balance(cls, rho_dir, load_balance, mode=None, template=None):
+    def from_load_balance(cls, rho_dir, load_balance, mode=None, template=None, guard=False):
         '''mode None picks BUDGET when the load_balance strategy asks for it, else MANUAL.'''
         lb = load_balance or {}
         if mode is None:
             mode = cls.BUDGET if lb.get("strategy") == "wall_budget" else cls.MANUAL
         return cls(rho_dir, mode=mode, min_time=lb.get("min_time", 0.0),
-                   minutes_per_call=lb.get("minutes_per_call"), template=template)
+                   minutes_per_call=lb.get("minutes_per_call"), template=template, guard=guard)
 
     def wrap(self, cmd):
         return _ShellTemplate(self.template).substitute(
@@ -120,8 +124,54 @@ class Watchdog:
             budget_s=self.budget_s,
             min_time=f"{self.min_time:g}",
             discard="1" if self.mode == self.STOP else "0",
+            guard="1" if self.guard else "0",
             cgyro_cmd=cmd.rstrip("\n"),
         )
+
+
+class CostGuard:
+    '''
+    Stops a main radius that is burning wall time far from its targets, the way a user watching the
+    run would (namelist transport.options.cgyro.run.cost_guard; the knobs are documented there).
+    The decision is taken on the compute node by templates/cgyro_guard.py, which the Watchdog runs
+    every couple of minutes: this class only stages, per radius, that script and the mitim_guard.json
+    it reads (thresholds + the turbulent heat-flux targets of the radius, GB units). A stop leaves
+    mitim_budget.tag starting with GUARD, so the radius counts as finished like any watchdog stop.
+
+    targets_GB: {rho: {"QeGB": float, "QiGB": float}}, total target minus neoclassical, added by the
+    transport layer (transport_cgyro._gk_cost_guard). Without targets there is nothing to judge.
+    '''
+
+    DEFAULTS = {"seconds_per_acs": 100.0, "flux_ratio": 5.0, "min_time": 250.0,
+                "waive_min_time_hours": 12.0, "floor_time": 50.0, "window": 20.0}
+    FILE, SCRIPT = "mitim_guard.json", "mitim_guard.py"
+    TAG_TOKEN = "GUARD"
+
+    def __init__(self, options=None):
+        options = options or {}
+        self.enabled = bool(options.get("enabled", False))
+        self.thresholds = {k: float(options.get(k, v)) for k, v in self.DEFAULTS.items()}
+        self.targets_GB = options.get("targets_GB") or {}
+        if self.enabled and not self.targets_GB:
+            print("\t- cost_guard is enabled but no flux targets were given (standalone CGYRO run?); the guard stays off", typeMsg="w")
+            self.enabled = False
+
+    def stage(self, folder, additional_files_to_send=None):
+        '''
+        Writes mitim_guard_<rho>.json under `folder` and returns `additional_files_to_send` with the
+        guard files added to each radius that has targets.
+        '''
+        files = {rho: list(entries or []) for rho, entries in (additional_files_to_send or {}).items()}
+        for rho, targets in self.targets_GB.items():
+            guard_file = Path(folder) / f"mitim_guard_{rho:.4f}.json"
+            guard_file.write_text(json.dumps({**self.thresholds, "targets_GB": targets}, indent=2))
+            files.setdefault(rho, []).extend([(guard_file, self.FILE), (__mitimroot__ / "templates" / "cgyro_guard.py", self.SCRIPT)])
+        return files
+
+    @classmethod
+    def stopped(cls, tag_text):
+        '''True when a mitim_budget.tag was left by the cost guard.'''
+        return bool(tag_text) and tag_text.split()[:1] == [cls.TAG_TOKEN]
 
 
 class CgyroLaunchBody:
@@ -1141,20 +1191,28 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         return int(digits) if digits else 1
 
     # Thin wrapper: capture preprocess_options / load_balance and delegate to the generic run()
-    def run(self, *args, preprocess_options=None, load_balance=None, **kwargs):
+    def run(self, *args, preprocess_options=None, load_balance=None, cost_guard=None, **kwargs):
         '''
         load_balance: {'strategy': None | 'wall_budget' | 'extra_points', 'minutes_per_call': float, 'min_time': float}
         (namelist transport.options.cgyro.run.load_balance); see Watchdog and _extra_point_hooks.
+        cost_guard: namelist transport.options.cgyro.run.cost_guard plus 'targets_GB'; see CostGuard.
         '''
         self._preprocess_options = preprocess_options
         self._load_balance = load_balance
+        self._cost_guard = CostGuard(cost_guard)
         # code_call reads allocation['omp_threads_cpu'] from here (SIMtools' JobScript passes only n)
         self._allocation = kwargs.get("allocation")
+        guard_staging = tempfile.TemporaryDirectory() if self._cost_guard.enabled else None
         try:
+            if guard_staging is not None:
+                kwargs["additional_files_to_send"] = self._cost_guard.stage(guard_staging.name, kwargs.get("additional_files_to_send"))
             return super().run(*args, **kwargs)
         finally:
+            if guard_staging is not None:
+                guard_staging.cleanup()
             self._preprocess_options = None
             self._load_balance = None
+            self._cost_guard = None
             self._extra_point_n = None
             self._allocation = None
 
@@ -1168,8 +1226,10 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         body = CgyroLaunchBody(folder, p, n=n, additional_command=additional_command,
                                resolved=resolved, cpus_per_node=self._allocation_cpus_per_node(),
                                omp_threads_cpu=(getattr(self, "_allocation", None) or {}).get("omp_threads_cpu"))
+        guard = getattr(self, "_cost_guard", None)
         return body.build(Watchdog.from_load_balance(
-            f"{p}/{folder}", getattr(self, "_load_balance", None), mode=watchdog, template=self._WALL_BUDGET_WATCHDOG))
+            f"{p}/{folder}", getattr(self, "_load_balance", None), mode=watchdog, template=self._WALL_BUDGET_WATCHDOG,
+            guard=guard is not None and guard.enabled))
 
     # The bash itself lives in templates/cgyro_watchdog.sh; kept as an attribute so a caller can supply
     # its own template through `self`

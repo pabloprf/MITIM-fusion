@@ -606,6 +606,36 @@ transport:
           extra_points:
             perturbation: 0.15
 
+        # Stop a radius that is burning wall time far from its target, as a user watching the run
+        # would: its flux already says which way the next step goes, and its magnitude would not be
+        # trusted anyway. The watchdog around every radial call checks, every 2 minutes, the last
+        # `window` a/cs of the run and stops CGYRO at once when ALL of these hold:
+        #   - cost >= seconds_per_acs  [wall seconds per a/cs: TOTAL of out.cgyro.timing over the
+        #     output spacing of out.cgyro.time]. The last quarter of the window must be that slow
+        #     too, so a radius whose cost is coming back down is left alone.
+        #   - Qe or Qi (turbulent, GB units, all fields) >= flux_ratio x its turbulent target (total
+        #     target minus neoclassical, as in restart_from_cases "best"). Only ABOVE the target: a
+        #     flux far below it at early times may just not have saturated. Particle flux is not
+        #     used (its target is near zero).
+        #   - t >= min_time [a/cs]; waived when the wall time still needed to reach the end of the
+        #     run at the current cost is >= waive_min_time_hours.
+        #   - t >= floor_time [a/cs], which is never waived (keeps the linear overshoot out).
+        # The radius then counts as complete, like a load_balance stop (mitim_budget.tag, here
+        # starting with GUARD; harvest guard_stop = 1), and its fluxes are whatever read.averaging
+        # makes of the shorter trace: expect a fallback window and a poor uncertainty. The stop
+        # does not wait for a restart write, so bin.cgyro.restart is up to RESTART_STEP a/cs older
+        # than the end of the trace. Independent of load_balance.min_time. Works in every
+        # submission mode; needs python3 on the compute node (without it nothing is stopped) and
+        # is not available in the batched multi-plasma dispatch.
+        cost_guard:
+          enabled: false
+          seconds_per_acs: 100
+          flux_ratio: 5
+          min_time: 250
+          waive_min_time_hours: 12
+          floor_time: 50
+          window: 20
+
       read:
         # tmin: left edge of the signal-analysis window.
         #   tmin >= 0                    : absolute time (a/cs).

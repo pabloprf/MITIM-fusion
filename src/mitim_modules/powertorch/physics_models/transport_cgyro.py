@@ -126,6 +126,7 @@ class gyrokinetic_model:
 
         if outputs is not None:
             self._gk_collect_fluxes(ctx, outputs)
+            self._gk_report_guard_stops(ctx)
             if ctx.extra_points:
                 self._extra_points(ctx).harvest()
             ctx.submission.cleanup(
@@ -200,6 +201,7 @@ class gyrokinetic_model:
         ctx.extra_points = (ctx.run_kwargs.get("load_balance") or {}).get("strategy") == "extra_points"
 
         self._gk_warm_start(ctx, gk_class, run_options)
+        self._gk_cost_guard(ctx, run_options)
 
         # Per-iteration overrides. extraOptions is coerced to {} because SIMtools.run does not
         # accept None; allocation may stay None so that run() still sizes it from _default_allocation.
@@ -238,6 +240,33 @@ class gyrokinetic_model:
 
         if ctx.plan.files_per_rho is not None:
             ctx.run_kwargs["additional_files_to_send"] = ctx.plan.files_per_rho
+
+    def _gk_cost_guard(self, ctx, run_options):
+        '''
+        Give the cost guard (CGYROtools.CostGuard) what it compares the running fluxes against: the
+        turbulent heat-flux targets of every radius in GB units (total target minus neoclassical,
+        the same ctx.turb_target_GB that restart_from_cases "best" uses). Only Qe and Qi: a particle
+        target near zero makes a flux ratio meaningless. ctx.run_kwargs gets its own copy so the
+        shared namelist dict is not mutated.
+        '''
+        options = run_options.get("cost_guard") or {}
+        if not options.get("enabled", False):
+            return
+        if "cost_guard" not in ctx.run_kwargs:
+            reason = "the batched (multi-plasma) dispatch" if ctx.batched else ctx.code.upper()
+            print(f"\t- cost_guard is not available for {reason}; running without it", typeMsg='w')
+            return
+        targets = {rho: {key: float(ctx.turb_target_GB[key][i]) for key in ("QeGB", "QiGB") if key in ctx.turb_target_GB}
+                   for i, rho in enumerate(ctx.rho_locations)}
+        ctx.run_kwargs["cost_guard"] = {**options, "targets_GB": targets}
+
+    def _gk_report_guard_stops(self, ctx):
+        '''Say which radii of this evaluation the cost guard stopped: their fluxes come from a short trace.'''
+        for rho in ctx.rho_locations:
+            tag = self.folder / ctx.subfolder_name / f"mitim_budget.tag_{rho:.4f}"
+            if tag.is_file() and CGYROtools.CostGuard.stopped(tag.read_text()):
+                print(f"\t- rho = {rho:.4f} was stopped by cost_guard ({tag.read_text().strip()}); "
+                      "its fluxes are whatever the averaging makes of the shorter trace", typeMsg='w')
 
     def _gk_prepare(self, ctx, gk_class):
         '''

@@ -1209,6 +1209,7 @@ def harvest_run_fields(obj):
       reached_max_time     1: CGYRO wrote its EXIT line after the last launch (nonlinear: all steps done),
                            0: truncated (killed, preempted, crashed, or stopped by the wall-budget watchdog)
       budget_stop          1: stopped on purpose by MITIM's wall-budget watchdog (mitim_budget.tag present)
+      guard_stop           1: that stop came from the cost guard (run.cost_guard; the tag starts with GUARD)
       cost_s_per_acs       [s per a/cs] wall clock: median TOTAL of the out.cgyro.timing rows (one per
                            output) divided by the output spacing of t
       wall_s               [s] wall clock of the trace: setup + every TOTAL row of out.cgyro.timing
@@ -1217,7 +1218,7 @@ def harvest_run_fields(obj):
       gpu                  1: GPU build (platform tag of out.cgyro.version or 'GPU-aware' in out.cgyro.info)
     '''
     out = {k: np.nan for k in ('restart_warm', 'restart_source_iter', 'restart_t_inherited', 'max_time', 't_start',
-                               'reached_max_time', 'budget_stop', 'cost_s_per_acs', 'wall_s', 'n_mpi', 'n_omp', 'n_nodes', 'gpu')}
+                               'reached_max_time', 'budget_stop', 'guard_stop', 'cost_s_per_acs', 'wall_s', 'n_mpi', 'n_omp', 'n_nodes', 'gpu')}
     folder, suffix = getattr(obj, 'folder', None), getattr(obj, 'suffix_read', None) or ''
     read = lambda name: _read_run_file(folder, suffix, name)
 
@@ -1255,6 +1256,7 @@ def harvest_run_fields(obj):
             out['reached_max_time'] = int(i_exit > i_launch)
         if info or read('mitim_budget.tag') is not None:
             out['budget_stop'] = int(read('mitim_budget.tag') is not None)
+            out['guard_stop'] = int((read('mitim_budget.tag') or '').startswith('GUARD'))
         if i_launch >= 0 and i_launch + 1 < len(lines):
             vals = dict(zip([s.strip() for s in lines[i_launch].split('|')], lines[i_launch + 1].split()))
             out['n_mpi'], out['n_omp'] = float(vals.get('n_MPI', np.nan)), float(vals.get('n_OMP', np.nan))
