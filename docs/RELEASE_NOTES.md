@@ -279,7 +279,8 @@ DESCRIPTION
 *   🐛 **Reading standalone CGYRO runs works again and returns fluxes in physical units**: `mitim_plot_cgyro` (and any
     `CGYRO()` built without radii) read nothing since the 2026-09-22 SIMtools refactor. Runs prepared by MITIM
     (PROFILE_MODEL=1) gave `QeMWm2`, `QiMWm2`, `MtJm2` = 0: the gyroBohm units now come from the `input.gacode` /
-    `input.gacode_torun` next to the run, or from `read(input_gacode=...)`. `Ggb` is in 1E20/s/m^2.
+    `input.gacode_torun` next to the run, or from `read(input_gacode=...)`. `Ggb` is in 1E20/s/m^2. A run killed
+    while writing an output step (field files one time slice longer than `out.cgyro.time`) no longer crashes the read.
 
 *   🐛 **GK flux averaging: the autocorrelation lag is now the first 1/e crossing of the ACF**, not the lag closest
     to 1/e anywhere in it. Error bars shrink where the old estimate had picked a late lag.

@@ -426,7 +426,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self._build_averager()
 
         if (not minimal): # and (self.linear == False):
-            self.cgyrodata.getbigfield()
+            self._read_big_fields()
 
             if 'kxky_phi' in self.cgyrodata.__dict__:
                 try:
@@ -688,6 +688,37 @@ class CGYROoutput(SIMtools.GACODEoutput):
             self.apar_ballooning = self.cgyrodata.aparb     # (ball, time)
             self.bpar_ballooning = self.cgyrodata.bparb     # (ball, time)
             self.theta_ballooning = self.cgyrodata.thetab   # (ball, time)
+
+    def _read_big_fields(self):
+        '''
+        pygacode's getbigfield, tolerant to a run stopped in the middle of an output step.
+        CGYRO writes the moments (n, e, v) and the fields (phi, apar, bpar) before out.cgyro.time,
+        so a job killed while writing may leave some of those files with more time slices than
+        the time vector. Slices beyond out.cgyro.time are dropped (as pygacode's getflux does).
+        '''
+
+        c = self.cgyrodata
+        extract = c.extract
+        moments = ['.cgyro.kxky_n', '.cgyro.kxky_e', '.cgyro.kxky_v']
+        dropped = {}
+
+        def extract_up_to_time_vector(f, cmplx=False):
+            t, fmt, data = extract(f, cmplx=cmplx)
+            size_time_slice = c.n_radial * c.theta_plot * c.n_n * (c.n_species if f in moments else 1)
+            n_written = len(data) // size_time_slice
+            if fmt == 'bin' and n_written > c.n_time:
+                dropped[f'bin{f}'] = n_written - c.n_time
+                data = data[:size_time_slice * c.n_time]
+            return t, fmt, data
+
+        c.extract = extract_up_to_time_vector
+        try:
+            c.getbigfield()
+        finally:
+            del c.extract   # back to pygacode's own method (a local function would not pickle)
+
+        if len(dropped) > 0:
+            print(f'\t- Run stopped while writing an output step: dropped time slices beyond out.cgyro.time ({c.n_time} entries) in {dropped}', typeMsg='w')
 
     def _process_fluctuations(self):
         # Fluctuations (complex numbers)
