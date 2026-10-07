@@ -182,6 +182,13 @@ class opt_evaluator:
         """
         pass
 
+    def after_evaluation(self, *args, **kwargs):
+        '''
+        Called once per iteration, after its points have been evaluated (iteration 0: the initial training) and before the surrogates are fitted
+        '''
+
+        pass
+
     def finalize_evaluation(self, *args, **kwargs):
         '''
         If the case has converged, do something
@@ -773,6 +780,9 @@ class MITIM_BO:
                             f"\t[LocalOptima] Mining round failed: {_exc}",
                             typeMsg="w",
                         )
+
+            # Evaluations of this iteration are complete (iteration 0: the initial training); surrogates are fitted next
+            self.optimization_object.after_evaluation()
 
             # After evaluating metrics inside updateSet, I may have requested a hard finish
             if self.hard_finish:

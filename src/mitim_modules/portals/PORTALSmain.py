@@ -5,6 +5,9 @@ import datetime
 import copy
 from collections import OrderedDict
 import numpy as np
+import pandas as pd
+import matplotlib
+import matplotlib.pyplot as plt
 import dill as pickle_dill
 from collections import OrderedDict
 from mitim_tools.misc_tools import IOtools
@@ -86,6 +89,7 @@ class portals(STRATEGYtools.opt_evaluator):
 
         # Older user namelists predate the harvest block; MAESTRO also injects extra keys into it
         self.portals_parameters.setdefault("harvest", {"enabled": True, "file": None})
+        self.portals_parameters["solution"].setdefault("plot_after_each_evaluation", False)
 
         # Read optimization namelist (always the default, the values to be modified are in the portals one)
         if self.portals_parameters["optimization_namelist_location"] is not None:
@@ -224,6 +228,9 @@ class portals(STRATEGYtools.opt_evaluator):
 
         # Write the parameters (after script modification) to a yaml namelist for tracking purposes
         IOtools.write_mitim_yaml(self.portals_parameters, self.folder / "namelist.portals.yaml")
+
+        # Evaluations of a previous launch are not plotted again while a restart walks through them (see save_figures)
+        self.evaluations_in_figures = self._evaluations_on_disk()
 
     def _define_reuse_models(self):
         '''
@@ -454,6 +461,62 @@ class portals(STRATEGYtools.opt_evaluator):
             # ------------------------------------------------------------------------------------
 
             optimization_data.data.to_csv(optimization_data.file, index=False)
+
+    def after_evaluation(self, *args, **kwargs):
+        '''
+        Opt-in: refresh the saved figures with the evaluations done so far
+        '''
+
+        if self.portals_parameters["solution"].get("plot_after_each_evaluation", False):
+            self.save_figures()
+
+    def save_figures(self, dpi=120):
+        '''
+        Equivalent of `mitim_plot_portals <folder> --full --save <folder>/Outputs/figures_saved`, from inside the run
+        '''
+
+        # Plot only when there are new evaluations: a restarted run walks again through those already on disk
+        evaluated = self._evaluations_on_disk()
+        if evaluated == getattr(self, "evaluations_in_figures", None):
+            return
+
+        folder_save = self.folder / "Outputs" / "figures_saved"
+        print(f"\n- Saving figures of the {evaluated} evaluations so far to {IOtools.clipstr(folder_save)}", typeMsg="i")
+        time1 = datetime.datetime.now()
+
+        # Agg forced as in the script (a stale DISPLAY on a cluster node makes Qt abort), previous backend put back at the end
+        backend = matplotlib.get_backend()
+        matplotlib.use("Agg", force=True)
+
+        # A failure here must never stop the run
+        try:
+            from mitim_tools.misc_tools.GUItools import FigureNotebook
+
+            portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder)
+            portals.fn = FigureNotebook("PORTALS", geometry="1600x1000", show=False)
+            if isinstance(portals, PORTALSanalysis.PORTALSinitializer):
+                portals.plotMetrics(fig=None)
+            else:
+                portals.plotPORTALS(plot_transport_models=True, noshow=True)
+            portals.fn.save(folder_save, dpi=dpi, force_clean_folder=True)
+
+            self.evaluations_in_figures = evaluated
+            print(f"\t- Figures saved, took {IOtools.getTimeDifference(time1)}")
+        except Exception as e:
+            print(f"- Could not save the figures after this evaluation ({type(e).__name__}: {e}), run continues", typeMsg="w")
+        finally:
+            plt.close("all")
+            matplotlib.use(backend, force=False)
+
+    def _evaluations_on_disk(self):
+        '''
+        Number of evaluations with all their outputs in Outputs/optimization_data.csv
+        '''
+
+        file = self.folder / "Outputs" / "optimization_data.csv"
+        if not file.exists():
+            return 0
+        return int(pd.read_csv(file).drop(columns="source", errors="ignore").notna().all(axis=1).sum())
 
     def finalize_evaluation(self, *args, **kwargs):
         '''

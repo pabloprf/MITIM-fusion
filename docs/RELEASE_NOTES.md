@@ -4,6 +4,10 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **PORTALS can save its figures after every evaluation.** `solution.plot_after_each_evaluation: true` refreshes
+    `Outputs/figures_saved/` with the PNGs of `mitim_plot_portals --full --save` each time new evaluations are in
+    (before the surrogates are fitted), to follow long runs (e.g. PORTALS-CGYRO) without loading them.
+
 *   💥 **Nonlinear CGYRO on CPU-only machines.** On machine blocks with `gpus_per_node: 0`, `resources_per_call` is
     CPU cores per radius, split into MPI ranks x `allocation.omp_threads_cpu` threads; radii larger than a node take
     whole nodes, with one SLURM array element per radius. A rank count that no `TOROIDALS_PER_PROC` fits to the grid

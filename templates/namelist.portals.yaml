@@ -73,6 +73,11 @@ solution:
   # If False, remove full model folder after evaluation, to avoid carrying large folders (e.g. in MAESTRO runs)
   keep_full_model_folder: true
 
+  # If true, every time new evaluations are in (initial training, then each iteration, before the surrogates are fitted)
+  # the run refreshes Outputs/figures_saved/ with the PNGs of `mitim_plot_portals <folder> --full --save`, to follow
+  # a long run (e.g. PORTALS-CGYRO) without loading it. Costs one full plotting pass per iteration; a failure only warns
+  plot_after_each_evaluation: false
+
   # If True, fit surrogate model to GZ/nZ instead of GZ, valid on the trace limit
   impurity_trick: true
 
