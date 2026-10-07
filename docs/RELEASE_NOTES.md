@@ -37,6 +37,12 @@ DESCRIPTION
     stop watchdog, which also waits for every MPI rank to exit before returning (OpenMPI launchers put ranks
     in their own process groups). Works for bash/in-allocation and submitted runs, local or over SFTP.
 
+*   💥 **PORTALS-CGYRO cost guard: automatic stop of a slow radius far above its target.** New
+    `transport.options.cgyro.run.cost_guard` (off by default): the watchdog stops a radius whose wall cost
+    per a/cs is high while its heat flux (Qe or Qi) is far above the turbulent target, at once, and the
+    radius counts as finished (`mitim_budget.tag` starting with `GUARD`, harvest `guard_stop`). Thresholds
+    and time gates are documented in `templates/namelist.portals.yaml`; needs `python3` on the compute node.
+
 *   💥 **Claude Code agent `portals-cgyro` shipped in `.claude/agents/`: an operator for live PORTALS-CGYRO
     runs.** It checks each radius' cost per a/cs, time step and saturation, stops hopeless radii with
     `mitim_kill_cgyro` only under a written rule, and holds chains whose links keep failing. It never changes
