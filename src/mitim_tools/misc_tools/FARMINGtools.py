@@ -78,7 +78,7 @@ def slurm_job_snapshot(folder, note):
     texts = []
     with open(Path(folder) / "mitim_slurm_snapshot.txt", "a") as f:
         f.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} {note} =====\n")
-        for cmd in (["scontrol", "show", "job", job_id], ["squeue", "-s", "-j", job_id, "-o", "%i %T %M %N"]):
+        for cmd in (["scontrol", "show", "job", job_id], ["squeue", "-s", "-j", job_id, "--Format=StepID:20,StepName:16,StepState:12,TimeUsed:12,Nodes:120"]):
             try:
                 res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
                 texts.append(res.stdout + res.stderr)
@@ -87,7 +87,7 @@ def slurm_job_snapshot(folder, note):
             f.write(f"$ {' '.join(cmd)}\n{texts[-1]}")
     # The tmp folder holding the file is removed when a re-run succeeds, so the driver log gets the key fields too
     keys = [tok for tok in texts[0].split() if tok.split("=")[0] in ("JobState", "Reason", "RunTime", "TimeLimit", "EndTime")]
-    steps = [line.strip() for line in texts[1].splitlines()[1:] if line.strip()]
+    steps = [" ".join(line.split()) for line in texts[1].splitlines()[1:] if line.strip()]
     print(f"\t* SLURM snapshot ({note}): {' '.join(keys) or texts[0].strip()[:200]} | steps: {'; '.join(steps) or 'none'}", typeMsg="w")
 
 
