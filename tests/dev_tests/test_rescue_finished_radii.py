@@ -135,7 +135,7 @@ def test_rescue_keeps_finished_radii_without_relaunching():
         rels = ["base_cgyro/rho_0.3316", "base_cgyro/rho_0.5435", "base_cgyro/rho_0.6342"]
         folders = [d / r for r in rels]
         for f in folders:
-            _write(f, input__cgyro=INPUT, bin__cgyro__restart="staged blob")
+            _write(f, input__cgyro=INPUT, bin__cgyro__restart="staged blob", mitim_guard__json="{}")
         md5 = _md5(INPUT)
         sim = types.SimpleNamespace(
             run_specifications=CGYROtools.CGYRO().run_specifications,
@@ -156,6 +156,8 @@ def test_rescue_keeps_finished_radii_without_relaunching():
         assert (folders[0] / "input.cgyro").read_text() == INPUT, "a finished radius must not be trimmed"
         assert not (folders[0] / "bin.cgyro.restart").exists(), "staged restart must not overwrite the finished run"
         assert "MAX_TIME                = 3.25000E+02" in (folders[1] / "input.cgyro").read_text()
+        assert not (folders[1] / "bin.cgyro.restart").exists(), "staged restart must not overwrite the orphan's own"
+        assert (folders[1] / "mitim_guard.json").exists(), "a continued radius still gets its cost-guard files"
         assert (folders[2] / "bin.cgyro.restart").exists(), "a discarded radius keeps its normal staging"
         assert "not relaunched" in out and "finished run found but its input.cgyro differs" in out, out
     finally:

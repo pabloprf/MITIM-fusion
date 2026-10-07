@@ -970,7 +970,9 @@ class mitim_simulation:
              "after_trim": optional callable (text, remaining) -> (text, log_note) applied
                 to the staged input after the time_key rewrite, for keys whose value must
                 follow the trimmed run length (CGYRO: RESTART_STEP),
-             "report_files": files whose sizes are logged for forensics (optional)}
+             "report_files": files whose sizes are logged for forensics (optional),
+             "keep_staged": staged files a continued radius still receives (optional; CGYRO: the
+                cost-guard files, which a launch made before the guard existed left no copy of)}
         A rho sub-folder is rescued only if the required files are there and its
         input file is byte-identical (md5) to the one just generated, so a changed
         namelist, preset or gradient never continues a stale run. Rescued folders
@@ -1041,10 +1043,11 @@ class mitim_simulation:
             except (TypeError, ValueError):
                 print(f"\t- [rescue] {rel}: interrupted run found but no resume time could be read ({progress!r}); discarding it", typeMsg="w")
                 continue
-            # Keep only the input file locally: staged restarts would overwrite the
-            # orphan's own (more advanced) restart on extraction
+            # Keep only the input file locally (plus what the code declares safe to send again):
+            # staged restarts would overwrite the orphan's own (more advanced) restart on extraction
+            keep_staged = {input_file, *spec.get("keep_staged", [])}
             for f in folder_sim_this.iterdir():
-                if f.name != input_file:
+                if f.name not in keep_staged:
                     f.unlink()
             # Trim the run length to what is left (the code counts steps from the restart point)
             remaining_msg = ""

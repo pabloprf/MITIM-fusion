@@ -1096,7 +1096,9 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                             # (and be excluded from the identity md5, like MAX_TIME, for the next rescue)
                             'after_trim': self._restart_step_after_trim,
                             'checksum_ignore': ['MAX_TIME', 'RESTART_STEP'],
-                            'report_files': ['out.cgyro.time', 'bin.cgyro.ky_flux', 'bin.cgyro.restart', 'out.cgyro.tag']},
+                            'report_files': ['out.cgyro.time', 'bin.cgyro.ky_flux', 'bin.cgyro.restart', 'out.cgyro.tag'],
+                            # a radius continued in place is guarded like a fresh one
+                            'keep_staged': [CostGuard.FILE, CostGuard.SCRIPT]},
             # A radius is only 'done' if CGYRO wrote its EXIT line (files exist from step 1 on)...
             'completion_marker': ('out.cgyro.info', 'EXIT'),
             # ...or the watchdog stopped it past min_time. Optional, never mandatory: a run that ends
