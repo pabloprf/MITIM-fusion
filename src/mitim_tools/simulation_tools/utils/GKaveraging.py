@@ -132,10 +132,12 @@ class GKaverager:
         self.t_end = float(self.t[-1])
         self.t_start_fixed = resolve_fixed_tmin(self.t, tmin, tmin_is_rel, print_msg=(method == "fixed"))
         self.diagnostics = {}
+        self.acf_issues = {}
 
         self._select_window()
 
         self.stats = {k: dict(zip(("mean", "std"), self.mean_std(v, label_print=k, print_msg=True))) for k, v in self.traces.items()}
+        self.report_acf_issues()
 
         self.provenance = self._provenance()
 
@@ -252,7 +254,24 @@ class GKaverager:
         S = np.asarray(S)
         if self.uncertainty == "quends" and S.ndim == 1:
             return self._mean_std_quends(S, tmax=tmax, label_print=label_print, print_msg=print_msg)
-        return apply_ac(self.t, S, tmin=self.t_start, tmax=tmax, label_print=label_print, print_msg=print_msg)
+        issues = {}
+        mean, std = apply_ac(self.t, S, tmin=self.t_start, tmax=tmax, label_print=label_print, print_msg=print_msg, issues=issues)
+        self.note_acf_issues(label_print, issues)
+        return mean, std
+
+    def note_acf_issues(self, label, issues):
+        for kind in issues:
+            self.acf_issues.setdefault(kind, []).append(label or "signal")
+
+    def report_acf_issues(self, max_names=8):
+        '''
+        One warning per kind of ACF problem found since the last report, naming the signals,
+        instead of one per time series (a ky- or kx-resolved signal holds tens of them).
+        '''
+        for kind, labels in self.acf_issues.items():
+            names = ", ".join(labels[:max_names]) + (f", +{len(labels) - max_names} more" if len(labels) > max_names else "")
+            print(f"\t- {ACF_ISSUES[kind]} [{len(labels)} signal{'s' if len(labels) > 1 else ''}: {names}]", typeMsg='w')
+        self.acf_issues = {}
 
     def _mean_std_quends(self, S, tmax=None, label_print="", print_msg=False):
         it0, it1 = self._window_indices(tmax)
@@ -382,7 +401,7 @@ class GKaverager:
         if len(Sw) < 3:
             return
         acf = sm.tsa.acf(Sw, nlags=len(Sw) - 1)
-        n_corr, icor = _grab_ncorrelation(Sw)
+        n_corr, icor = _grab_ncorrelation(Sw, issues={})   # already reported when the statistics were computed
         ax.plot(acf, "-", c=color, lw=1.0)
         ax.axhline(1 / np.e, c="k", ls="--", lw=0.8)
         ax.axvline(icor, c=color, ls=":", lw=0.8)
@@ -410,7 +429,19 @@ def _jsonable(x):
 # ACF standard-error estimator (moved here from CGYROutils; same numerics)
 # ----------------------------------------------------------------------
 
-def _grab_ncorrelation(S, debug=False):
+ACF_ISSUES = {
+    'no_crossing': "Autocorrelation function does not reach 1/e, will use full length of time series for n_corr.",
+    'below_one_lag': "Autocorrelation lag resolved as 0 (signal window too short); using 1 lag for n_corr — flux uncertainty is unreliable.",
+}
+
+def _acf_issue(kind, issues):
+    '''Warn right away, or (issues given) count it there so that the caller reports once for many series'''
+    if issues is None:
+        print(ACF_ISSUES[kind], typeMsg='w')
+    else:
+        issues[kind] = issues.get(kind, 0) + 1
+
+def _grab_ncorrelation(S, debug=False, issues=None):
     # Calculate the autocorrelation function
     i_acf = sm.tsa.acf(S, nlags=len(S))
 
@@ -419,7 +450,7 @@ def _grab_ncorrelation(S, debug=False):
     # lags and can come back near 1/e far beyond the first crossing.
     below = np.flatnonzero(i_acf <= 1/np.e)
     if below.size == 0:
-        print("Autocorrelation function does not reach 1/e, will use full length of time series for n_corr.", typeMsg='w')
+        _acf_issue('no_crossing', issues)
         icor = len(S)
     else:
         k = below[0]   # >= 1, since i_acf[0] = 1
@@ -428,7 +459,7 @@ def _grab_ncorrelation(S, debug=False):
         # Window too short (or signal too noisy) for the ACF to be resolved: it
         # drops below 1/e before lag 1 and n_corr would exceed N (std -> 0 as icor -> 0).
         # Treat every sample as correlated to the next one, i.e. one decorrelation lag.
-        print("Autocorrelation lag resolved as 0 (signal window too short); using 1 lag for n_corr — flux uncertainty is unreliable.", typeMsg='w')
+        _acf_issue('below_one_lag', issues)
         icor = 1
 
     # Define number of samples
@@ -446,7 +477,7 @@ def _grab_ncorrelation(S, debug=False):
 
     return n_corr, icor
 
-def apply_ac(t, S, tmin = 0, tmax = None, label_print = '', print_msg = False, debug=False):
+def apply_ac(t, S, tmin = 0, tmax = None, label_print = '', print_msg = False, debug=False, issues=None):
 
     it0 = np.argmin(np.abs(t - tmin))
     it1 = np.argmin(np.abs(t - tmax)) if tmax is not None else len(t)  # If tmax is None, use the full length of t
@@ -460,7 +491,7 @@ def apply_ac(t, S, tmin = 0, tmax = None, label_print = '', print_msg = False, d
 
     if S.ndim == 1:
         # 1D case: single time series
-        n_corr, icor = _grab_ncorrelation(S[it0:it1+1], debug=debug)
+        n_corr, icor = _grab_ncorrelation(S[it0:it1+1], debug=debug, issues=issues)
         S_std = S_std / np.sqrt(n_corr)
 
         if print_msg:
@@ -477,7 +508,7 @@ def apply_ac(t, S, tmin = 0, tmax = None, label_print = '', print_msg = False, d
 
         # Calculate correlation for each flattened time series
         for i in range(n_series):
-            n_corr[i], icor[i] = _grab_ncorrelation(S_reshaped[i, it0:it1+1], debug=debug)
+            n_corr[i], icor[i] = _grab_ncorrelation(S_reshaped[i, it0:it1+1], debug=debug, issues=issues)
 
         # Reshape correlation arrays back to original shape (without time dimension)
         n_corr = n_corr.reshape(shape_orig)

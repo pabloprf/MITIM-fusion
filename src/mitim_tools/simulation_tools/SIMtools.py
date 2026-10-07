@@ -621,6 +621,13 @@ class mitim_simulation:
         # user opted into harvesting; None -> read() records nothing
         self.harvest = None
 
+    def _rhos_to_read(self):
+        '''
+        Radii that read() and the plots loop over. An object built without radii and never
+        prepared (e.g. `CGYRO()` only used to read a folder) reads that folder as one unlabeled radius.
+        '''
+        return self.rhos if len(self.rhos) > 0 else np.array([None])
+
     def _harvest(self, label, folder=None):
         if self.harvest is not None:
             self.harvest.record(self, label, folder=folder)
@@ -2166,7 +2173,7 @@ class mitim_simulation:
         self.results[label] = {
             'output':[],
             'parsed': [],
-            "x": np.array(self.rhos),
+            "x": np.array(self._rhos_to_read()),
             }
 
         # Try get normalizations if they weren't populated (e.g. this is just a "read" of an already run folder)
@@ -2175,7 +2182,7 @@ class mitim_simulation:
             from mitim_tools.gacode_tools import PROFILEStools
             self.NormalizationSets, _ = NORMtools.normalizations(PROFILEStools.gacode_state(input_gacode))
 
-        for rho in self.rhos:
+        for rho in self._rhos_to_read():
 
             SIMout = class_output(
                 folder,

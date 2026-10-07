@@ -1830,6 +1830,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         tmin_is_rel = True,
         minimal = False,
         last_tmin_for_linear = True,
+        input_gacode = None,  # State to take the physical units from when CGYRO did not write them (PROFILE_MODEL=1)
         **kwargs
     ):
 
@@ -1838,6 +1839,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             tmin_is_rel = tmin_is_rel,
             minimal = minimal,
             last_tmin_for_linear = last_tmin_for_linear,
+            input_gacode = input_gacode,
+            state_for_units = input_gacode,
             **kwargs)
 
     def read_linear_scan(

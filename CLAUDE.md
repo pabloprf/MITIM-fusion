@@ -133,7 +133,7 @@ Top-level sections of the PORTALS namelist:
 - `optimization_options`: overrides on top of `templates/namelist.optimization.yaml` —
   `initialization_options.initial_training` (default 5 SR points),
   `convergence_options.{maximum_iterations, stopping_criteria_parameters.maximum_value, …}`,
-  `acquisition_options.{type, optimizers}` (`optimizers: ["sr","root","botorch"]`
+  `acquisition_options.{type, optimizers}` (`optimizers: ["sr","root"]` by default, `"botorch"` optional;
   applied sequentially), `surrogate_options`, `strategy_options.AllowedExcursions`.
 
 #### Multi-fidelity (`turbulence_model` as int-keyed dict)

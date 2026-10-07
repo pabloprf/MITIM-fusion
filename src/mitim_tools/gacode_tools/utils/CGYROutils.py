@@ -19,15 +19,21 @@ except ModuleNotFoundError:
 from IPython import embed
 
 
-def _resolve_rho_star_norm_from_input_gacode(folder, roa, max_parents=3):
+def _resolve_gb_units_from_input_gacode(folder, roa, max_parents=3, input_gacode=None):
     """
-    PROFILE_MODEL=1 CGYRO runs (the MITIM default) write rho_star_norm=0.0 to
-    out.cgyro.info because the dimensional anchor (T_e[keV], B_unit[T], a[m])
-    isn't supplied. If a dimensional input.gacode is sitting alongside the run
-    (or in any of its parent folders up to `max_parents`), interpolate
-    derived["rho_sa"] from it at the simulation's r/a (= cgyrodata.rmin) and
-    return that value -- mathematically identical to what CGYRO would have
-    computed under PROFILE_MODEL=2 with the same dimensional inputs.
+    PROFILE_MODEL=1 CGYRO runs (the MITIM default) write rho_star_norm, q_gb_norm,
+    gamma_gb_norm and pi_gb_norm = 0.0 to out.cgyro.equilibrium because the
+    dimensional anchor (T_e[keV], n_e, B_unit[T], a[m]) isn't supplied. If a
+    dimensional input.gacode is sitting alongside the run (or in any of its parent
+    folders up to `max_parents`; `input.gacode_torun`, the state a standalone MITIM
+    run was prepared from, counts too), interpolate the gyroBohm units of that state
+    at the simulation's r/a (= cgyrodata.rmin) and return them -- the same
+    quantities CGYRO would have computed under PROFILE_MODEL=2 with the same
+    dimensional inputs (cgyro_make_profiles.F90: deuterium reference mass, B_unit, a):
+        rho_sa  rho_s/a              [-]
+        q_gb    n_e T_e c_s rho_sa^2 [MW/m^2]
+        g_gb    n_e c_s rho_sa^2     [1E20/s/m^2]  (CGYRO's gamma_gb_norm is in 1E19/s/m^2)
+        pi_gb   n_e T_e a rho_sa^2   [J/m^2]
 
     Caveat the caller is expected to surface to the user: the dimensionless
     inputs in input.cgyro (T_e/T_norm, n_e/n_norm, gradients, nu, ...) are not
@@ -35,23 +41,26 @@ def _resolve_rho_star_norm_from_input_gacode(folder, roa, max_parents=3):
     For PORTALS that consistency holds by construction; for ad-hoc
     `mitim_plot_cgyro <folder>` use it's the user's responsibility.
 
-    Returns: (rho_star_norm, source_path) or (None, None) if no readable
+    `input_gacode` (a file given explicitly, e.g. `read(input_gacode=...)`) is used before
+    searching next to the run.
+
+    Returns: (dict of the four units, source_path) or (None, None) if no readable
     input.gacode is found.
     """
     folder = Path(folder)
     candidates = [folder] + list(folder.parents)[:max_parents]
-    for d in candidates:
-        f = d / "input.gacode"
+    files = ([Path(input_gacode)] if input_gacode is not None else []) + [d / name for d in candidates for name in ("input.gacode", "input.gacode_torun")]
+    for f in files:
         if not f.exists():
             continue
         try:
             from mitim_tools.gacode_tools import PROFILEStools
             profiles = PROFILEStools.gacode_state(str(f))
             roa_grid = profiles.profiles["rmin(m)"] / profiles.profiles["rmin(m)"][-1]
-            rho_sa = float(np.interp(roa, roa_grid, profiles.derived["rho_sa"]))
-            return rho_sa, f
+            units = {k: float(np.interp(roa, roa_grid, np.abs(profiles.derived[k]))) for k in ("rho_sa", "q_gb", "g_gb", "pi_gb")}
+            return units, f
         except Exception as e:
-            print(f"\t- Found {f} but could not derive rho_s/a from it ({type(e).__name__}: {e}); skipping", typeMsg='w')
+            print(f"\t- Found {f} but could not derive the gyroBohm units from it ({type(e).__name__}: {e}); skipping", typeMsg='w')
             continue
     return None, None
 
@@ -247,8 +256,11 @@ class CGYROlinear_scan:
         
 
 class CGYROoutput(SIMtools.GACODEoutput):
-    def __init__(self, folder, suffix = None, tmin=0.0, tmin_is_rel=True, minimal=False, last_tmin_for_linear=True, averaging=None, **kwargs):
+    def __init__(self, folder, suffix = None, tmin=0.0, tmin_is_rel=True, minimal=False, last_tmin_for_linear=True, averaging=None, state_for_units=None, **kwargs):
         '''
+        state_for_units: input.gacode file to take the gyroBohm units from when CGYRO did not write them
+          (PROFILE_MODEL=1), before searching next to the run. CGYRO.read(input_gacode=...) sets it.
+
         tmin sets the left edge of the window used for signal analysis (averaging method "fixed").
           tmin >= 0                    : absolute time (a/cs).
           tmin <  0, tmin_is_rel=True  : fraction of the total simulation time
@@ -354,50 +366,52 @@ class CGYROoutput(SIMtools.GACODEoutput):
         else:
             self.theta_stored = np.array([-1+2.0*i/self.cgyrodata.theta_plot for i in range(self.cgyrodata.theta_plot)])
         
+        # GyroBohm units as CGYRO wrote them: Qgb [MW/m^2], Ggb [1E20/s/m^2] (CGYRO's
+        # gamma_gb_norm is in 1E19/s/m^2; converted to the MITIM convention), Pgb [J/m^2]
         self.Qgb = self.cgyrodata.q_gb_norm
-        self.Ggb = self.cgyrodata.gamma_gb_norm
+        self.Ggb = self.cgyrodata.gamma_gb_norm * 1e-1
         self.Pgb = self.cgyrodata.pi_gb_norm
-        
-        # PROFILE_MODEL=1 (MITIM default) leaves rho_star_norm=0 in
-        # out.cgyro.info, which would zero out every fluctuation amplitude at
-        # _process_fluctuations(). If an input.gacode is available alongside
-        # the run, recover rho_star_norm from it at r/a=self.roa. When
-        # PROFILE_MODEL=2 (rho_star_norm already populated) we still cross-
-        # check against input.gacode if present, but always trust CGYRO's own
-        # value as the effective one.
+
+        # PROFILE_MODEL=1 (MITIM default) leaves rho_star_norm and the gyroBohm
+        # units = 0 in out.cgyro.equilibrium, which would zero out every fluctuation
+        # amplitude at _process_fluctuations() and every flux in physical units at
+        # _process_fluxes(). If an input.gacode is available alongside the run,
+        # recover them from it at r/a=self.roa. When PROFILE_MODEL=2 (already
+        # populated) we still cross-check rho_star_norm against input.gacode if
+        # present, but always trust CGYRO's own values as the effective ones.
         rho_star_norm_effective = self.cgyrodata.rho_star_norm
         self._rho_star_norm_source = ('out.cgyro.info', None)
+        gb_units, source = _resolve_gb_units_from_input_gacode(self.folder, float(self.roa), input_gacode=state_for_units)
         if rho_star_norm_effective <= 0.0:
-            rho_sa, source = _resolve_rho_star_norm_from_input_gacode(self.folder, float(self.roa))
-            if rho_sa is not None:
+            if gb_units is not None:
                 print(
-                    f"\t* CGYRO ran with PROFILE_MODEL=1 (rho_star_norm=0 in out.cgyro.info); "
-                    f"computed rho_star_norm={rho_sa:.4e} from {source} at r/a={self.roa:.4f}. "
-                    f"Fluctuation amplitudes use this *computed* rho_star_norm, not a value the simulation itself used "
+                    f"\t* CGYRO ran with PROFILE_MODEL=1 (rho_star_norm=0 and gyroBohm units=0 in its output); "
+                    f"computed rho_star_norm={gb_units['rho_sa']:.4e}, Qgb={gb_units['q_gb']:.4e} MW/m^2 from {source} at r/a={self.roa:.4f}. "
+                    f"Fluctuation amplitudes and fluxes in physical units use these *computed* values, not ones the simulation itself used "
                     f"(input.cgyro dimensionless inputs are assumed consistent with this input.gacode at this radius).",
                     typeMsg='w',
                 )
-                rho_star_norm_effective = rho_sa
+                rho_star_norm_effective = gb_units['rho_sa']
+                self.Qgb, self.Ggb, self.Pgb = gb_units['q_gb'], gb_units['g_gb'], gb_units['pi_gb']
                 self._rho_star_norm_source = ('input.gacode', source)
             else:
                 print(
-                    f"\t* CGYRO ran with PROFILE_MODEL=1 (rho_star_norm=0 in out.cgyro.info) and no input.gacode was found "
-                    f"in {self.folder} or its first 3 parents; fluctuation amplitudes will be zero. "
-                    f"Drop an input.gacode next to the run to recover physical amplitudes.",
+                    f"\t* CGYRO ran with PROFILE_MODEL=1 (rho_star_norm=0 and gyroBohm units=0 in its output) and no input.gacode was found "
+                    f"in {self.folder} or its first 3 parents; fluctuation amplitudes and fluxes in physical units (MW/m^2, J/m^2) will be zero. "
+                    f"Drop an input.gacode next to the run to recover them.",
                     typeMsg='w',
                 )
                 self._rho_star_norm_source = ('zero', None)
-        else:
-            rho_sa, source = _resolve_rho_star_norm_from_input_gacode(self.folder, float(self.roa))
-            if rho_sa is not None:
-                rel_diff = abs(rho_sa - rho_star_norm_effective) / rho_star_norm_effective
-                print(
-                    f"\t* rho_star_norm cross-check at r/a={self.roa:.4f}: "
-                    f"CGYRO (out.cgyro.info)={rho_star_norm_effective:.4e}, "
-                    f"input.gacode ({source})={rho_sa:.4e}, "
-                    f"relative diff={rel_diff*100:.2f}% -- using the CGYRO value.",
-                    typeMsg='i',
-                )
+        elif gb_units is not None:
+            rho_sa = gb_units['rho_sa']
+            rel_diff = abs(rho_sa - rho_star_norm_effective) / rho_star_norm_effective
+            print(
+                f"\t* rho_star_norm cross-check at r/a={self.roa:.4f}: "
+                f"CGYRO (out.cgyro.info)={rho_star_norm_effective:.4e}, "
+                f"input.gacode ({source})={rho_sa:.4e}, "
+                f"relative diff={rel_diff*100:.2f}% -- using the CGYRO value.",
+                typeMsg='i',
+            )
 
         self.artificial_rhos_factor = rho_star_norm_effective / self.cgyrodata.rhonorm
 
@@ -427,6 +441,10 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self._saturate_signals()
         
         self.remove_symlinks()
+
+    def unnormalize(self, *args, **kwargs):
+        # Physical units are resolved at construction (CGYRO's own, or an input.gacode: see __init__)
+        pass
 
     # ---- harvest interface (SIMtools.GACODEoutput): inputs are the input.cgyro the trace ran with, fluxes are time averages by self.averaging
     def harvest_inputs(self):
@@ -784,7 +802,9 @@ class CGYROoutput(SIMtools.GACODEoutput):
 
         # Correlation length
         phi = (abs(self.phi[:,self.ky>0,:])).sum(axis=1) # Sum over toroidal modes n>0
-        phim, _ = apply_ac(self.t,phi,tmin=self.tmin)
+        issues = {}
+        phim, _ = apply_ac(self.t,phi,tmin=self.tmin, issues=issues)
+        self.averaging.note_acf_issues('phi (correlation length)', issues)
         phim = np.append(0, phim)  # Add n=0 mode
         if np.isinf(phim).any() or np.isnan(phim).any():
             print(f"\t- Warning: Correlation length calculation failed due to infinite/nan values. Setting l_corr to NaN.", typeMsg='w')
@@ -1102,8 +1122,10 @@ class CGYROoutput(SIMtools.GACODEoutput):
                         self.__dict__[iflag],
                         tmax=self.tmax_fluct,
                         label_print=iflag,
-                        )     
-            
+                        )
+
+        self.averaging.report_acf_issues()
+
 
 def harvest_averaging_fields(obj, names):
     '''
@@ -1129,7 +1151,7 @@ def harvest_averaging_fields(obj, names):
             continue
         if av.uncertainty == 'acf':
             try:
-                n_corr, icor = _grab_ncorrelation(np.asarray(S, dtype=float)[it0:])
+                n_corr, icor = _grab_ncorrelation(np.asarray(S, dtype=float)[it0:], issues={})   # already reported by the averager
                 out[f'{k}_ncorr'], out[f'{k}_icor'] = float(n_corr), float(icor)
             except Exception:
                 pass
