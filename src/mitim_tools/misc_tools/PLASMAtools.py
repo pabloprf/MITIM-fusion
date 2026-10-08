@@ -1282,7 +1282,7 @@ def calculateKappaLimit(epsilon, delta, inductance, betap, feedback=2.25, wallra
 
 
 
-def calculateKappaLimit_interpolated(epsilon, delta, inductance, betap, feedback=2.25, wallrad=0.1):
+def calculateKappaLimit_interpolated(epsilon, delta, inductance, betap, feedback=2.25, wallrad=0.1, return_components=False):
     """
     Equation is from Lee et al., NF, 2017
     Wallrad (or DELTA_0 in the paper) is the outer gap between the plasma and the wall normalized by minor radius. (b/a = 1 + DELTA_0). 
@@ -1393,7 +1393,10 @@ def calculateKappaLimit_interpolated(epsilon, delta, inductance, betap, feedback
 
     kmax = k0 + k1 * ((2 * epsilon) / (1 + epsilon**2)) ** 2
 
-    return kmax
+    if return_components:
+        return kmax, k0, k1
+    else:
+        return kmax
 
 
 
