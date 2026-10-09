@@ -8,7 +8,7 @@ import numpy as np
 import xarray as xr
 
 import cfspopcon
-from cfspopcon import named_options
+from cfspopcon import named_options, registry
 from cfspopcon.algorithm_class import Algorithm, CompositeAlgorithm
 from cfspopcon.unit_handling import Quantity, magnitude_in_units, ureg
 
@@ -51,7 +51,8 @@ def calc_flattop_time(p,
                       cs_change_in_field = None, #input unitless for ease and then convert to ureg.T in the function
                       inboard_to_CS_distance = None, #input unitless for ease and then convert to ureg.meters in the function
                       ejima_coefficient = 0.6, 
-                      double_flux_swing = False): 
+                      double_flux_swing = False, 
+                      ): 
     if cs_change_in_field is not None:
         if type(cs_change_in_field) is not Quantity:
             cs_change_in_field = cs_change_in_field * ureg.T
@@ -117,8 +118,14 @@ def calc_flattop_time(p,
 
     algs = []
 
+    print(f"[pulse-duration] Resolving {len(algorithms)} algorithms from cfspopcon.registry")
     for key in algorithms:
-        algs.append(Algorithm.get_algorithm(key))
+        try:
+            algs.append(registry[key])
+        except Exception as error:
+            print(f"[pulse-duration] Failed to resolve algorithm '{key}': {error}")
+            raise
+    print("[pulse-duration] All algorithms resolved; building composite")
 
     calc_flux_and_inductance_dependencies = CompositeAlgorithm(algs)
 
