@@ -878,6 +878,13 @@ class power_transport:
         '''
 
         print(">> No neoclassical fluxes to evaluate", typeMsg="w")
+
+    def _stable_correction(self, simulation_options):
+        '''
+        Hook called by evaluate() once the fluxes are in powerstate.plasma, for codes that want
+        to correct stable radii. Nothing to correct when no fluxes were evaluated.
+        '''
+        pass
         
         
 # *******************************************************************************************
