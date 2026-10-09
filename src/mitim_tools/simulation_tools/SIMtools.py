@@ -335,6 +335,15 @@ class ArraySlurmScript(JobScript):
 
     _INDEXED_FOLDER = "${FOLDERS[$SLURM_ARRAY_TASK_ID]}"
 
+    # An array has ONE --job-name, so each element appends its own folder name when it starts
+    # (cgyro_ev0 -> cgyro_ev0_rho_0.5500); a pending element still shows the array name. The
+    # suffix strip keeps a requeued element from stacking it, and a refused rename never stops the run.
+    # JobId is <array>_<index> on purpose: one element's $SLURM_JOB_ID can equal the array id, which
+    # scontrol reads as the whole array.
+    _RENAME_ELEMENT = ('MITIM_ELEMENT=$(basename "${FOLDERS[$SLURM_ARRAY_TASK_ID]}")\n'
+                       'scontrol update JobId=${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID} '
+                       'JobName="${SLURM_JOB_NAME%_$MITIM_ELEMENT}_$MITIM_ELEMENT" || true\n\n')
+
     def _redirect(self, folder):
         return (f'1> {self.exec_folder}/{folder}/slurm_output.dat '
                 f'2> {self.exec_folder}/{folder}/slurm_error.dat\n')
@@ -346,6 +355,7 @@ class ArraySlurmScript(JobScript):
         folders_list += ")"
 
         command = folders_list + "\n\n"
+        command += self._RENAME_ELEMENT
         command += self._call(self._INDEXED_FOLDER, additional_command=self._redirect(self._INDEXED_FOLDER))
 
         # Literal-folder bodies and the folder -> element map let the stall-rescue path
