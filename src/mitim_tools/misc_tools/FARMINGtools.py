@@ -324,6 +324,40 @@ class SqueueRecord:
         return self.nodelist
 
 
+@dataclass
+class SqueueAnswer:
+    """
+    What one status poll got back, as written to squeue_output.dat: the table squeue printed,
+    then the trailer `MITIM_SQUEUE_EXIT=<exit code> <stderr>` that the poll command appends.
+
+    A job that left the queue and a slurmctld that did not answer both print NO table, not
+    even the header; only stderr separates them ("Invalid job id specified" against a
+    timeout). `answered` is True when slurm gave a verdict, so that silence is never read as
+    a finished job.
+    """
+
+    TRAILER = "MITIM_SQUEUE_EXIT="
+    JOB_GONE = "invalid job id"  # slurm's text for a job id it no longer holds
+
+    records: list = field(default_factory=list)
+    table: str = ""
+    exit_code: str = None
+    error: str = ""
+
+    @classmethod
+    def parse(cls, text, error=None):
+        # `error`: stderr when the caller holds it apart instead of in the trailer
+        table, _, trailer = (text or "").partition(cls.TRAILER)
+        exit_code, _, trailer_error = trailer.strip().partition(" ")
+        return cls(records=SqueueRecord.parse(table), table=table, exit_code=exit_code or None,
+                   error=(trailer_error if error is None else error).strip())
+
+    @property
+    def answered(self):
+        # A table (the header alone means "no such job in the queue"), a clean exit, or slurm's own "gone"
+        return bool(self.table.strip()) or self.exit_code == "0" or self.JOB_GONE in self.error.lower()
+
+
 class mitim_job:
     def __init__(
             self,
@@ -1670,7 +1704,11 @@ class mitim_job:
         # job; when it is gone (scratch deleted) nothing can ever be retrieved, and without this marker
         # the failed `cd` looked like an unretrieved poll, i.e. "pending" forever.
         folder = shlex.quote(str(self.folderExecution))
-        command = (f'if [ -d {folder} ]; then cd {folder} && squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat; '
+        # squeue's exit code and stderr follow its table in the same file (SqueueAnswer): an empty
+        # table alone cannot tell a job that left the queue from a slurmctld that did not answer
+        squeue = (f'_squeue_err=$(squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" 2>&1 > squeue_output.dat); '
+                  f'echo "{SqueueAnswer.TRAILER}$? $_squeue_err" >> squeue_output.dat')
+        command = (f'if [ -d {folder} ]; then cd {folder} && {{ {squeue}; }}; '
                    f'else echo {self.REMOTE_FOLDER_GONE}; fi')
 
         # Only squeue_output.dat is mandatory — it is what interpret_status() parses. The
@@ -1718,6 +1756,15 @@ class mitim_job:
         self.status = 2
         self.log_file = None
 
+    def _set_unknown(self, message):
+        '''Status 0 (keep polling): slurm said nothing about the job this poll, which is never "finished".'''
+        print(f"\t* {message}", typeMsg="w")
+        self.records = []
+        self.infoSLURM = {"STATE": SlurmState.UNKNOWN.value, "NAME": self._squeue_job_name(), "JOBID": None}
+        self.jobid_found = None
+        self.status = 0
+        self.log_file = None
+
     def interpret_status(self, file_output = "slurm_output.dat"):
         """
         Status of job:
@@ -1734,12 +1781,7 @@ class mitim_job:
         # the next beat/step with no output. The polling loop retries next cycle.
         # -----------------------------------------------
         if not (self.folder_local / "squeue_output.dat").exists():
-            print("\t* squeue output not retrieved this poll; assuming job still pending (will re-poll)", typeMsg="w")
-            self.records = []
-            self.infoSLURM = {"STATE": "UNKNOWN", "NAME": self._squeue_job_name(), "JOBID": None}
-            self.jobid_found = None
-            self.status = 0
-            self.log_file = None
+            self._set_unknown("squeue output not retrieved this poll; assuming job still pending (will re-poll)")
             return
 
         # -----------------------------------------------
@@ -1747,7 +1789,17 @@ class mitim_job:
         # -----------------------------------------------
 
         with open(self.folder_local / "squeue_output.dat", "r") as f:
-            self.records = SqueueRecord.parse(f.read())
+            answer = SqueueAnswer.parse(f.read())
+
+        # Guard: squeue printed nothing and did not say the job is gone (slurmctld timeout,
+        # engaging 2026-10-09: four drivers read one such poll as "finished" and died on
+        # arrays that were still running). Same degradation as above: keep polling.
+        if not answer.answered:
+            self._set_unknown(f"squeue gave no answer this poll (exit code {answer.exit_code}, stderr: {answer.error or 'none'}); "
+                              f"silence is not a finished job, assuming it is still in the queue (will re-poll)")
+            return
+
+        self.records = answer.records
 
         if not self.records:
             state = SlurmState.ABSENT

@@ -71,6 +71,9 @@ class JobStatus(IntEnum):
     RUNNING = 1
     GONE = 2
 
+# Pause before the one re-poll that confirms a first NOT FOUND (mitim_simulation.check)
+GONE_CONFIRMATION_SECONDS = 60
+
 # ----------------------------------------------------------------------------------------------------
 # Per-radius naming convention (the ONE place it lives; writers and readers must not drift)
 # ----------------------------------------------------------------------------------------------------
@@ -1454,21 +1457,29 @@ class mitim_simulation:
         if not child_ids or job is None:
             return []
 
-        cmd = f'squeue -h -j {",".join(child_ids)} -o "%.15i %.10T"'
+        unreachable = list(child_ids) if alive_if_unreachable else []
+        treated_as = 'alive' if alive_if_unreachable else 'not alive'
+
+        cmd = f'squeue -h -j {",".join(child_ids)} -o "%.15i %.10T"; echo "{FARMINGtools.SqueueAnswer.TRAILER}$?"'
         try:
             job.connect()
-            out, _err = job.execute(cmd, printYN=False)
+            out, err = job.execute(cmd, printYN=False)
             job.close()
         except Exception as e:
-            print(f"\t- [child-jobid liveness] squeue failed ({type(e).__name__}: {e}); treating rescue children as "
-                  f"{'alive' if alive_if_unreachable else 'not alive'}", typeMsg='w')
-            return list(child_ids) if alive_if_unreachable else []
+            print(f"\t- [child-jobid liveness] squeue failed ({type(e).__name__}: {e}); treating rescue children as {treated_as}", typeMsg='w')
+            return unreachable
 
-        if isinstance(out, bytes):
-            out = out.decode(errors='replace')
+        out, err = (x.decode(errors='replace') if isinstance(x, bytes) else (x or "") for x in (out, err))
+
+        # No rows and no verdict from slurm (slurmctld timeout) is not "the children left the queue"
+        answer = FARMINGtools.SqueueAnswer.parse(out, error=err)
+        if not answer.answered:
+            print(f"\t- [child-jobid liveness] squeue gave no answer (exit code {answer.exit_code}, stderr: {answer.error or 'none'}); "
+                  f"treating rescue children as {treated_as}", typeMsg='w')
+            return unreachable
 
         alive = []
-        for line in (out or "").strip().splitlines():
+        for line in answer.table.strip().splitlines():
             toks = line.split()
             if toks and toks[0] in child_ids and toks[0] not in alive:
                 print(f"\t- [child-jobid liveness] rescue child jobid {toks[0]} is still in the queue (state={toks[1] if len(toks) > 1 else '?'})", typeMsg='i')
@@ -1481,7 +1492,8 @@ class mitim_simulation:
 
     def check(self, every_n_minutes=None, skip_first_iteration_squeue=False, max_completing_polls=2, custom_checker=None):
         '''
-        Poll slurm until the job leaves the queue (state "NOT FOUND" / status=2).
+        Poll slurm until the job leaves the queue (state "NOT FOUND" / status=2). A first
+        NOT FOUND is re-polled once, GONE_CONFIRMATION_SECONDS later, before it ends the wait.
 
         skip_first_iteration_squeue: when True, the first loop iteration does NOT
         run a fresh `squeue`; instead it reuses `self.simulation_job.status`
@@ -1514,12 +1526,20 @@ class mitim_simulation:
 
             first = True
             completing_streak = 0
+            gone_confirmed = False
             while True:
                 if first and skip_first_iteration_squeue:
                     print(f"\t- Reusing status from the earlier liveness probe (skipping redundant squeue)", typeMsg='i')
                 else:
                     self.simulation_job.check(file_output = slurm_output)
                 first = False
+
+                # A first NOT FOUND is confirmed once before it can end the wait
+                if self.simulation_job.status != JobStatus.GONE:
+                    gone_confirmed = False
+                elif not gone_confirmed and every_n_minutes is not None:
+                    gone_confirmed = self._confirm_gone(slurm_output, every_n_minutes)
+
                 state = self.simulation_job.infoSLURM.get("STATE")
                 print(f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.simulation_job.status} ({state})')
 
@@ -1560,6 +1580,17 @@ class mitim_simulation:
                     time.sleep(every_n_minutes * 60)
         else:
             print("- Not checking status because this was run command line (not slurm)")
+
+    def _confirm_gone(self, slurm_output, every_n_minutes):
+        '''
+        Ask slurm once more, a short pause after a first NOT FOUND, and keep whatever it says
+        then. Ending the wait on a wrong NOT FOUND fetches radii that are still running.
+        '''
+        wait = min(GONE_CONFIRMATION_SECONDS, every_n_minutes * 60)
+        print(f"\t- Job NOT FOUND; asking slurm again in {wait:.0f} s before believing it", typeMsg='i')
+        time.sleep(wait)
+        self.simulation_job.check(file_output = slurm_output)
+        return self.simulation_job.status == JobStatus.GONE
 
     def fetch(self):
         """

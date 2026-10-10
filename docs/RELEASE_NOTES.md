@@ -307,6 +307,10 @@ DESCRIPTION
     guard now falls back to `squeue` when `sacct` has no record yet (a job submitted seconds earlier), so a PENDING
     element whose folder holds older files (interrupted run kept for the in-place rescue, requeue) is left alone
     instead of being scancelled and its single rescue attempt spent.
+*   🐛 **A SLURM poll the scheduler does not answer is no longer read as "job finished"**: `squeue` printing nothing
+    (slurmctld timeout) made PORTALS-CGYRO drivers fetch arrays that were still running and die with "CGYRO returned
+    without finishing". "Not found" is now believed only when `squeue` answers (a table, a clean exit or "Invalid job
+    id"), and it is re-polled once 60 s later before the wait ends.
 
 *   🐛 **Batch runs survive SLURM step refusals instead of dying at a prompt**: inside an allocation, a dispatch whose
     srun was refused ("Unable to create step ... Job/step already completing or completed", seen on Perlmutter for the

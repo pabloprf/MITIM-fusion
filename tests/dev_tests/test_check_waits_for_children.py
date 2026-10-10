@@ -36,6 +36,7 @@ if str(mitim_root) not in sys.path:
     sys.path.insert(0, str(mitim_root))
 
 from mitim_tools.simulation_tools import SIMtools
+from mitim_tools.misc_tools import FARMINGtools
 
 CHILD = "67890"
 RHO = 0.6712
@@ -43,10 +44,14 @@ MARKER, ALT = ("out.cgyro.info", "EXIT"), "mitim_budget.tag"
 FILE = "out.cgyro.gbflux"
 
 
+TRAILER = FARMINGtools.SqueueAnswer.TRAILER
+
+
 class FakeJob:
     """mitim_job stand-in: parent already gone, child liveness driven by `child_polls_alive`."""
 
-    def __init__(self, child_polls_alive=0, probe_raises=False):
+    def __init__(self, child_polls_alive=0, probe_raises=False, child_probe_times_out=False):
+        self.child_probe_times_out = child_probe_times_out
         self.jobid = "12345"
         self.launchSlurm = True
         self.status = 2
@@ -69,14 +74,16 @@ class FakeJob:
         assert cmd.startswith("squeue"), cmd
         self.n_squeue_child += 1
         if self.n_squeue_child <= self.child_polls_alive:
-            return f"          {CHILD}    RUNNING\n".encode(), b""
-        return b"", b""
+            return f"          {CHILD}    RUNNING\n{TRAILER}0\n".encode(), b""
+        if self.child_probe_times_out:
+            return f"{TRAILER}1\n".encode(), b"slurm_load_jobs error: Socket timed out on send/recv operation\n"
+        return f"{TRAILER}1\n".encode(), b"slurm_load_jobs error: Invalid job id specified\n"
 
 
 def _sim(job, ledger=None):
     sim = types.SimpleNamespace(simulation_job=job, slurm_output="slurm_output.dat",
                                 _resubmit_ledger=ledger or {})
-    for name in ("check", "_child_jobids", "_live_child_jobids", "_any_child_job_alive"):
+    for name in ("check", "_confirm_gone", "_child_jobids", "_live_child_jobids", "_any_child_job_alive"):
         setattr(sim, name, types.MethodType(getattr(SIMtools.mitim_simulation, name), sim))
     return sim
 
@@ -104,7 +111,9 @@ def test_keeps_polling_while_child_alive():
         sim.check(every_n_minutes=1)
     out = log.getvalue()
 
-    assert len(naps) == 2, f"expected 2 waits while the child was alive, got {naps}"
+    # the first nap is the one-off confirmation of NOT FOUND, not repeated at the later polls
+    assert len(naps) == 3, f"expected the confirmation plus 2 waits while the child was alive, got {naps}"
+    assert out.count("asking slurm again") == 1, out
     assert job.n_squeue_child == 3, job.n_squeue_child
     assert f"rescue child jobid(s) ['{CHILD}'] are still in it" in out, out
     assert "Job considered finished" in out, out
@@ -118,10 +127,10 @@ def test_no_children_exits_immediately():
     with _no_sleep() as naps, contextlib.redirect_stdout(log):
         sim.check(every_n_minutes=1)
 
-    assert naps == [], naps
+    assert naps == [SIMtools.GONE_CONFIRMATION_SECONDS], naps
     assert job.n_squeue_child == 0, "no ledger entries -> no squeue for children"
     assert "Job considered finished" in log.getvalue()
-    print("PASS: parent gone + no rescue children -> check() exits on the first poll")
+    print("PASS: parent gone + no rescue children -> check() exits once NOT FOUND is confirmed")
 
 
 def test_unreachable_probe_counts_as_alive():
@@ -129,16 +138,18 @@ def test_unreachable_probe_counts_as_alive():
     sim = _sim(job, LEDGER)
     log = io.StringIO()
 
-    # The probe never recovers, so stop it after the first nap
+    # The probe never recovers, so stop it after the first poll-interval nap (the nap before it
+    # is the confirmation of NOT FOUND)
     with _no_sleep() as naps, contextlib.redirect_stdout(log):
         def stop(_):
-            job.probe_raises = False
             naps.append(1)
+            if len(naps) == 2:
+                job.probe_raises = False
         SIMtools.time.sleep = stop
         sim.check(every_n_minutes=1)
     out = log.getvalue()
 
-    assert naps == [1], naps
+    assert naps == [1, 1], naps
     assert out.count("squeue failed") == 1, out
     assert "treating rescue children as alive" in out, out
     assert f"['{CHILD}'] are still in it" in out, out
@@ -154,6 +165,83 @@ def test_reattach_probe_keeps_not_alive_on_failure():
     assert alive is False
     assert "treating rescue children as not alive" in log.getvalue(), log.getvalue()
     print("PASS: default (re-attach) semantics unchanged — unreachable probe means not alive")
+
+
+def test_silent_child_probe_counts_as_alive():
+    '''squeue printing nothing for the children because slurmctld timed out is not "they left the queue".'''
+    job = FakeJob(child_probe_times_out=True)
+    sim = _sim(job, LEDGER)
+    log = io.StringIO()
+    with _no_sleep() as naps, contextlib.redirect_stdout(log):
+        def stop(_):
+            naps.append(1)
+            if len(naps) == 2:
+                job.child_probe_times_out = False
+        SIMtools.time.sleep = stop
+        sim.check(every_n_minutes=1)
+        assert sim._any_child_job_alive() is False   # slurm now answers "Invalid job id"
+        job.child_probe_times_out = True
+        assert sim._any_child_job_alive() is False   # re-attach semantics: no signal, not alive
+    out = log.getvalue()
+
+    assert naps == [1, 1], naps
+    assert out.count("squeue gave no answer") == 2 and "Socket timed out" in out, out
+    assert "treating rescue children as alive" in out and "treating rescue children as not alive" in out, out
+    assert "Job considered finished" in out, out
+    print("PASS: a child probe that slurm does not answer -> children treated as alive in the poll loop")
+
+
+def test_purged_children_list_is_an_answer():
+    '''A LIST of purged ids with -h prints nothing and exits 0 with no error (Perlmutter, SLURM 25.11.8): the
+    clean exit is the answer, so the children are gone, not "unknown".'''
+    job = FakeJob()
+    job.execute = lambda cmd, printYN=False: (f"{TRAILER}0\n".encode(), b"")
+    sim = _sim(job, LEDGER)
+    log = io.StringIO()
+    with contextlib.redirect_stdout(log):
+        alive = sim._live_child_jobids(alive_if_unreachable=True)
+    assert alive == [] and "no answer" not in log.getvalue(), (alive, log.getvalue())
+    print("PASS: empty child table with exit 0 -> children left the queue")
+
+
+class FlakyJob(FakeJob):
+    """Parent whose squeue answers follow a script: one status per poll, the last one repeated."""
+
+    def __init__(self, statuses):
+        super().__init__()
+        self.statuses = list(statuses)
+        self.n_polls = 0
+
+    def check(self, file_output=None):
+        self.status = self.statuses[min(self.n_polls, len(self.statuses) - 1)]
+        self.infoSLURM = {"STATE": {0: "UNKNOWN", 1: "RUNNING", 2: "NOT FOUND"}[self.status]}
+        self.n_polls += 1
+
+
+def test_single_not_found_does_not_end_the_wait():
+    '''engaging 2026-10-09: one NOT FOUND on a running array ended the wait and the driver died at fetch().'''
+    job = FlakyJob([1, 2, 1, 2, 2])
+    sim = _sim(job, {})
+    log = io.StringIO()
+    with _no_sleep() as naps, contextlib.redirect_stdout(log):
+        sim.check(every_n_minutes=5)
+    out = log.getvalue()
+
+    # RUNNING, NOT FOUND refuted by its re-poll (RUNNING), then NOT FOUND confirmed by the next one
+    assert job.n_polls == 5, job.n_polls
+    assert naps == [300, 60, 300, 60], naps
+    assert out.count("asking slurm again") == 2, out
+    assert out.count("Job considered finished") == 1, out
+    print("PASS: a NOT FOUND that the re-poll does not repeat keeps check() waiting")
+
+
+def test_one_shot_check_does_not_pause():
+    job = FlakyJob([2])
+    sim = _sim(job, {})
+    with _no_sleep() as naps, contextlib.redirect_stdout(io.StringIO()):
+        sim.check()
+    assert naps == [] and job.n_polls == 1, (naps, job.n_polls)
+    print("PASS: check() without a poll interval reports the status once, with no confirmation pause")
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +328,10 @@ if __name__ == "__main__":
     test_no_children_exits_immediately()
     test_unreachable_probe_counts_as_alive()
     test_reattach_probe_keeps_not_alive_on_failure()
+    test_silent_child_probe_counts_as_alive()
+    test_purged_children_list_is_an_answer()
+    test_single_not_found_does_not_end_the_wait()
+    test_one_shot_check_does_not_pause()
     test_local_results_complete_requires_marker()
     test_fetch_raises_on_unfinished_radius()
     print("\nALL TESTS PASSED")
