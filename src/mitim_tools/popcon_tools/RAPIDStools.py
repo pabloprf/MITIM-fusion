@@ -29,6 +29,7 @@ def prepare_profiles(
     Ttop_keV = 4.0,
     ntop_20 = 1.0,
     force_fixed_geometry=False, # If True, do not change geometry (R,a,...) and only change profiles; this is useful to analyze the effect of the profiles alone without changing the geometry,
+    enforce_impurity_radiation_existence=True,  # As MAESTRO's PORTALS beats: a species absent from the radiation table takes the name of the ion of closest Z in it (line radiation counted)
     vacuum_toroidal_flux=True,  # If True, toroidal flux (torfluxa and rho of each surface, hence B_unit) of the vacuum field Bt*R/R_local through the new surfaces; if False, torfluxa scaled with Bt and an approximate area, rho(r/a) of the base
     **kwargs_rederive_geometry
     ):
@@ -179,6 +180,9 @@ def prepare_profiles(
     # Change Zeff
     if Zeff is not None:
         p.changeZeff(Zeff, ion_pos=ion_position, keep_fmain=fDT is not None, fmain_force=fDT)
+
+    if enforce_impurity_radiation_existence:
+        TRANSFORMtools.enforce_impurity_radiation_existence(p)
     
     return p
 
