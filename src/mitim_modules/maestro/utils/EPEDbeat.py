@@ -71,7 +71,8 @@ class eped_beat(beat):
                                            # recovers old behavior) or 'pedestal' (interpolated at rho=0.95). Both feed the
                                            # zeffped input and the effective-impurity charge used by full EPED.
             stability_rule = ['G', 0.03],  # (full EPED) [rule, threshold] used to pick the pedestal from the ELITE spectrum.
-                                           # 'G' (default): flat cut on gamma/omega_A. 'W': EPED1 diamagnetic criterion
+                                           # 'G' (default): flat cut on gamma/omega_A. 'H': flat cut on gamma_PB
+                                           # (['H'] alone uses EPED's own cut, 1.0). 'W': EPED1 diamagnetic criterion
                                            # gamma > C*omega_*pi(n)/2, threshold = the O(1) calibration factor C
                                            # (C = 1 is EPED1 as published). ['W'] alone uses the nominal C = 1.
             keep_eped_intermediate_files = False, # (full EPED) True keeps the per-height TOQ/ELITE work dirs in run_eped/case1/run1/
