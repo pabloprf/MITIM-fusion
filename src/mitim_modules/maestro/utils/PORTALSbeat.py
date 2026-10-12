@@ -6,6 +6,7 @@ import numpy as np
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_modules.portals.utils import PORTALSanalysis, PORTALSoptimization
+from mitim_modules.powertorch.utils import TRANSFORMtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -57,26 +58,7 @@ class portals_beat(beat):
         self.fileGACODE = self.initialize.folder / 'input.gacode'
 
         if enforce_impurity_radiation_existence:
-
-            profiles = self.profiles_current
-            for i in range(len(profiles.Species)):
-                data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics_models" / "radiation_chebyshev.csv")
-                if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
-                    print(f"\t\t- '{profiles.Species[i]['N']}' species not found in radiation table, looking for closest Z (+- 5) using the Z specified in the input.gacode (fully stripped assumption)",typeMsg='w')
-                    # Find closest Z
-                    Z = data_df['Z'].to_numpy()
-                    iZ = np.argmin(abs(Z - profiles.Species[i]["Z"]))
-
-                    if abs(Z[iZ] - profiles.Species[i]["Z"]) > 5:
-                        print(f"\t\t- {profiles.Species[i]['N']} not found in radiation table, closest Z is {Z[iZ]} but not close enough",typeMsg='q')
-
-                    new_name = data_df['Ion'][iZ]
-
-                    print(f'\t\t\t- Changing name of ion from {profiles.Species[i]["N"]} ({profiles.Species[i]["Z"]}) to {new_name} ({Z[iZ]})')
-
-                    profiles.profiles['name'][i] = profiles.Species[i]["N"] = new_name
-
-            self.profiles_current = profiles
+            self.profiles_current = TRANSFORMtools.enforce_impurity_radiation_existence(self.profiles_current)
 
 
         self.profiles_current.write_state(file = self.fileGACODE)

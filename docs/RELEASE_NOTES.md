@@ -284,7 +284,19 @@ DESCRIPTION
     `restart_from_cases` warm starts (t_max is added time, as CGYRO's MAX_TIME), resume of preempted array
     elements from their own checkpoint, and multi-GPU radii that scale ~ideally (2.06x/4.07x on 2/4 A100).
 
+*   💥 **RAPIDS can take its core gradients from a user scaling.** `rapids_evaluator(..., core_scaling=fn)` calls
+    `fn(p, rhotop, imposed=None) -> {'aLTe', 'aLTi'}` at the pedestal top at every iteration of the BetaN loop (the
+    given `core` is then only the first guess; `thr_scaling`, `scaling_start`); MITIM ships no scaling. New default
+    `require_power_through_top=True`: a case that radiates more than it is heated inside the pedestal top is not a
+    solution and raises. Example: `tests/capability_tests/rapids_01_scenario_evaluation.py`.
+
 ### Bug Fixes
+
+*   🐛 **RAPIDS geometry and heating on the new design**: the toroidal flux (and so rho and B_unit) is now that of the
+    vacuum field on the rescaled surfaces (B_unit was ~30% low against MAESTRO), the RF power delivered equals the
+    requested one on the new geometry (it was ~36% short), and species missing from the radiation table are renamed to
+    the closest-Z ion as in MAESTRO's PORTALS beats (shared `TRANSFORMtools.enforce_impurity_radiation_existence`).
+    RAPIDS results change: older databases do not reproduce.
 
 *   🐛 **Reading standalone CGYRO runs works again and returns fluxes in physical units**: `mitim_plot_cgyro` (and any
     `CGYRO()` built without radii) read nothing since the 2026-09-22 SIMtools refactor. Runs prepared by MITIM

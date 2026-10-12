@@ -29,6 +29,8 @@ def prepare_profiles(
     Ttop_keV = 4.0,
     ntop_20 = 1.0,
     force_fixed_geometry=False, # If True, do not change geometry (R,a,...) and only change profiles; this is useful to analyze the effect of the profiles alone without changing the geometry,
+    enforce_impurity_radiation_existence=True,  # As MAESTRO's PORTALS beats: a species absent from the radiation table takes the name of the ion of closest Z in it (line radiation counted)
+    vacuum_toroidal_flux=True,  # If True, toroidal flux (torfluxa and rho of each surface, hence B_unit) of the vacuum field Bt*R/R_local through the new surfaces; if False, torfluxa scaled with Bt and an approximate area, rho(r/a) of the base
     **kwargs_rederive_geometry
     ):
     
@@ -118,16 +120,19 @@ def prepare_profiles(
         
         p.profiles['q(-)'] = PLASMAtools.q_profile_scale(p.derived['psi_pol_n'], p.profiles['q(-)'], qstar / p_base.derived['qstar_ITER'])
 
-        # Make sure that toroidal flux is roughly consistent
-        p.profiles['torfluxa(Wb/radian)'] *= ( Bt / p_base.profiles['bcentr(T)'][0] ) * ( area_new / area_old )
+        # Toroidal flux consistent with the new field and surfaces (the radial points stay at their r/a, their rho label changes)
+        if vacuum_toroidal_flux:
+            torflux = p.vacuum_toroidal_flux()
+            p.profiles['torfluxa(Wb/radian)'][0] = torflux[-1]
+            p.profiles['rho(-)'] = np.sqrt(torflux / torflux[-1])
+        else:
+            p.profiles['torfluxa(Wb/radian)'] *= ( Bt / p_base.profiles['bcentr(T)'][0] ) * ( area_new / area_old )
         p.profiles['polflux(Wb/radian)'] *= ( Ip / p_base.profiles['current(MA)'][0] )
 
     # -------------------------------------------------------
     # Others
     # -------------------------------------------------------
 
-    # Change auxiliary power
-    p.changeRFpower(PrfMW=Paux)
     for i in ["qohme(MW/m^3)"]:
         p.profiles[i] *= 0.0
 
@@ -169,11 +174,73 @@ def prepare_profiles(
     
     p.derive_quantities(**kwargs_rederive_geometry)
 
+    # Change auxiliary power (on the new geometry: the power is the volume integral of the RF power density)
+    p.changeRFpower(PrfMW=Paux)
+
     # Change Zeff
     if Zeff is not None:
         p.changeZeff(Zeff, ion_pos=ion_position, keep_fmain=fDT is not None, fmain_force=fDT)
+
+    if enforce_impurity_radiation_existence:
+        TRANSFORMtools.enforce_impurity_radiation_existence(p)
     
     return p
+
+def update_core_gradients(p, core, core_scaling, rhotop, imposed=None):
+    '''
+    Evaluates the scaling of the core gradients on the current profiles and imposes the result inside the pedestal top,
+    which keeps its position and values: ln(y/ytop) is multiplied by new/old gradient, so a/Ly scales by that factor
+    at every radius of the core (r/a is not touched, hence it is exact for any shape).
+    imposed is handed to the scaling as is (RAPIDS does not interpret it).
+    core is updated in place; returns the largest relative change of a gradient, with its sign.
+    '''
+
+    p.recompute_targets()
+    p.derive_quantities(rederiveGeometry=False)
+
+    core_new = core_scaling(p, rhotop, imposed=imposed)
+
+    it = np.argmin(np.abs(p.profiles['rho(-)'] - rhotop))
+    rescale = lambda y, factor: y[it] * (y[:it+1] / y[it]) ** factor
+
+    if 'aLTe' in core_new:
+        p.profiles['te(keV)'][:it+1] = rescale(p.profiles['te(keV)'], core_new['aLTe'] / core['aLTe'])
+
+    if 'aLTi' in core_new:
+        for i in range(len(p.Species)):
+            if p.Species[i]['S'] == 'therm':
+                p.profiles['ti(keV)'][:it+1, i] = rescale(p.profiles['ti(keV)'][:, i], core_new['aLTi'] / core['aLTi'])
+
+    if 'aLn' in core_new:
+        ne_old = copy.deepcopy(p.profiles['ne(10^19/m^3)'])
+        p.profiles['ne(10^19/m^3)'][:it+1] = rescale(ne_old, core_new['aLn'] / core['aLn'])
+        p.profiles['ni(10^19/m^3)'] *= (p.profiles['ne(10^19/m^3)'] / ne_old)[:, None]
+
+    p.derive_quantities(rederiveGeometry=False)
+
+    changes = [core_new[key] / core[key] - 1 for key in core_new]
+    core.update(core_new)
+
+    return changes[np.argmax(np.abs(changes))]
+
+def core_scaling_settled(changes, thr):
+    '''
+    The gradients of the scaling are a fixed-point iteration, whose successive changes decay geometrically with ratio s
+    when it converges: the distance left to the solution is change*s/(1-s), which is what is compared with thr (the last
+    change alone would stop a slowly converging loop, or one that creeps away from an unstable solution, far from the end).
+    '''
+
+    if len(changes) > 0 and np.abs(changes[-1]) < 1e-2 * thr:
+        return True
+    if len(changes) < 3:
+        return False
+
+    s = max(changes[-1] / changes[-2], changes[-2] / changes[-3])
+    if s >= 1:
+        return False
+    left = np.abs(changes[-1]) * (s / (1 - s) if s > 0 else 1)
+
+    return left < thr and np.abs(changes[-1]) < 10 * thr
 
 def rapids_evaluator(nn, core, p_base_orig,
                      R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3,
@@ -187,10 +254,18 @@ def rapids_evaluator(nn, core, p_base_orig,
                      scale_zeta=False, # Trick for now to fix negative jacobians when moving triangularity too much
                      state_resol=None, # If not None, change resolution of the profiles for the state calculation
                      initial_betan=1.0, # Starting guess for the BetaN loop; warm-starting from a nearby case reduces iterations
+                     core_scaling=None, # If not None: callable(p, rhotop, imposed=None) -> {'aLTe':..., 'aLTi':...} (a scaling supplied by the user; MITIM ships none), evaluated at the pedestal top at every iteration of the BetaN loop; core is then the first guess
+                     thr_scaling=0.003, # With core_scaling: the loop also waits until the gradients are within this (relative) of their converged values (core_scaling_settled)
+                     scaling_start=None, # With core_scaling: passed as imposed= to the first evaluation of the scaling (e.g. a heat flux above any solution of interest), see below
+                     require_power_through_top=True, # A case whose net power through the pedestal top (heating minus radiation inside it) is not positive is not a solution (exception)
                      **kwargs_rederive_geometry):
     '''
     neped in this evaluator is in 1E20 m^-3
     '''
+
+    core = copy.deepcopy(core)
+    scaling_changes, tops = [], []
+    scaling_on = False
     
     p_base = copy.deepcopy(p_base_orig)
     if state_resol is not None:
@@ -230,6 +305,9 @@ def rapids_evaluator(nn, core, p_base_orig,
             ntop_20 = ntop_start_20,
             **kwargs_rederive_geometry
         )
+
+        # The first top keeps its r/a; its rho is the one of the new geometry
+        rhotop_start = np.interp(roatop, p.derived['roa'], p.profiles['rho(-)'])
 
         # Option for BetaN: provide multiplier
         if 'BetaN_multiplier' in core:
@@ -285,9 +363,14 @@ def rapids_evaluator(nn, core, p_base_orig,
                 netop_20 = neped*nesep_ratio
             
             p = eped_profiler(p, rhotop_start, rhotop, Tetop_keV, Titop_keV, netop_20, print_msgs=False)
+            tops.append(rhotop)
             
             # Derive quantities, but not the geometry again because this is only changing the profiles
             p.derive_quantities(rederiveGeometry=False)
+
+            # Core gradients from a scaling evaluated at this pedestal top
+            if scaling_on and not failed_case:
+                scaling_changes.append(update_core_gradients(p, core, core_scaling, rhotop, imposed=scaling_start if len(scaling_changes) == 0 else None))
 
             BetaN_used = p.derived["BetaNthr_engineering"] * BetaN_multiplier
 
@@ -302,7 +385,7 @@ def rapids_evaluator(nn, core, p_base_orig,
         Beta_EPED0 = initial_betan # Starting guess; warm-starting from a nearby converged case reduces BetaN loop iterations
         minimum_its = 2  # To make sure that at least one iteration of adjustment is done, even if the guessed Beta_EPED0 is close enough
         
-        profs, Beta, Beta_EPED, fails = [], [], [], []
+        profs, cores, Beta, Beta_EPED, fails = [], [], [], [], []
         #with IOtools.speeder('profiler.prof'):
         for i in range(100):
             
@@ -313,6 +396,7 @@ def rapids_evaluator(nn, core, p_base_orig,
 
             # Store stuff for debugging
             profs.append(copy.deepcopy(p)) # Store a copy of the profiles for debugging
+            cores.append(copy.deepcopy(core))
             Beta.append(Beta0)
             Beta_EPED.append(Beta_EPED0)
             fails.append(failed_case)
@@ -322,7 +406,17 @@ def rapids_evaluator(nn, core, p_base_orig,
             print(f'BetaN evaluated: {Beta_EPED0} vs new profiles betaN: {Beta0} ({error_betaN*100:.3f}%)',typeMsg = 'i')
         
             # If the error is small enough and it's not a failed case, get out of the loop
-            if (error_betaN < thr_beta) and (not failed_case) and (i+1) > minimum_its:
+            # The scaling starts from the solution with the gradients given in core. With a scaling on the heat flux a burning plasma
+            # has up to three solutions: cold (little fusion, little heat flux, low gradients), hot, and an unstable one in between.
+            # The loop is a plain fixed-point iteration, which the unstable solution repels: it ends in the hot one if started above
+            # the unstable one, in the cold one otherwise. scaling_start (a heat flux above any solution of interest) starts it from above.
+            if (core_scaling is not None) and (not scaling_on) and (error_betaN < thr_beta) and (not failed_case) and (i+1) > minimum_its:
+                print('BetaN loop converged with the gradients given in core, now with the scaling of the core gradients', typeMsg='i')
+                scaling_on = True
+                continue
+
+            scaling_settled = core_scaling is None or core_scaling_settled(scaling_changes, thr_scaling)
+            if (error_betaN < thr_beta) and (not failed_case) and (i+1) > minimum_its and scaling_settled:
                 print(f'BetaN within {thr_beta*100:.2f}% after {i+1} iterations, get out of the loop', typeMsg='i')
                 break
             
@@ -349,6 +443,7 @@ def rapids_evaluator(nn, core, p_base_orig,
         
         # Run again the last point but with warning prints
         p_to_run = profs[-2] # The last one is the one that broke the loop, so take the previous one that is consistent with the BetaN
+        core.update(cores[-2]) # The gradients that p_to_run carries
         p, ptop_kPa, wtop_psipol, eped_evaluation, Beta0, Beta_EPED0, failed_case = pedestal(p_to_run, force_within_range=False)
 
         error_betaN = np.abs(Beta0 - Beta_EPED0)/Beta0
@@ -370,11 +465,23 @@ def rapids_evaluator(nn, core, p_base_orig,
         else:
             print(f"\t\t- Evaluating {optional_flag} required {i+1} iterations for parameters: {eped_evaluation}")
 
+        if not scaling_settled:
+            raise Exception(f'The scaling of the core gradients did not settle (last relative changes: {scaling_changes[-3:]}), for parameters: {eped_evaluation}')
+
         # Calculate targets
         profiles_new = copy.deepcopy(p)
         profiles_new.recompute_targets()
 
         profiles_new.selfconsistentPTOT()
+
+        # A plasma that radiates more than it is heated inside the pedestal top is not a solution
+        it_top = np.argmin(np.abs(profiles_new.profiles['rho(-)'] - tops[-1]))
+        P_top = profiles_new.derived['qe_MW'][it_top] + profiles_new.derived['qi_MW'][it_top]
+        if require_power_through_top and P_top <= 0:
+            raise Exception(f'No power through the pedestal top ({P_top:.1f} MW): radiation exceeds heating inside it, for parameters: {eped_evaluation}')
+
+        # Core gradients of this case (those of the scaling, when one was given), pedestal top and passes through the pedestal
+        profiles_new.rapids_core, profiles_new.rapids_rhotop, profiles_new.rapids_iterations = core, tops[-1], len(tops)
 
         neped_transition_estimate = None
         if analyze_distance_to_pb:

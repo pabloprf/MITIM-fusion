@@ -22,14 +22,28 @@ Key teaching points:
     3. `rapids_evaluator(nn, core, p_base, <engineering scalars>)` returns
        (ptop_kPa, wtop_psipol, p_new, eped_eval, neped_transition_estimate);
        `p_new` is a full gacode_state with derived Pfus, BetaN, Q, ...
+       A case that radiates more than it is heated inside the pedestal top is
+       not a solution: rapids_evaluator raises an exception for it.
     4. Because each evaluation is cheap, RAPIDS ships its own scan-and-plot:
        `scan_parameter` sweeps one engineering knob (here the pedestal density),
        warm-starting each BetaN solve from the previous point, and builds the
        summary figure (Ptop and Pfus vs the knob and vs the Greenwald fraction,
        plus Pfus vs q*, volume, H98 and BetaN). It returns the results dict.
 
+    5. The gradients can instead follow a SCALING evaluated at the pedestal top
+       inside the BetaN loop (`core_scaling=`): any callable
+       (p, rhotop, imposed=None) -> {'aLTe': ..., 'aLTi': ...}. MITIM ships no
+       scaling; this test takes the group's laws in X = Q/Q_GB at the top from
+       the private repo ($MFEIM_PATH/private_code_mitim/mfeim_scalings). `core`
+       is then only the first guess, and `p_new.rapids_core` holds the result.
+       A burning plasma has a cold and a hot solution of that loop, with an
+       unstable one in between: `scaling_start=` imposes the regressors of the
+       first evaluation of the scaling (a heat flux above any solution of
+       interest), so that the loop comes down to the hot one.
+
 REQUIREMENT: the ARC EPED-NN under $MFEIM_PATH/private_code_mitim/NN_DATA/ (the
-analog of eped_01 needing the EPED machine, or maestro_01 needing TRANSP).
+analog of eped_01 needing the EPED machine, or maestro_01 needing TRANSP), and
+for step 3b the scalings in $MFEIM_PATH/private_code_mitim/mfeim_scalings/.
 """
 
 import numpy as np
@@ -78,6 +92,10 @@ nominal_parameters = {
     "kappa_sep": 1.9 * 1.07, "delta_sep": 0.5 * 1.22,  # separatrix shaping
     "neped": 0.85 * n_G, "Zeff": 1.47,                 # pedestal density (1e20) + Zeff
     "tesep_eV": 200.0, "nesep_ratio": 0.3,             # separatrix Te + nesep/neped
+    "ion_position": 2,                                 # Zeff is matched with the low-Z impurity of the seed (T, D, F, W, He):
+                                                       # with the default (3, tungsten) this plasma radiates three times its
+                                                       # fusion power, and RAPIDS rejects a case with no net power through
+                                                       # the pedestal top (require_power_through_top=True)
 }
 
 # Prescribed core gradients (RAPIDS does not predict these)
@@ -97,6 +115,24 @@ print(f"  pedestal: ptop = {ptop:.1f} kPa,  width = {wtop:.4f} psi_pol")
 out = __mitimroot__ / "tests" / "scratch" / "capability_rapids"
 out.mkdir(parents=True, exist_ok=True)
 p_new.write_state(out / "input.gacode")
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 3b. The same scenario with the temperature gradients from a scaling
+# ---------------------------------------------------------------------------------------------------------------------
+
+# The scaling is not part of MITIM: here, power laws of ARC-class H-modes from the private repo (on the PYTHONPATH
+# through $MFEIM_PATH/private_code_mitim). Gradients without a law (here aLn) keep the value in `core`.
+from mfeim_scalings import rapids_core_gradients
+scaling = rapids_core_gradients.CoreGradientScaling.from_name("arc_hmode_aLT_QQgb_top")
+
+# scaling_start: the first evaluation of the laws takes this X instead of the one of the plasma with the prescribed
+# gradients. Without it the loop starts from that plasma, and ends in the cold solution when it sits below the unstable one.
+_, _, p_scaling, _, _ = RAPIDStools.rapids_evaluator(nn, core, p_base, core_scaling=scaling, scaling_start={"QQgb_top": 300.0}, **nominal_parameters)
+regressors = rapids_core_gradients.scaling_regressors(p_scaling, p_scaling.rapids_rhotop)
+print(f"\nSame scenario with the gradient scaling ({p_scaling.rapids_iterations} passes of the BetaN loop):")
+print(f"  Q/Q_GB at the top = {regressors['QQgb_top']:.1f}  ->  aLTe = {p_scaling.rapids_core['aLTe']:.2f}, aLTi = {p_scaling.rapids_core['aLTi']:.2f}"
+      f"  (prescribed: {core['aLTe']:.2f}, {core['aLTi']:.2f})")
+print(f"  Pfus = {p_scaling.derived['Pfus']:.1f} MW (prescribed gradients: {p_new.derived['Pfus']:.1f} MW)")
 
 # ---------------------------------------------------------------------------------------------------------------------
 # 4. A rapid pedestal-density scan, using RAPIDS' own scan-and-plot
