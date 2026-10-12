@@ -699,10 +699,9 @@ class MITIM_BO:
         self.currentIteration = -1
 
         # Has the problem reached convergence in the training?
-        converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
-        self.converged = bool(converged)
-        if converged:
-            print("- Optimization has converged in training!",typeMsg="i")
+        stop = self.check_stopping_criteria()
+        if stop:
+            print(f"- Optimization stopped in training ({'converged' if self.converged else 'NOT converged'})!",typeMsg="i")
             self.numIterations = 0
 
         # If no iterations are requested, just run the training step
@@ -951,6 +950,17 @@ class MITIM_BO:
             copyClass.steps[i].defineFunctions(copyClass.scalarized_objective)
 
         return copyClass
+
+    def check_stopping_criteria(self):
+        '''
+        Returns whether to stop, and sets self.converged (read by MAESTRO to count unconverged PORTALS beats).
+        Stopping is not converging: a criteria function may set self.convergence_verdict (PORTALS: Ricci only),
+        so a run stopped by stagnating inputs is not written as converged. Without a verdict, stop == converged.
+        '''
+        self.convergence_verdict = None
+        stop, _ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
+        self.converged = bool(stop if self.convergence_verdict is None else self.convergence_verdict)
+        return bool(stop)
 
     def save(self, name="optimization_object.pkl", lean=False):
         print("* Proceeding to save new MITIM state pickle file" + (" (lean: no surrogate steps)" if lean else ""))
@@ -1302,13 +1312,11 @@ class MITIM_BO:
         # Stopping criteria
         # ~~~~~~~~~~~~~~~~~~
 
-        converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
+        stop = self.check_stopping_criteria()
 
-        self.converged = bool(converged)   # last verdict; read by MAESTRO to count unconverged PORTALS beats
-
-        if converged:
+        if stop:
             self.hard_finish = self.hard_finish or True
-            print("- * Optimization considered converged *", typeMsg="i")
+            print(f"- * Optimization stopped, {'converged' if self.converged else 'NOT converged'} *", typeMsg="i")
 
         return y_next, ystd_next
 

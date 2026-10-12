@@ -243,10 +243,11 @@ pa.plotPORTALS(...)        # full FigureNotebook with all tabs
 ### 3.6 Interpreting common results
 
 - **Residual** (Outputs/optimization_results.out, "Sum of residuals" column):
-  channel-summed |Q_target − Q_predicted|/Q_target across rhos. Convergence is
-  declared when this drops by `maximum_value` (default `5e-3` ⇒ 200× reduction
+  channel-summed |Q_target − Q_predicted|/Q_target across rhos. The run stops
+  when this drops by `maximum_value` (default `5e-3` ⇒ 200× reduction
   from iter 0) OR Ricci metric < `ricci_value` (0.05 default) OR DVs stop
-  varying for `minimum_inputs_variation` consecutive iters.
+  varying for `minimum_inputs_variation` consecutive iters. **Only the Ricci
+  criterion marks it converged (`MITIM_BO.converged`, MAESTRO's `portals_converged.txt`).**
 - **PORTALS Metrics tab**: residual vs iter (log), DV trajectories, profile
   evolution. `i0` = first iter, `ibest` = best-residual iter, `iextra` =
   user-marked.

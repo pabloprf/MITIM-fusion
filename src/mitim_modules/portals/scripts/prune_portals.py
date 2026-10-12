@@ -64,13 +64,11 @@ def resolve_result(folder, keep="best"):
         return None, False
 
     mitim_bo = portals.opt_fun.mitim_model
-    converged = getattr(mitim_bo, "converged", None)
-    if converged is None:
-        # Pickles predating MITIM_BO.converged: re-run the stopping criteria on the loaded object
-        convergence_options = mitim_bo.optimization_options["convergence_options"]
-        converged, _ = convergence_options["stopping_criteria"](mitim_bo, parameters=convergence_options["stopping_criteria_parameters"])
+    if not hasattr(mitim_bo, "convergence_verdict"):
+        # Pickles whose MITIM_BO.converged was the stop flag (or absent): re-run the stopping criteria on the loaded object
+        mitim_bo.check_stopping_criteria()
 
-    return (portals.ibest if keep == "best" else portals.ilast), bool(converged)
+    return (portals.ibest if keep == "best" else portals.ilast), bool(mitim_bo.converged)
 
 
 def main():

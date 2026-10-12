@@ -896,7 +896,8 @@ optimization_options:
     # Criterion 1: Maximum iterations
     maximum_iterations: 50
 
-    # Stopping function for the rest of criteria
+    # Stopping function for the rest of criteria. Any criterion stops the run, but only the Ricci metric
+    # (criterion 4) marks it CONVERGED (portals_converged.txt, maestro.max_unconverged_portals_beats, prune)
     stopping_criteria: "import::mitim_modules.portals.PORTALStools.stopping_criteria_portals"
     
     stopping_criteria_parameters:
