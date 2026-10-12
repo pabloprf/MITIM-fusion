@@ -559,6 +559,12 @@ DESCRIPTION
     under the tasks still running. The execution script now waits until no task of the array is queued.
     Multi-rank GX also writes its parallel-HDF5 output without Open MPI's NFS locks, which stalled it.
 
+*   🐛 **PORTALS convergence is decided by the Ricci metric alone**: a run stopped by stagnating inputs
+    (`minimum_inputs_variation`) or by the residual target with Ricci above `ricci_value` was flagged converged
+    (`MITIM_BO.converged`, MAESTRO's `portals_converged.txt`). Such beats now count toward
+    `maestro.max_unconverged_portals_beats`, keep their CGYRO restarts under `prune_restarts_at_convergence`, and
+    need `--force` in `mitim_prune_portals`. Stopping itself is unchanged.
+
 ### Changes for developers (internal execution)
 
 *   🔎 **PORTALS-CGYRO submission stack reorganized into named objects (behaviour-preserving).**

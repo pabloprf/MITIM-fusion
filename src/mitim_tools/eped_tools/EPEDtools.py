@@ -330,7 +330,7 @@ class EPED:
             label = None,
             specific_folder = None,
             diamagnetic_stab_rule = 'G',    # 'G'/'H'/'GH': flat cut; 'W': EPED1 gamma > C*omega_*pi(n)/2
-            stability_threshold = None,     # None -> per-rule nominal (flat: 0.03 on gamma/omega_A; 'W': C = 1.0)
+            stability_threshold = None,     # None -> per-rule nominal ('G'/'GH': 0.03 on gamma/omega_A; 'H': 1.0 on gamma_PB, EPED's own cut; 'W': C = 1.0)
             gacode_state = None,            # companion plasma state (path or gacode_state), required by 'W'
             consecutive_heights = 1,        # 1 = plain first crossing (EPED behavior); 2+ rejects isolated-spike selections
             ):
@@ -662,7 +662,7 @@ class EPED:
         scan_param = 'neped',
         fig = None,
         axs = None,
-        g_base = 0.03,
+        g_base = None,     # None -> the flat cut the rule actually used (data's stability_threshold)
         color = 'b',
         variable = ['teped_list','$T_{e,ped}$ (keV)', 'tped', 1E-3, 1.0],
     ):
@@ -684,7 +684,16 @@ class EPED:
             n = np.array(data['nmodes'])
             h = np.array(data[variable[0]]) * variable[3]
             
-            g = np.array(data['gamma'])
+            # Plot the metric the rule cut on: gamma_PB ('H') or gamma*gamma_PB ('GH') carry
+            # their own scale, so drawing raw gamma against their threshold would mislead
+            rule = str(np.asarray(data['stability_rule']).ravel()[0]) if 'stability_rule' in data.data_vars else 'G'
+            if rule in ['H', 'GH', 'HG']:
+                g = np.array(data['stability'])
+                ylabel = '$\\gamma_{PB}$' if rule == 'H' else '$\\gamma_{PB}\\cdot\\gamma/\\omega_A$'
+            else:
+                g = np.array(data['gamma'])
+                ylabel = '$\\gamma/\\omega_A$'
+            g_cut = g_base if g_base is not None else (float(_to_scalar(data['stability_threshold'])) if 'stability_threshold' in data.data_vars and rule != 'W' else 0.03)
             
             colors = GRAPHICStools.listColors()
             
@@ -697,7 +706,7 @@ class EPED:
             # Plot prediction. Under the 'W' rule the crossing happens on the limiting mode's
             # own threshold curve, not at the flat g_base -- place the marker there
             xbase = _to_scalar(data[variable[2]]) * variable[4]
-            ybase = g_base
+            ybase = g_cut
             if 'stability_threshold_n' in data.data_vars:
                 step = int(_to_scalar(data['stability_index']))
                 n_lim = int(_to_scalar(data['n_limiting']))
@@ -717,13 +726,13 @@ class EPED:
                     ax.plot(h, thr[:, mode], '--', c=colors[mode], lw=0.5)
                 # thr is all-nan only if every equilibrium of the scan was degenerate
                 thr_pos = thr[np.isfinite(thr) & (thr > 0)]
-                ytop = 2.0 * thr_pos.max() if thr_pos.size else g_base * 2.0
-                ybot = 0.5 * thr_pos.min() if thr_pos.size else g_base / 10.0
+                ytop = 2.0 * thr_pos.max() if thr_pos.size else g_cut * 2.0
+                ybot = 0.5 * thr_pos.min() if thr_pos.size else g_cut / 10.0
             else:
-                ax.axhline(g_base, color='k', ls='--', lw=1.0)
+                ax.axhline(g_cut, color='k', ls='--', lw=1.0)
                 # show the gamma domes above the flat cut without letting forest garbage set the scale
-                ytop = min(2.0 * g_pos.max(), 20.0 * g_base) if g_pos.size else g_base * 2.0
-                ybot = g_base / 10.0
+                ytop = min(2.0 * g_pos.max(), 20.0 * g_cut) if g_pos.size else g_cut * 2.0
+                ybot = g_cut / 10.0
             if np.isfinite(ybase) and ybase > 0:
                 ytop = max(ytop, 1.5 * ybase)
 
@@ -731,7 +740,7 @@ class EPED:
             ax.axvline(h[0], color='k', ls='--', lw=0.5)
 
             ax.set_xlabel(variable[1])
-            ax.set_ylabel('$\\gamma/\\omega_A$')
+            ax.set_ylabel(ylabel)
             ax.set_title(f'{scan_param} = {_to_scalar(data[scan_param])}', fontsize=10)
             ax.set_yscale('log')
             ax.set_ylim([ybot, ytop])
@@ -1202,8 +1211,9 @@ def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold=None, dome
     calibration factor C and `gacode_state` (path or gacode_state) must be the companion
     plasma state (see _omega_star_threshold).
 
-    `stability_threshold = None` resolves to the per-rule nominal: 0.03 for the flat rules,
-    C = 1.0 (EPED1 as published) for 'W' -- the two live on different scales, so a single
+    `stability_threshold = None` resolves to the per-rule nominal: 0.03 for 'G'/'GH' (on
+    gamma/omega_A), 1.0 for 'H' (gamma_PB > 1, the cut EPED's own find_eped1 applies), and
+    C = 1.0 (EPED1 as published) for 'W' -- these live on different scales, so a single
     shared default would silently poison whichever rule it wasn't meant for.
 
     The selected pedestal is the first height where the instability persists for
@@ -1214,7 +1224,7 @@ def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold=None, dome
     '''
 
     if stability_threshold is None:
-        stability_threshold = 1.0 if diamagnetic_stab_rule == 'W' else 0.03
+        stability_threshold = 1.0 if diamagnetic_stab_rule in ['W', 'H'] else 0.03
     elif diamagnetic_stab_rule == 'W' and stability_threshold < 0.2:
         print(f"\t> Rule 'W' received stability_threshold = {stability_threshold}: this is the CALIBRATION FACTOR C (O(1), nominal 1.0), not a gamma/omega_A cut -- a flat-rule value here makes the criterion ~{1/stability_threshold:.0f}x too permissive", typeMsg='w')
 
