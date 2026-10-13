@@ -348,11 +348,16 @@ class CgyroLaunchBody:
         Turn a 0 exit status into 1 when CGYRO did not finish. gacode's `cgyro` script ends with an
         if-block that returns 0 whatever the executable returned, so a CGYRO that crashed (e.g. disk
         quota exceeded writing out.cgyro.prec) was recorded by SLURM as COMPLETED 0:0. CGYRO appends
-        "EXIT: (CGYRO) ..." to out.cgyro.info only on a clean end; a watchdog stop (mitim_budget.tag)
-        or discard (mitim_discard.tag) is intentional and keeps its own status.
+        "EXIT: (CGYRO) ..." to out.cgyro.info only on a clean end.
+
+        And the other way round: a run the watchdog stopped and accepted (mitim_budget.tag: wall budget,
+        mitim_stop, cost guard) ends with the SIGTERM status 143, which SLURM showed as FAILED although
+        the radius counts as finished; it is reported as 0. A discarded extra case (mitim_discard.tag)
+        produced nothing usable and keeps its own status.
         '''
         run_dir = f"{self.p}/{self.folder}"
-        return (f'if [ "$_mitim_rc" = 0 ] && ! grep -qs "^EXIT: (CGYRO)" "{run_dir}/out.cgyro.info" && '
+        return (f'if [ -f "{run_dir}/mitim_budget.tag" ]; then _mitim_rc=0; fi; '
+                f'if [ "$_mitim_rc" = 0 ] && ! grep -qs "^EXIT: (CGYRO)" "{run_dir}/out.cgyro.info" && '
                 f'[ ! -f "{run_dir}/mitim_budget.tag" ] && [ ! -f "{run_dir}/mitim_discard.tag" ]; then '
                 f'echo "MITIM: cgyro returned 0 but out.cgyro.info has no EXIT line; reporting rc=1" >&2; _mitim_rc=1; fi')
 
@@ -1589,6 +1594,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         if lb.get("strategy") != "extra_points":
             return None
         if settings.run_type is not SIMtools.RunType.SUBMIT:
+            # TODO (Pablo, 2026-10-13, deferred): cover run_type 'normal' (the template default) by sending such an
+            # evaluation through the submit / poll / fetch path; today its driver blocks in `sbatch --wait` and never polls
             print(f"\t- load_balance 'extra_points' with a slurm array needs run_type 'submit' (the driver polls the elements); with '{settings.run_type.value}' array elements just release their nodes", typeMsg="w")
             return None
         if self.extra_point_builder is None:

@@ -191,7 +191,8 @@ def test_killed_step_end_to_end():
 
 
 def test_exit_verdict():
-    '''A launcher that returns 0 after CGYRO crashed is reported as rc=1; clean ends and watchdog stops are not.'''
+    '''A launcher that returns 0 after CGYRO crashed is reported as rc=1; clean ends and watchdog stops are not,
+    and a stop the watchdog accepted is reported as 0 whatever the terminated CGYRO returned.'''
     with tempfile.TemporaryDirectory() as d:
         rel = f"base_cgyro/rho_{RHO:.4f}"
         run_dir = Path(d) / rel
@@ -206,6 +207,9 @@ def test_exit_verdict():
             ("watchdog stop", crashed, "mitim_budget.tag", 0),
             ("watchdog discard", crashed, "mitim_discard.tag", 0),
             ("killed, rc kept", 'printf "[t: 2.050E+02]\\n" > "{info}"; bash -c \'kill -TERM $$\'', None, 143),
+            # the watchdog TERMs CGYRO: an accepted stop is a success for SLURM too, a discarded extra is not
+            ("watchdog stop, killed", 'printf "[t: 2.050E+02]\\n" > "{info}"; bash -c \'kill -TERM $$\'', "mitim_budget.tag", 0),
+            ("watchdog discard, killed", 'printf "[t: 2.050E+02]\\n" > "{info}"; bash -c \'kill -TERM $$\'', "mitim_discard.tag", 143),
         )
         for label, main_cmd, tag, want in cases:
             for f in run_dir.iterdir():
