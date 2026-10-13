@@ -577,6 +577,10 @@ DESCRIPTION
     `maestro.max_unconverged_portals_beats`, keep their CGYRO restarts under `prune_restarts_at_convergence`, and
     need `--force` in `mitim_prune_portals`. Stopping itself is unchanged.
 
+*   🐛 **PORTALS-CGYRO start-up restarts stored once**: the simple-relax evaluations promoted into `Execution/`
+    now hard-link their CGYRO/GX restart files to the `Initialization/` originals instead of copying them
+    (about 13-15 GB saved per run); `mitim_prune_portals` keeps every name of the kept data and counts it once.
+
 ### Changes for developers (internal execution)
 
 *   🔎 **PORTALS-CGYRO submission stack reorganized into named objects (behaviour-preserving).**

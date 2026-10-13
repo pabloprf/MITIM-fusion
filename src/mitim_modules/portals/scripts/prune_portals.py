@@ -27,23 +27,47 @@ def _evaluation_restarts(folder):
     return {root: sorted((root / "transport_simulation_folder").rglob(_RESTART_GLOB)) for root in roots}
 
 
+def _data_id(path):
+    '''(device, inode) of the data a restart name points to (through symlinks); None if it dangles.'''
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        return None
+    return st.st_dev, st.st_ino
+
+
+def _bytes_freed(targets):
+    '''
+    Bytes that deleting `targets` gives back: a symlink counts its own (lstat) size, and the data of
+    a hard-linked file only when every one of its names is among the targets, counted once.
+    '''
+    freed, names = 0, {}
+    for p in targets:
+        if p.is_symlink():
+            freed += p.lstat().st_size
+        else:
+            st = p.stat()
+            names.setdefault((st.st_dev, st.st_ino), [st, 0])[1] += 1
+    return freed + sum(st.st_size for st, n in names.values() if n >= st.st_nlink)
+
+
 def prune_cgyro_restarts(folder, keep_index, apply=False):
     '''
     Delete the CGYRO restart files of every evaluation except Execution/Evaluation.<keep_index>.
     Returns the bytes freed (or that would be freed in dry-run).
 
-    The parallel simple-relax initializer leaves Evaluation.<i> restarts as symlinks into
-    portals_sr_ev_<s>/; the targets of the kept evaluation's links are kept too. Sizes use
-    lstat so a link counts ~0 and its target is counted once.
+    The simple-relax initializer leaves the Evaluation.<i> restarts as hard links (serial) or symlinks
+    (parallel) to the portals_sr_ev_<s>/ originals: every name of the kept evaluation's data survives,
+    and the size counts each file's data once.
     '''
     folder = Path(folder)
     per_evaluation = _evaluation_restarts(folder)
 
     kept = per_evaluation.get(folder / "Execution" / f"Evaluation.{keep_index}", [])
-    keep = set(kept) | {p.resolve() for p in kept}
+    keep = {_data_id(p) for p in kept} - {None}
 
-    targets = [p for files in per_evaluation.values() for p in files if p not in keep and p.resolve() not in keep]
-    freed = sum(p.lstat().st_size for p in targets)
+    targets = [p for files in per_evaluation.values() for p in files if _data_id(p) not in keep]
+    freed = _bytes_freed(targets)
 
     print(f"\t- CGYRO restarts: {'deleting' if apply else 'would delete'} {len(targets)} file(s) [{IOtools.human_readable_size(freed)}] "
           f"across {len(per_evaluation)} evaluation folder(s); keeping {len(kept)} of Evaluation.{keep_index}"
