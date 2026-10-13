@@ -172,7 +172,7 @@ def test_reattach_decision_table():
         sim = FakeSim(job_status=2, child_alive=True)
         outcome, log = _quiet(_submission(tmp, sim).try_reattach)
         assert (outcome.reattached, outcome.skip_check_fetch) == (True, False), outcome
-        assert "rescue child jobid(s) still alive" in log
+        assert "child jobid(s) (rescue or extra case) still alive" in log
 
         # 3. metadata + job gone + local results complete -> read directly, never fetch
         sim = FakeSim(job_status=2, local_complete=True)

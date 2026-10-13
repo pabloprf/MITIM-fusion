@@ -115,7 +115,7 @@ def test_keeps_polling_while_child_alive():
     assert len(naps) == 3, f"expected the confirmation plus 2 waits while the child was alive, got {naps}"
     assert out.count("asking slurm again") == 1, out
     assert job.n_squeue_child == 3, job.n_squeue_child
-    assert f"rescue child jobid(s) ['{CHILD}'] are still in it" in out, out
+    assert f"child jobid(s) (rescue or extra case) ['{CHILD}'] are still in it" in out, out
     assert "Job considered finished" in out, out
     print("PASS: parent gone + live rescue child -> check() keeps polling until the child leaves")
 
@@ -151,7 +151,7 @@ def test_unreachable_probe_counts_as_alive():
 
     assert naps == [1, 1], naps
     assert out.count("squeue failed") == 1, out
-    assert "treating rescue children as alive" in out, out
+    assert "treating child jobs as alive" in out, out
     assert f"['{CHILD}'] are still in it" in out, out
     print("PASS: unreachable liveness probe -> children treated as alive, one warning, poll continues")
 
@@ -163,7 +163,7 @@ def test_reattach_probe_keeps_not_alive_on_failure():
     with contextlib.redirect_stdout(log):
         alive = sim._any_child_job_alive()
     assert alive is False
-    assert "treating rescue children as not alive" in log.getvalue(), log.getvalue()
+    assert "treating child jobs as not alive" in log.getvalue(), log.getvalue()
     print("PASS: default (re-attach) semantics unchanged — unreachable probe means not alive")
 
 
@@ -186,7 +186,7 @@ def test_silent_child_probe_counts_as_alive():
 
     assert naps == [1, 1], naps
     assert out.count("squeue gave no answer") == 2 and "Socket timed out" in out, out
-    assert "treating rescue children as alive" in out and "treating rescue children as not alive" in out, out
+    assert "treating child jobs as alive" in out and "treating child jobs as not alive" in out, out
     assert "Job considered finished" in out, out
     print("PASS: a child probe that slurm does not answer -> children treated as alive in the poll loop")
 

@@ -290,6 +290,12 @@ DESCRIPTION
     `require_power_through_top=True`: a case that radiates more than it is heated inside the pedestal top is not a
     solution and raises. Example: `tests/capability_tests/rapids_01_scenario_evaluation.py`.
 
+*   ✨ **`load_balance: extra_points` now works with SLURM-array submissions (`run_type: "submit"`).** A radius whose
+    array element finishes while the slowest radius still leaves enough time gets its extra case as its own job (same
+    sbatch settings as one element), stopped when the last main radius ends and harvested into
+    `Outputs/extra_points.csv` as in bash mode. The extras are tracked in `cgyro_submission.json`, so a re-attaching
+    driver keeps them. In both modes the extra case now takes per-radius option lists (e.g. `RESTART_STEP`) at its own radius.
+
 ### Bug Fixes
 
 *   🐛 **RAPIDS geometry and heating on the new design**: the toroidal flux (and so rho and B_unit) is now that of the

@@ -258,6 +258,28 @@ def slurm_allocation_hostnames():
         return []
 
 
+def jobids_in_queue(job, job_ids):
+    '''
+    ({jobid: state} of the `job_ids` squeue still lists, the parsed answer), asked on the job's live
+    connection. The dict is None when slurm gave no verdict (a slurmctld timeout is not "they left").
+    '''
+    job_ids = [str(j) for j in job_ids]
+    cmd = f'squeue -h -j {",".join(job_ids)} -o "%.15i %.10T"; echo "{FARMINGtools.SqueueAnswer.TRAILER}$?"'
+    out, err = job.execute(cmd, printYN=False)
+    out, err = (x.decode(errors='replace') if isinstance(x, bytes) else (x or "") for x in (out, err))
+
+    answer = FARMINGtools.SqueueAnswer.parse(out, error=err)
+    if not answer.answered:
+        return None, answer
+
+    states = {}
+    for line in answer.table.strip().splitlines():
+        toks = line.split()
+        if toks and toks[0] in job_ids:
+            states.setdefault(toks[0], toks[1] if len(toks) > 1 else '?')
+    return states, answer
+
+
 class JobScript:
     '''
     The shell text that launches every call of one submission, plus the per-folder pieces
@@ -390,6 +412,7 @@ class SubmissionRecord:
     slurm_output: str = None
     kwargs_organize: dict = field(default_factory=dict)
     resubmit_ledger: dict = field(default_factory=dict)
+    extra_ledger: dict = field(default_factory=dict)
     restart_sources: dict = None
     results_per_plasma: dict = None
     job: dict = field(default_factory=dict)
@@ -430,7 +453,11 @@ class SubmissionRecord:
                 # survives a PORTALS restart between submit and the first stall decision
                 "array_index_by_folder": dict(sim.kwargs_organize.get("array_index_by_folder", {})),
                 "per_folder_commands": dict(sim.kwargs_organize.get("per_folder_commands", {})),
+                "extra_points": sim.kwargs_organize.get("extra_points"),
             },
+            # Extra cases submitted for finished radii (load_balance 'extra_points' in array mode):
+            # a re-attach must keep polling, stopping and collecting them
+            extra_ledger=dict(getattr(sim, "_extra_ledger", None) or {}),
             # Per-folder stall-rescue ledger (empty until the first resubmit); it spans poll
             # cycles within one PORTALS iteration, so a re-attach must pick up child jobids
             # spawned before the prior process was killed
@@ -466,6 +493,7 @@ class SubmissionRecord:
             "slurm_output": self.slurm_output,
             "kwargs_organize": self.kwargs_organize,
             "resubmit_ledger": self.resubmit_ledger,
+            "extra_ledger": self.extra_ledger,
             "restart_sources": self.restart_sources,
             "results_per_plasma": self.results_per_plasma,
             "job": self.job,
@@ -502,6 +530,7 @@ class SubmissionRecord:
             slurm_output=data["slurm_output"],
             kwargs_organize=data["kwargs_organize"],
             resubmit_ledger=dict(data.get("resubmit_ledger", {})),
+            extra_ledger=dict(data.get("extra_ledger") or {}),
             restart_sources=data.get("restart_sources"),
             results_per_plasma=data.get("results_per_plasma"),
             job=data["job"],
@@ -544,10 +573,12 @@ class SubmissionRecord:
             "optional_files_to_retrieve": list(self.kwargs_organize.get("optional_files_to_retrieve", [])),
             "array_index_by_folder": dict(self.kwargs_organize.get("array_index_by_folder", {})),
             "per_folder_commands": dict(self.kwargs_organize.get("per_folder_commands", {})),
+            "extra_points": self.kwargs_organize.get("extra_points"),
         }
 
         # The base_subfolder is needed to rewrite this record after a future resubmit
         sim._resubmit_ledger = dict(self.resubmit_ledger)
+        sim._extra_ledger = dict(self.extra_ledger)
         sim._base_subfolder = self.base_subfolder
 
         # restart_sources.json is re-derived from the embedded copy, which reflects what was
@@ -968,6 +999,11 @@ class mitim_simulation:
         the SCHEDULERtools hook dict here; None keeps the plain bash loop.'''
         return None
 
+    def _extra_point_array_plan(self, script, settings):
+        '''Array-mode counterpart of _extra_point_hooks: what the poll needs to submit, as its own job,
+        the extra case of a radius whose element finished early (kwargs_organize["extra_points"]). None: no extras.'''
+        return None
+
     def _rescue_interrupted_runs(self, kwargs_run, folders, folders_red, input_file):
         '''
         Continue, in place, radial runs that a previous execution left unfinished in
@@ -1292,17 +1328,16 @@ class mitim_simulation:
             self._attach_scheduler(script, settings)
             return script
 
-        if (getattr(self, "_load_balance", None) or {}).get("strategy") == "extra_points":
-            print("\t- load_balance 'extra_points' needs the driver inside the allocation (bash mode); "
-                  + ("array elements release their nodes on their own" if submission_type is SubmissionType.SLURM_ARRAY
-                     else "in slurm mode radii just wait for the slowest one"), typeMsg="w")
-
         if submission_type is SubmissionType.SLURM_STANDARD:
+            if (getattr(self, "_load_balance", None) or {}).get("strategy") == "extra_points":
+                print("\t- load_balance 'extra_points' needs bash mode or a slurm array; in a standard slurm job radii just wait for the slowest one", typeMsg="w")
             print(f"\t- {code} will be executed in SLURM as standard job (cpus: {total_cores_required})",typeMsg="i")
             return StandardSlurmScript(folders_red, settings.code_call, settings.resources_per_call, exec_folder)
 
         print(f"\t- {code} will be executed in SLURM as job array due to its size (cpus: {total_cores_required})",typeMsg="i")
-        return ArraySlurmScript(folders_red, settings.code_call, settings.resources_per_call, exec_folder)
+        script = ArraySlurmScript(folders_red, settings.code_call, settings.resources_per_call, exec_folder)
+        script.extra_points = self._extra_point_array_plan(script, settings)
+        return script
 
     def _attach_scheduler(self, script, settings):
         '''
@@ -1413,7 +1448,10 @@ class mitim_simulation:
             # stall-rescue path can map a stalled folder back to its element and its body.
             "array_index_by_folder": script.array_index_by_folder,
             "per_folder_commands": script.per_folder_commands,
+            # slurm_array + load_balance 'extra_points': launch bodies of the extra cases (None otherwise)
+            "extra_points": getattr(script, "extra_points", None),
         }
+        self._extra_ledger = {}
 
         self.slurm_output = "slurm_output.dat"
 
@@ -1432,14 +1470,18 @@ class mitim_simulation:
 
     def _child_jobids(self):
         '''
-        Deduplicated rescue jobids recorded in the auto-resubmit ledger (insertion
-        order). Empty until a stalled radius has been resubmitted.
+        Deduplicated jobids this submission spawned next to its own job (insertion order): the
+        rescue jobs of the auto-resubmit ledger, then the extra cases still in flight (load_balance
+        'extra_points' in array mode). Empty until a radius was resubmitted or given an extra.
         '''
         seen = []
         for entry in (getattr(self, "_resubmit_ledger", None) or {}).values():
             for jid in entry.get("child_jobids", []):
                 if jid not in seen:
                     seen.append(jid)
+        for entry in (getattr(self, "_extra_ledger", None) or {}).values():
+            if entry.get("status") in ("RUNNING", "STOPPING") and entry.get("jobid") not in seen:
+                seen.append(entry["jobid"])
         return seen
 
     def _live_child_jobids(self, alive_if_unreachable=False):
@@ -1460,31 +1502,23 @@ class mitim_simulation:
         unreachable = list(child_ids) if alive_if_unreachable else []
         treated_as = 'alive' if alive_if_unreachable else 'not alive'
 
-        cmd = f'squeue -h -j {",".join(child_ids)} -o "%.15i %.10T"; echo "{FARMINGtools.SqueueAnswer.TRAILER}$?"'
         try:
             job.connect()
-            out, err = job.execute(cmd, printYN=False)
+            states, answer = jobids_in_queue(job, child_ids)
             job.close()
         except Exception as e:
-            print(f"\t- [child-jobid liveness] squeue failed ({type(e).__name__}: {e}); treating rescue children as {treated_as}", typeMsg='w')
+            print(f"\t- [child-jobid liveness] squeue failed ({type(e).__name__}: {e}); treating child jobs as {treated_as}", typeMsg='w')
             return unreachable
-
-        out, err = (x.decode(errors='replace') if isinstance(x, bytes) else (x or "") for x in (out, err))
 
         # No rows and no verdict from slurm (slurmctld timeout) is not "the children left the queue"
-        answer = FARMINGtools.SqueueAnswer.parse(out, error=err)
-        if not answer.answered:
+        if states is None:
             print(f"\t- [child-jobid liveness] squeue gave no answer (exit code {answer.exit_code}, stderr: {answer.error or 'none'}); "
-                  f"treating rescue children as {treated_as}", typeMsg='w')
+                  f"treating child jobs as {treated_as}", typeMsg='w')
             return unreachable
 
-        alive = []
-        for line in answer.table.strip().splitlines():
-            toks = line.split()
-            if toks and toks[0] in child_ids and toks[0] not in alive:
-                print(f"\t- [child-jobid liveness] rescue child jobid {toks[0]} is still in the queue (state={toks[1] if len(toks) > 1 else '?'})", typeMsg='i')
-                alive.append(toks[0])
-        return alive
+        for jid, state in states.items():
+            print(f"\t- [child-jobid liveness] child jobid {jid} is still in the queue (state={state})", typeMsg='i')
+        return list(states)
 
     def _any_child_job_alive(self, alive_if_unreachable=False):
         '''Boolean form of `_live_child_jobids`.'''
@@ -1557,7 +1591,7 @@ class mitim_simulation:
                     if not live_children:
                         print("\n\t* Job considered finished (please do .fetch() to retrieve results)",typeMsg="i")
                         break
-                    print(f"\t- Parent job left the queue but rescue child jobid(s) {live_children} are still in it; continuing to poll", typeMsg='i')
+                    print(f"\t- Parent job left the queue but child jobid(s) (rescue or extra case) {live_children} are still in it; continuing to poll", typeMsg='i')
 
                 # Track consecutive COMPLETING polls — slurm's "COMPLETING"
                 # state normally lasts seconds; when it persists it is almost
