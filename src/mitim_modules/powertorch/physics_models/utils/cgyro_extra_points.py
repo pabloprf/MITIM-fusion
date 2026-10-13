@@ -2,8 +2,9 @@
 load_balance strategy 'extra_points': the perturbed CGYRO cases that run on nodes freed by
 early radii, and their fluxes as extra surrogate training rows.
 
-The scheduler lives in SIMtools/SCHEDULERtools and the hooks in CGYROtools; this module only
-builds the perturbed input.cgyro and reads the finished cases back. See
+The scheduler lives in SIMtools/SCHEDULERtools (bash mode) and CGYROtools.ArrayExtraPoints (slurm
+array) and the hooks in CGYROtools; this module only builds the perturbed input.cgyro and reads the
+finished cases back. See
 templates/namelist.portals.yaml (`load_balance`) for the user-facing description.
 '''
 
@@ -50,12 +51,18 @@ class ExtraPointHarvester:
     def usable(cls, folder):
         return cls.COMPLETION.finished(folder)[0]
 
+    @staticmethod
+    def _at_radius(options, k):
+        '''Per-radius lists (e.g. RESTART_STEP: [25, 25, 10]) reduced to radius k: the extra case is a
+        one-radius run, which would otherwise take the first entry whatever its radius.'''
+        return {key: (v[k] if isinstance(v, (list, np.ndarray)) else v) for key, v in (options or {}).items()}
+
     # ------------------------------------------------------------------
 
     def builder(self):
         '''
-        builder(rho, finished_scratch_dir, local_dir) -> input.cgyro path (or None), called by
-        CGYROtools when the scheduler frees a node.
+        builder(rho, finished_run_dir, local_dir) -> input.cgyro path (or None), called by
+        CGYROtools when a radius finishes early (finished_run_dir holds its outputs, plain names).
 
         The extra case is the finished radius with the gradient of its largest-residual channel
         scaled by (1 -/+ perturbation), where the residual is (turbulent flux of the finished
@@ -110,8 +117,8 @@ class ExtraPointHarvester:
             cg = CGYROtools.CGYRO(rhos=[rho])
             cg.prep(file_profs, local_dir)
             cg._preprocess_options = self.run_kwargs.get("preprocess_options")
-            cg._run_prepare("base_cgyro", extraOptions=self.run_kwargs.get("extraOptions", {}),
-                            multipliers=self.run_kwargs.get("multipliers", {}),
+            cg._run_prepare("base_cgyro", extraOptions=self._at_radius(self.run_kwargs.get("extraOptions", {}), k),
+                            multipliers=self._at_radius(self.run_kwargs.get("multipliers", {}), k),
                             code_settings=self.run_kwargs.get("code_settings"),
                             allocation=self.run_kwargs.get("allocation"),
                             ApplyCorrections=self.run_kwargs.get("ApplyCorrections", True),

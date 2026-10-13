@@ -693,6 +693,13 @@ class mitim_job:
         else:
             self.jobid = None
 
+    def put_file(self, local_file, remote_path):
+        '''One file onto the machine (a plain copy when it is local), on the caller's live connection.'''
+        if self.ssh is None:
+            shutil.copy2(str(local_file), str(remote_path))
+        else:
+            self._sftp_transfer_with_retry('put', str(local_file), str(remote_path))
+
     def resubmit_single_task(self, code_call_str, label, exclude_node=None):
         '''
         Submit a fresh, single-task (non-array) sbatch that runs `code_call_str`

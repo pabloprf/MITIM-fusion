@@ -393,6 +393,22 @@ class TaskState(str, Enum):
             return None
 
 
+def seconds_remaining(cost, t, t0, max_time):
+    '''
+    Wall seconds a running launch still needs: the a/cs left, MAX_TIME - (t - t0), at `cost` seconds per
+    a/cs (last TOTAL of out.cgyro.timing, one row per PRINT_STEP = 1 a/cs). t0 is the simulated time the
+    launch started from (.mitim_t0): MAX_TIME counts from there, not from zero.
+    '''
+    if cost is None or t is None or max_time is None:
+        return None
+    return max(max_time - (t - (t0 or 0.0)), 0.0) * cost
+
+
+def seconds_to_accept(cost, min_time):
+    '''Wall seconds an extra case needs to reach min_time a/cs at `cost` seconds per a/cs, plus 5 min of start-up.'''
+    return None if cost is None else float(min_time) * cost + 300.0
+
+
 def _as_seconds(token):
     try:
         return max(0, int(token))
@@ -425,11 +441,15 @@ class RadiusStatus:
     tag_suffix: str = ""
     line: str = ""
     rescue_child: str = None
+    seconds_per_step_last: float = None
+    t: float = None
+    t0: float = None
+    max_time: float = None
 
     @classmethod
     def from_probe_line(cls, line, slurm_state=None, job_terminal=False, rescue_child=None):
         '''
-        One `folder|state|avg|steps|wall|since_update|tag|exited` probe line.
+        One `folder|state|avg|steps|wall|since_update|tag|exited[|last|t|t0|max_time]` probe line.
 
         Reclassification, in priority order:
             1. a terminal out.cgyro.tag token (FINISHED/TIMEOUT/ERROR), or CGYRO's EXIT line
@@ -462,9 +482,15 @@ class RadiusStatus:
             exited=(parts[7] if len(parts) > 7 else "0") == "1",
             line=line.strip(),
             rescue_child=rescue_child,
+            **{name: _as_float(parts[i]) for i, name in enumerate(("seconds_per_step_last", "t", "t0", "max_time"), start=8) if len(parts) > i},
         )
         status._reclassify(slurm_state, job_terminal and rescue_child is None)
         return status
+
+    @property
+    def remaining_seconds(self):
+        '''Wall seconds this launch still needs (see seconds_remaining); None while any piece is unknown.'''
+        return seconds_remaining(self.seconds_per_step_last, self.t, self.t0, self.max_time)
 
     @property
     def stale_threshold(self):
@@ -544,6 +570,8 @@ class RadiusStatus:
             "avg_f": self.seconds_per_step,
             "stale_threshold_warn": self.stale_threshold,
             "tag_token": self.tag,
+            "cost_last": self.seconds_per_step_last,
+            "remaining_s": self.remaining_seconds,
         }
 
 
@@ -937,8 +965,7 @@ class StallRescuer:
 
         entry.n_attempts = attempt
         entry.child_jobids.append(new_jobid)
-        # naive UTC plus an explicit "Z", the format already stored in cgyro_submission.json
-        entry.last_action_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+        entry.last_action_at = _utc_now()
         self.metadata_dirty = True
         print(f"\t    * rescued {folder}: new jobid={new_jobid} (attempt {attempt}/{self.cap}, exclude={bad_node})", typeMsg='i')
 
@@ -953,12 +980,299 @@ def _cgyro_handle_stalled_tasks(sim, rows, session=None):
     StallRescuer(sim, settings, session=session).rescue(rows)
 
 
+class ArrayExtraPoints:
+    '''
+    load_balance strategy 'extra_points' when every radius is its own slurm element (slurm_array,
+    run_type 'submit'): the array-mode counterpart of SCHEDULERtools.InAllocationScheduler. A finished
+    element gives its GPUs back to the partition, so the extra case of that radius is submitted as a
+    standalone single-radius job with the sbatch settings of one element (mitim_job.resubmit_single_task,
+    the primitive of the stall rescue), from the driver's poll (`cgyro_per_task_callback`).
+
+    Same rules as in bash mode:
+        launch   one extra per finished radius, once every main radius has started and the slowest one
+                 still needs longer than the extra needs to reach min_time (seconds_remaining against
+                 seconds_to_accept); never while a main element is still waiting for a node.
+        stop     when the last main radius ends: mitim_stop in the extra's folder (its STOP watchdog ends
+                 it after a restart write past min_time, or discards it below), scancel after
+                 stop_grace_seconds; an extra still pending in the queue is cancelled at once.
+        accept   EXIT line or mitim_budget.tag; `collect` adds the accepted folders to the retrieval of
+                 fetch(), which stores them under <FolderGACODE>/extra_cgyro/ like the bash-mode ones.
+
+    The ledger {main folder: {folder, jobid, status, ...}} lives on the simulation object and in
+    cgyro_submission.json, so a driver that re-attaches keeps polling, stopping and collecting the extras
+    the previous one submitted. The launch bodies were built at submit time (kwargs_organize
+    ["extra_points"]), with the allocation and the min_time of that submission.
+    '''
+
+    RUNNING, STOPPING, ACCEPTED, DISCARDED, SKIPPED = "RUNNING", "STOPPING", "ACCEPTED", "DISCARDED", "SKIPPED"
+    IN_FLIGHT = (RUNNING, STOPPING)
+    MAIN_OVER = (TaskState.FINISHED.value, TaskState.TIMED_OUT.value, TaskState.ERROR.value)
+
+    def __init__(self, sim, session=None):
+        self.sim = sim
+        self.job = getattr(sim, "simulation_job", None)
+        self.session = session   # live ssh session of the poll; None -> collect() opens its own
+        plan = (getattr(sim, "kwargs_organize", None) or {}).get("extra_points") or {}
+        self.commands = plan.get("commands") or {}
+        self.min_time = float(plan.get("min_time", 0.0))
+        self.stop_grace_s = float(plan.get("stop_grace_seconds", 1800))
+        self.dirty = False
+
+    @property
+    def ledger(self):
+        if getattr(self.sim, "_extra_ledger", None) is None:
+            self.sim._extra_ledger = {}
+        return self.sim._extra_ledger
+
+    @property
+    def exec_folder(self):
+        return str(self.job.folderExecution)
+
+    def _in_flight(self):
+        return {rel: e for rel, e in self.ledger.items() if e.get("status") in self.IN_FLIGHT}
+
+    @staticmethod
+    def extra_folder(rel):
+        return f"extra_cgyro/{Path(rel).name}"
+
+    # ------------------------------------------------------------------
+    # Every poll
+    # ------------------------------------------------------------------
+
+    def poll(self, rows):
+        if not (self.commands or self.ledger):
+            return
+        states = self._refresh()
+        if self._mains_over(rows):
+            self._stop(states)
+        else:
+            self._launch_due(rows)
+        self._save()
+
+    def _refresh(self):
+        '''
+        Print the extras in flight and classify the ones that left the queue. Returns {main folder:
+        probe status} of those still in it; with no answer from slurm every one counts as still there.
+        '''
+        flying = self._in_flight()
+        if not flying:
+            return {}
+        queued = SIMtools.jobids_in_queue(self.job, [e["jobid"] for e in flying.values()])[0]
+        probed = self._probe(flying)
+
+        print(f"\t- Extra case(s) of finished radii ({len(flying)} in flight):")
+        states = {}
+        for rel, entry in flying.items():
+            status = probed.get(entry["folder"])
+            if status is not None:
+                print(status.describe()[0] + f" [extra job {entry['jobid']}]")
+            if queued is None or entry["jobid"] in queued:
+                states[rel] = status
+            elif status is not None:
+                self._classify(entry, status.exited, "left the queue")
+        return states
+
+    def _probe(self, entries):
+        lines = CgyroProbe(self.job, session=self.session).run([e["folder"] for e in entries.values()]) or []
+        return {st.folder: st for st in (RadiusStatus.from_probe_line(l) for l in lines) if st is not None}
+
+    def _classify(self, entry, accepted, why):
+        entry["status"] = self.ACCEPTED if accepted else self.DISCARDED
+        self.dirty = True
+        print(f"\t- [extra point] {entry['folder']} {why}: {'accepted' if accepted else 'discarded (it did not reach min_time)'}", typeMsg="i")
+
+    def _mains_over(self, rows):
+        '''
+        True when no main radius is integrating any more. A radius handed to a rescue job follows that
+        job (the array's own state says nothing about it) until the stall rescuer closes it.
+        '''
+        job_gone = SlurmState.from_token((getattr(self.job, "infoSLURM", None) or {}).get("STATE")) in _SLURM_JOB_GONE_STATES
+        rescues = getattr(self.sim, "_resubmit_ledger", None) or {}
+        for row in rows:
+            if row["effective"] in self.MAIN_OVER:
+                continue
+            rescue = LedgerEntry.from_json(rescues.get(row["folder"]))
+            if rescue.child_jobids:
+                if rescue.status.startswith(("EXHAUSTED", "TERMINAL_NO_RESCUE")):
+                    continue
+                return False
+            if not job_gone:
+                return False
+        return True
+
+    # ------------------------------------------------------------------
+    # Launch
+    # ------------------------------------------------------------------
+
+    def _launch_due(self, rows):
+        if getattr(self.sim, "extra_point_builder", None) is None:
+            return
+        candidates = [r for r in rows if r["effective"] == TaskState.FINISHED.value
+                      and r["folder"] in self.commands and r["folder"] not in self.ledger]
+        running = [r for r in rows if r["effective"] not in self.MAIN_OVER]
+        if not candidates or not running:
+            return
+        # A main element without an estimate has not started (or just did): it needs the nodes more
+        # than an extra does, and without its remaining time the idle window would pass blindly
+        remaining = [r.get("remaining_s") for r in running]
+        if any(x is None for x in remaining):
+            return
+        window = max(remaining)
+        limit = (getattr(self.job, "slurm_settings", None) or {}).get("array_limit")
+
+        for row in candidates:
+            rel = row["folder"]
+            if limit is not None and len(running) + len(self._in_flight()) >= int(limit):
+                return   # max_concurrent_calls also bounds mains + extras; asked again next poll
+            needed = seconds_to_accept(row.get("cost_last"), self.min_time)
+            if needed is not None and window < needed:
+                self._skip(rel, f"idle window ~{window/60:.0f} min < {needed/60:.0f} min needed for an acceptable extra")
+                continue
+            self._launch(rel, window)
+
+    def _skip(self, rel, why):
+        self.ledger[rel] = {"folder": self.extra_folder(rel), "jobid": None, "status": self.SKIPPED, "reason": why}
+        self.dirty = True
+        print(f"\t- [extra point] {rel}: {why}; no extra case", typeMsg="i")
+
+    def _launch(self, rel, window):
+        rho = float(rel.rsplit("rho_", 1)[-1])
+        rel_extra = self.extra_folder(rel)
+        local_dir = Path(self.sim.FolderGACODE) / rel_extra
+        spec = SIMtools.CompletionSpec.from_run_specifications(self.sim.run_specifications)
+        if SIMtools.CompletionSpec.coerce(spec, alt_file="mitim_budget.tag").finished(local_dir)[0]:
+            return self._skip(rel, "its extra case is already stored locally")
+        try:
+            local_dir.mkdir(parents=True, exist_ok=True)
+            input_cgyro = self.sim.extra_point_builder(rho, self._finished_outputs(rel), local_dir)
+            if input_cgyro is None:
+                return self._skip(rel, "the builder returned no case")
+            jobid = self._stage_and_submit(rel, rel_extra, input_cgyro)
+        except Exception as e:
+            return self._skip(rel, f"extra-point launch failed ({type(e).__name__}: {e})")
+        if not jobid:
+            return self._skip(rel, "sbatch returned no jobid")
+        self.ledger[rel] = {"folder": rel_extra, "jobid": jobid, "status": self.RUNNING, "submitted_at": _utc_now()}
+        self.dirty = True
+        print(f"\t- [extra point] {rel} finished: extra case {rel_extra} submitted as job {jobid} (idle window ~{window/60:.0f} min)", typeMsg="i")
+
+    def _finished_outputs(self, rel):
+        '''
+        Folder holding the finished radius's outputs under their plain names, for the builder to read
+        its fluxes: the scratch folder itself when the driver shares its filesystem, else a copy of the
+        files a fetch brings (never the restart blob) pulled into the job's local folder.
+        '''
+        if self.job.ssh is None:
+            return Path(self.exec_folder) / rel
+        from mitim_tools.misc_tools.FARMINGtools import RetrievalSpec
+        files = list(self.sim.kwargs_organize["filesToRetrieve"])
+        # best_effort: a failed pull must not raise the interactive disk-full prompt inside the poll
+        if not self.job.retrieve(check_if_files_received=False, best_effort=True, spec=RetrievalSpec(folders=[rel], selective={rel: files})):
+            raise RuntimeError(f"could not pull the outputs of {rel}")
+        return Path(self.job.folder_local) / rel
+
+    def _stage_and_submit(self, rel, rel_extra, input_cgyro):
+        '''The perturbed input.cgyro plus the finished run's restart blob as warm start (no out.cgyro.tag: t from 0).'''
+        src, dst = f"{self.exec_folder}/{rel}", f"{self.exec_folder}/{rel_extra}"
+        self.job.execute(f'mkdir -p "{dst}" && if [ -f "{src}/bin.cgyro.restart" ]; then cp "{src}/bin.cgyro.restart" "{dst}/"; fi', printYN=False)
+        self.job.put_file(input_cgyro, f"{dst}/input.cgyro")
+        return self.job.resubmit_single_task(self.commands[rel], f"_extra_{Path(rel_extra).name}")
+
+    # ------------------------------------------------------------------
+    # Stop
+    # ------------------------------------------------------------------
+
+    def _stop(self, states):
+        '''`states`: {main folder: probe status} of the extras still in the queue.'''
+        for rel, status in states.items():
+            entry = self.ledger[rel]
+            if status is not None and status.raw == TaskState.NOT_STARTED:
+                # never started: a stop file would be removed by its watchdog at launch
+                self._scancel(entry, "the main radii ended before it started")
+                self._classify(entry, False, "cancelled")
+                continue
+            # dropped again every poll: a requeued extra clears the file when it restarts
+            self.job.execute(f'echo stop > "{self.exec_folder}/{entry["folder"]}/mitim_stop"', printYN=False)
+            if entry["status"] == self.RUNNING:
+                entry["status"], entry["stop_requested_at"] = self.STOPPING, _utc_now()
+                self.dirty = True
+                print(f"\t- [extra point] main radii done; asked {entry['folder']} (job {entry['jobid']}) to stop (graceful if past min_time)", typeMsg="i")
+            elif _seconds_since(entry.get("stop_requested_at")) > self.stop_grace_s:
+                self._scancel(entry, f"it did not stop within {self.stop_grace_s/60:.0f} min")
+
+    def _scancel(self, entry, why):
+        print(f"\t- [extra point] {entry['folder']} (job {entry['jobid']}): {why}; cancelling it", typeMsg="w")
+        self.job.execute(f"scancel {entry['jobid']}", printYN=False)
+
+    # ------------------------------------------------------------------
+    # Fetch
+    # ------------------------------------------------------------------
+
+    def collect(self):
+        '''
+        Before fetch(): settle every extra (one still in the queue is cancelled: the evaluation is
+        being collected) and add the accepted ones to the retrieval, best-effort, with the file
+        patterns of the main folders. _organize_results then moves them next to the main results.
+        '''
+        if not self.ledger or self.job is None:
+            return
+        flying = self._in_flight()
+        if flying:
+            with self.job.session() as self.session:
+                queued = SIMtools.jobids_in_queue(self.job, [e["jobid"] for e in flying.values()])[0] or {}
+                for entry in flying.values():
+                    if entry["jobid"] in queued:
+                        self._scancel(entry, "the evaluation is being collected")
+                probed = self._probe(flying)
+            for entry in flying.values():
+                status = probed.get(entry["folder"])
+                self._classify(entry, status is not None and status.exited, "ended")
+
+        accepted = [e["folder"] for e in self.ledger.values() if e.get("status") == self.ACCEPTED]
+        discarded = [e["folder"] for e in self.ledger.values() if e.get("status") == self.DISCARDED]
+        selective = self.job.output_folders_selective
+        patterns = next(iter(selective.values()), None) if selective else None
+        for folder in accepted:
+            if folder not in self.job.output_folders:
+                self.job.output_folders.append(folder)
+            if patterns is not None:
+                selective[folder] = list(patterns)
+        self.job.scheduler_result = {"accepted": accepted, "discarded": discarded}
+        if accepted or discarded:
+            print(f"\t- [extra point] extras accepted: {accepted or 'none'}; discarded: {discarded or 'none'}", typeMsg="i")
+        self._save()
+
+    def _save(self):
+        if not self.dirty:
+            return
+        self.dirty = False
+        try:
+            self.sim._write_submission_metadata(getattr(self.sim, "_base_subfolder", None))
+        except Exception as e:
+            print(f"\t- [extra point] metadata write failed ({type(e).__name__}: {e}); ledger held in-memory only", typeMsg='w')
+
+
+def _utc_now():
+    '''Naive UTC plus an explicit "Z", the format stored in cgyro_submission.json.'''
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+
+
+def _seconds_since(stamp):
+    try:
+        then = datetime.datetime.fromisoformat(stamp.rstrip("Z")).replace(tzinfo=datetime.timezone.utc)
+    except (AttributeError, ValueError):
+        return 0.0
+    return (datetime.datetime.now(datetime.timezone.utc) - then).total_seconds()
+
+
 def cgyro_per_task_callback(sim):
     '''
     Bound as `_custom_check_callback` and called as `custom_checker(sim)` once per poll by
     `mitim_simulation.check`, which is why this stays a module function. One ssh session for the whole
-    poll: the probe prints and returns the rows, the rescuer acts on the stalled ones. Users who
-    haven't opted into auto_resubmit_settings see the historical detect-only behavior.
+    poll: the probe prints and returns the rows, the rescuer acts on the stalled ones, and the extra
+    cases of finished radii are submitted, stopped and classified (ArrayExtraPoints; a no-op without
+    load_balance 'extra_points'). Users who haven't opted into auto_resubmit_settings see the
+    historical detect-only behavior.
     '''
     job = getattr(sim, "simulation_job", None)
     kwargs_organize = getattr(sim, "kwargs_organize", None)
@@ -969,6 +1283,7 @@ def cgyro_per_task_callback(sim):
             rows = cgyro_per_task_status(sim, session=session)
             if rows:
                 _cgyro_handle_stalled_tasks(sim, rows, session=session)
+                ArrayExtraPoints(sim, session=session).poll(rows)
     except Exception as e:
         print(f"\t- [per-task status] poll over ssh failed ({type(e).__name__}: {e}); continuing", typeMsg='w')
 
@@ -1243,10 +1558,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             rho_dir, getattr(self, "_load_balance", None), mode=mode, template=self._WALL_BUDGET_WATCHDOG).wrap(cgyro_cmd)
 
     # ------------------------------------------------------------------
-    # load_balance strategy 'extra_points' (bash mode): hooks for the in-allocation
-    # scheduler (SCHEDULERtools). The transport layer registers `extra_point_builder`,
-    # a callable (rho, finished_scratch_dir, local_dir) -> path of a ready input.cgyro
-    # for a perturbed case at that radius (or None); everything else is generic here.
+    # load_balance strategy 'extra_points': hooks for the in-allocation scheduler
+    # (SCHEDULERtools, bash mode) and the plan for ArrayExtraPoints (slurm_array). The
+    # transport layer registers `extra_point_builder`, a callable
+    # (rho, finished_run_dir, local_dir) -> path of a ready input.cgyro for a perturbed
+    # case at that radius (or None); everything else is generic here.
     # ------------------------------------------------------------------
     extra_point_builder = None
 
@@ -1262,6 +1578,33 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 "estimate_remaining": self._estimate_remaining,
                 "estimate_to_accept": self._estimate_to_accept,
                 "idle_slot_sources": self._idle_slot_sources}
+
+    def _extra_point_array_plan(self, script, settings):
+        '''
+        slurm_array counterpart of _extra_point_hooks: the launch body of every radius's extra case,
+        built now, while the allocation and load_balance of this submission are on the object (both
+        are gone once run() returns, and a re-attaching driver never had them). See ArrayExtraPoints.
+        '''
+        lb = getattr(self, "_load_balance", None) or {}
+        if lb.get("strategy") != "extra_points":
+            return None
+        if settings.run_type is not SIMtools.RunType.SUBMIT:
+            print(f"\t- load_balance 'extra_points' with a slurm array needs run_type 'submit' (the driver polls the elements); with '{settings.run_type.value}' array elements just release their nodes", typeMsg="w")
+            return None
+        if self.extra_point_builder is None:
+            print("\t- load_balance 'extra_points' requested but no extra_point_builder is registered (standalone CGYRO run?); array elements just release their nodes", typeMsg="w")
+            return None
+        commands = {}
+        for folder in script.folders:
+            rel_extra = ArrayExtraPoints.extra_folder(folder)
+            commands[folder] = script._call(rel_extra, watchdog="stop", additional_command=script._redirect(rel_extra))
+        print("\t- load_balance 'extra_points': a radius that finishes early gets one extra case as its own job, while the slowest radius leaves time for it", typeMsg="i")
+        return {"commands": commands, "min_time": float(lb.get("min_time", 0.0)), "stop_grace_seconds": 1800}
+
+    def fetch(self):
+        if getattr(self, "simulation_job", None) is not None and self.simulation_job.launchSlurm:
+            ArrayExtraPoints(self).collect()
+        super().fetch()
 
     def _scratch(self, rel):
         return Path(self.simulation_job.folderExecution) / rel
@@ -1288,12 +1631,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             max_time = float(next(l.split("=")[1] for l in (d / "input.cgyro").read_text().splitlines() if l.strip().startswith("MAX_TIME")))
         except (OSError, StopIteration, ValueError):
             return None
-        return max(max_time - (t - t0), 0.0) * cost
+        return seconds_remaining(cost, t, t0, max_time)
 
     def _estimate_to_accept(self, rel):
-        cost = self._cost_per_acs(rel)
         lb = getattr(self, "_load_balance", None) or {}
-        return None if cost is None else float(lb.get("min_time", 0.0)) * cost + 300.0
+        return seconds_to_accept(self._cost_per_acs(rel), lb.get("min_time", 0.0))
 
     def _idle_slot_sources(self, main_rels):
         '''
