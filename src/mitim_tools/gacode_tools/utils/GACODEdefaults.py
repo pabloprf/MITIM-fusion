@@ -505,8 +505,8 @@ def review_controls(TGLFoptions, control = "input.tglf.controls"):
 
         # Do not fail with e.g. RLTS_1
         isSpecie = option.split('_')[-1].isdigit()
-        # Do not fail with e.g. P_PRIME_LOC
-        isGeometry = option.split('_')[-1] in ['LOC']
+        # Do not fail with e.g. P_PRIME_LOC, or MXH harmonics SHAPE_COS0, SHAPE_S_SIN3
+        isGeometry = option.split('_')[-1] in ['LOC'] or option.startswith('SHAPE_')
         
         if (not isSpecie) and (not isGeometry) and (option not in options_check):
             print(f"\t- Option {option} not in {control}, prone to errors", typeMsg="q")
