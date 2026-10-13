@@ -1591,7 +1591,7 @@ class mitim_simulation:
                     if not live_children:
                         print("\n\t* Job considered finished (please do .fetch() to retrieve results)",typeMsg="i")
                         break
-                    print(f"\t- Parent job left the queue but rescue child jobid(s) {live_children} are still in it; continuing to poll", typeMsg='i')
+                    print(f"\t- Parent job left the queue but child jobid(s) (rescue or extra case) {live_children} are still in it; continuing to poll", typeMsg='i')
 
                 # Track consecutive COMPLETING polls — slurm's "COMPLETING"
                 # state normally lasts seconds; when it persists it is almost
