@@ -795,12 +795,19 @@ def _iteration_colors(sorted_its):
     return (lambda it: sm.to_rgba(it)), sm
 
 
-def _target_for(targets_per_iter, it, var, r_idx):
-    '''Turbulence-only target (target - neoclassical, GB) of one iteration/channel/radius, or None.'''
+def _target_for(targets_per_iter, it, var, r_idx, rho=None):
+    '''
+    Turbulence-only target (target - neoclassical, GB) of one iteration/channel/radius, or None.
+    With `rho`, the radius is found by nearest value in the iteration's "rho" entry (the radii the
+    targets were evaluated at) instead of by position, for callers that plot a subset of the radii.
+    '''
     gb_key = _CHANNEL_TO_GB.get(var)
     if not targets_per_iter or gb_key is None:
         return None
     arr = (targets_per_iter.get(it) or {}).get(gb_key)
+    rhos_targets = (targets_per_iter.get(it) or {}).get("rho")
+    if rho is not None and rhos_targets is not None:
+        r_idx = int(np.argmin(np.abs(np.asarray(rhos_targets, dtype=float) - float(rho))))
     if arr is None or r_idx >= len(arr):
         return None
     val = float(arr[r_idx])
@@ -1393,7 +1400,7 @@ def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live",
                     ax.hlines(float(m), float(tmin), float(out.t[-1]), colors="r", lw=1.6, zorder=6)
                     if sd is not None:
                         ax.fill_between([float(tmin), float(out.t[-1])], float(m) - float(sd), float(m) + float(sd), color="r", alpha=0.15, lw=0)
-            tval = _target_for(targets_per_iter, it, var, r_idx)
+            tval = _target_for(targets_per_iter, it, var, r_idx, rho=rho)
             if tval is not None:
                 ax.axhline(tval, color="k", ls="--", lw=1.0, alpha=0.8, zorder=7)
             if r_idx == 0:
