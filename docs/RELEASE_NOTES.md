@@ -298,6 +298,11 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **A CGYRO radius that MITIM stopped on purpose no longer shows as FAILED in SLURM.** A run stopped and accepted
+    by the watchdog (`mitim_budget.tag`: `wall_budget`, `mitim_kill_cgyro`, cost guard, the stop of an extra case)
+    ended with status 143 (the SIGTERM sent to CGYRO), so `sacct` reported FAILED for a radius that counted as
+    finished. It now exits 0; a discarded extra case keeps its own status.
+
 *   🐛 **RAPIDS geometry and heating on the new design**: the toroidal flux (and so rho and B_unit) is now that of the
     vacuum field on the rescaled surfaces (B_unit was ~30% low against MAESTRO), the RF power delivered equals the
     requested one on the new geometry (it was ~36% short), and species missing from the radiation table are renamed to
