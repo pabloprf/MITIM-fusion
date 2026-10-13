@@ -2490,6 +2490,10 @@ def _load_turb_targets_for_iterations(iter_folders, predicted_channels):
             if key in targets and key in neoc:
                 d[key] = np.asarray(targets[key], dtype=float) - np.asarray(neoc[key], dtype=float)
         if d:
+            # Radii the targets belong to, for plots that show only some of them (CGYRO live tab)
+            rho = (payload.get("additional_info", {}) or {}).get("rho")
+            if rho is not None:
+                d["rho"] = np.asarray(rho, dtype=float)
             out[it] = d
     return out
 
