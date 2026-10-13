@@ -1277,6 +1277,28 @@ def fetch_live_outputs(machine_settings, folder_execution, pairs, local_folder, 
     return info
 
 
+def link_finished_radii(run_folder, local_folder, live_rhos, files=None):
+    '''
+    Radii of the running evaluation that already ended and were retrieved into the run folder (a job
+    relaunched for the radii left only lists those): symlink their outputs into local_folder next to
+    the live ones, so the live tab shows the whole evaluation. Read-only on the run folder.
+    Returns {rho: {'mtime': last write of out.cgyro.time (epoch s), 'machine': 'run folder'}}.
+    '''
+    run_folder, local_folder = Path(run_folder), Path(local_folder)
+    live = {f"{rho:.4f}" for rho in live_rhos}
+    info = {}
+    for time_file in sorted(run_folder.glob("out.cgyro.time_*")):
+        tag = time_file.name.split("_")[-1]
+        if tag in live:
+            continue
+        for name in (files or _LIVE_FILES):
+            src = run_folder / f"{name}_{tag}"
+            if src.is_file():
+                (local_folder / src.name).symlink_to(src)
+        info[float(tag)] = {"machine": "run folder", "mtime": time_file.stat().st_mtime}
+    return info
+
+
 # Enough to tell, per radius, how far it got and whether it already ended (EXIT line, watchdog tags)
 _STOP_STATUS_FILES = ["input.cgyro", ".mitim_t0", "out.cgyro.info", "mitim_budget.tag", "mitim_discard.tag", "mitim_stop", "out.cgyro.time"]
 

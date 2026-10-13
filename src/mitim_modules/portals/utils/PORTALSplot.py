@@ -2744,6 +2744,8 @@ def plot_cgyro_live_status(root_folder, fn, fn_color, finished_cache=None):
         except Exception as e:
             print(f"\t- Could not fetch the live CGYRO outputs ({type(e).__name__}: {e}); skipping the live-status tab", typeMsg='w')
             return False
+        # Radii of this evaluation already retrieved (the job in flight may carry only the ones left)
+        info.update(CGYROplot.link_finished_radii(dict(iter_folders)[it] / base_subfolder, base, list(info)))
         rhos = sorted(info)
         tool = CGYROplot.load_tool_for_iteration(Path(tmp), rhos, read_kwargs=run["read_kwargs"], base_subfolder=base_subfolder)
         targets = _load_turb_targets_for_iterations([(it, dict(iter_folders)[it])], (run["params"].get("solution") or {}).get("predicted_channels") or [])
