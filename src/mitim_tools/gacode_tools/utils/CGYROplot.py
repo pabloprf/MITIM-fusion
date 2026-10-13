@@ -1210,7 +1210,7 @@ _LIVE_FILES = [
     "input.cgyro", "input.cgyro.gen", ".mitim_t0",
     "bin.cgyro.geo", "out.cgyro.egrid", "out.cgyro.equilibrium", "out.cgyro.grids", "out.cgyro.hosts",
     "out.cgyro.memory", "out.cgyro.mpi", "out.cgyro.prec", "out.cgyro.rotation", "out.cgyro.startups",
-    "out.cgyro.version", "out.cgyro.info", "out.cgyro.timing",
+    "out.cgyro.version", "out.cgyro.info", "out.cgyro.timing", "mitim_budget.tag", "mitim_discard.tag",
     "bin.cgyro.freq", "bin.cgyro.ky_cflux", "bin.cgyro.ky_flux", "out.cgyro.time",
 ]
 
@@ -1372,6 +1372,11 @@ def _read_live_scalars(folder, rho):
         out["exit"] = next((l.strip() for l in (folder / f"out.cgyro.info_{rho:.4f}").read_text().splitlines() if "EXIT" in l), None)
     except OSError:
         pass
+    try:
+        # a watchdog / cost-guard / manual stop leaves no EXIT line but a tag, and the radius counts as finished
+        out["tag"] = (folder / f"mitim_budget.tag_{rho:.4f}").read_text().split()[0]
+    except (OSError, IndexError):
+        pass
     return out
 
 
@@ -1410,7 +1415,8 @@ def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live",
         has_t = out is not None and getattr(out, "t", None) is not None and len(out.t) > 0
 
         age = now - live["mtime"] if live.get("mtime") is not None else None
-        status = "exited" if live.get("exit") else (f"{_fmt_duration(age)} ago" if age is not None else "no output yet")
+        done = bool(live.get("exit") or live.get("tag"))
+        status = "exited" if live.get("exit") else (f"stopped, {live['tag']}" if live.get("tag") else (f"{_fmt_duration(age)} ago" if age is not None else "no output yet"))
         axs[0, r_idx].set_title(f"$\\rho={float(rho):.3f}$" + (f"  t={out.t[-1]:.1f} $a/c_s$" if has_t else "") + f"\n(last output {status})", fontsize=9)
 
         for row_idx, (var, ylabel) in enumerate(_CHANNELS):
@@ -1447,8 +1453,8 @@ def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live",
             eta = None
             if live.get("MAX_TIME") is not None:
                 eta = max(live.get("t0", 0.0) + live["MAX_TIME"] - out.t[-1], 0.0) * total[-1] / dt_out
-            etas[rho] = 0.0 if live.get("exit") else eta
-            state = "done" if live.get("exit") else _fmt_duration(eta)
+            etas[rho] = 0.0 if done else eta
+            state = "done" if done else _fmt_duration(eta)
             ax.set_title(f"{total[-1] / dt_out:.4g} wall s / 1 $a/c_s$  \u00b7  to MAX_TIME: {state}", fontsize=8)
         if r_idx == 0:
             ax.set_ylabel("wall s / 1 $a/c_s$")
