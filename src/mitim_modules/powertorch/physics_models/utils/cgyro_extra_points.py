@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from mitim_tools.simulation_tools import SIMtools
+from mitim_tools.simulation_tools.gk_control import markers
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
@@ -36,7 +37,7 @@ class ExtraPointHarvester:
 
     # An extra case counts when it ran to MAX_TIME (CGYRO's EXIT line) or when the watchdog
     # stopped it past min_time (mitim_budget.tag)
-    COMPLETION = SIMtools.CompletionSpec("out.cgyro.info", "EXIT", alt_file="mitim_budget.tag")
+    COMPLETION = SIMtools.CompletionSpec(*markers.CGYRO_COMPLETION, alt_file=markers.BUDGET_TAG)
 
     def __init__(self, power_transport, code, rho_locations, run_kwargs, read_kwargs):
         self.power = power_transport
@@ -132,7 +133,7 @@ class ExtraPointHarvester:
                     "x": x, "Qgb": float(ps.plasma["Qgb"][0, ir]), "Ggb": float(ps.plasma["Ggb"][0, ir]),
                     "Pgb": float(ps.plasma["Pgb"][0, ir]),
                     "evaluation_number": int(getattr(self.power, "evaluation_number", 0))}
-            (local_dir / "mitim_extra_point.json").write_text(json.dumps(meta, indent=2))
+            (local_dir / markers.EXTRA_POINT_JSON).write_text(json.dumps(meta, indent=2))
             print(f"\t- [extra point] rho={rho:.4f}: {aL} x {factor:.3f} ({ch} residual {residual[ch][0]:+.2f} GB)", typeMsg="i")
             return input_cgyro
 
@@ -149,12 +150,12 @@ class ExtraPointHarvester:
         import pandas as pd
         from mitim_tools.gacode_tools.utils import CGYROutils
 
-        root = Path(self.power.folder) / "extra_cgyro"
+        root = Path(self.power.folder) / markers.EXTRA_DIR
         csv = Path(self.power.powerstate.transport_options["folder"]) / "Outputs" / "extra_points.csv"
 
         rows, harvested_folders = [], []
         for d in (sorted(root.glob("rho_*")) if root.is_dir() else []):
-            meta_f, done = d / "mitim_extra_point.json", d / "mitim_harvested"
+            meta_f, done = d / markers.EXTRA_POINT_JSON, d / markers.EXTRA_HARVESTED
             if done.exists() or not (meta_f.exists() and self.usable(d) and (d / "out.cgyro.time").exists()):
                 continue
             meta = json.loads(meta_f.read_text())

@@ -1194,8 +1194,8 @@ class mitim_simulation:
         hooks = self._extra_point_hooks(settings.resources_per_call) if (script.hosts and script.folders) else None
         if hooks is None:
             return
-        from mitim_tools.simulation_tools.utils import SCHEDULERtools
-        self._scheduler_to_attach = SCHEDULERtools.InAllocationScheduler(
+        from mitim_tools.simulation_tools.gk_control.extra_points import InAllocationScheduler
+        self._scheduler_to_attach = InAllocationScheduler(
             script.folder_bodies(), script.hosts, script.max_parallel,
             completion_marker=self.run_specifications.get("completion_marker"), **hooks)
 
