@@ -1691,6 +1691,22 @@ class mitim_job:
         # going through define_machine_quick.
         return self.slurm_settings.get("job-name", self.slurm_settings.get("name", "mitim_job"))
 
+    JOB_BY_FOLDER = "MITIM_JOB_BY_FOLDER"
+
+    def _jobs_by_folder_bash(self):
+        '''
+        Shell, run from inside folderExecution, that sets `_ids` to the comma-joined jobids of the jobs
+        named like this one AND submitted from this folder (squeue %Z, the sbatch working directory:
+        every MITIM submission does `cd folderExecution && ... sbatch`, so each array element has it),
+        and `_lk_rc` to squeue's exit code (`_lk` holds its output). A name alone is never enough: PORTALS
+        names every CGYRO array cgyro_ev<N>, and another run's job of that name must not be adopted or
+        cancelled. %Z is compared with the folder as written and as `pwd -P` resolves it.
+        '''
+        folder = shlex.quote(str(self.folderExecution))
+        name = shlex.quote(self._squeue_job_name())
+        return (f'_wd=$(pwd -P); _lk=$(squeue -h -n {name} -o "%F|%Z" 2>&1); _lk_rc=$?; '
+                f'_ids=$(printf "%s\\n" "$_lk" | awk -F"|" -v a={folder} -v b="$_wd" \'$2==a || $2==b {{print $1}}\' | sort -u | paste -sd, -)')
+
     def check(self, file_output = "slurm_output.dat"):
         """
         Check job status slurm
@@ -1699,13 +1715,15 @@ class mitim_job:
                 wait for the full slurm execution, but will launch it and retrieve the jobid,
                 which the check command uses to check the status of the job.
             - If the class was initiated but not run, it will not have the jobid, so it will
-                try to find it from the job_name, which must match the submitted one.
+                try to find it from the job_name AND the folder it was submitted from
+                (_jobs_by_folder_bash); a job of the same name from another folder is ignored.
         """
 
         if self.jobid is not None:
             txt_look = f"-j {self.jobid}"
         else:
-            txt_look = f"-n {self._squeue_job_name()}"
+            # without a recorded jobid, only the jobs of this name submitted from this folder (_jobs_by_folder_bash)
+            txt_look = '-j "$_ids"'
 
         # The remote folder holds the job's scripts from before sbatch, so it exists for every submitted
         # job; when it is gone (scratch deleted) nothing can ever be retrieved, and without this marker
@@ -1715,6 +1733,13 @@ class mitim_job:
         # table alone cannot tell a job that left the queue from a slurmctld that did not answer
         squeue = (f'_squeue_err=$(squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" 2>&1 > squeue_output.dat); '
                   f'echo "{SqueueAnswer.TRAILER}$? $_squeue_err" >> squeue_output.dat')
+        if self.jobid is None:
+            # a lookup slurm did not answer is silence (keep polling); no job of this name from this folder is
+            # an answered empty table (not found)
+            squeue = (f'{self._jobs_by_folder_bash()}; '
+                      f'if [ "$_lk_rc" != 0 ]; then echo "{SqueueAnswer.TRAILER}$_lk_rc $_lk" > squeue_output.dat; '
+                      f'elif [ -z "$_ids" ]; then echo "{SqueueAnswer.TRAILER}0 " > squeue_output.dat; '
+                      f'else echo "{self.JOB_BY_FOLDER} $_ids"; {squeue}; fi')
         command = (f'if [ -d {folder} ]; then cd {folder} && {{ {squeue}; }}; '
                    f'else echo {self.REMOTE_FOLDER_GONE}; fi')
 
@@ -1738,6 +1763,7 @@ class mitim_job:
                 if self._remote_folder_gone(output):
                     self._set_gone()
                     return
+                self._warn_job_by_folder(output)
                 received = self.retrieve(spec=spec, best_effort=True)
             except RetryPolicy.TRANSIENT as _poll_exc:
                 print(f"\t* Status poll could not reach the remote ({type(_poll_exc).__name__}: {_poll_exc}); "
@@ -1749,6 +1775,13 @@ class mitim_job:
         self.interpret_status(file_output = file_output)
 
     REMOTE_FOLDER_GONE = "MITIM_REMOTE_FOLDER_GONE"
+
+    def _warn_job_by_folder(self, output):
+        text = output.decode(errors="ignore") if isinstance(output, bytes) else (output or "")
+        for line in text.splitlines():
+            if line.startswith(self.JOB_BY_FOLDER):
+                print(f"\t* No recorded jobid: following job(s) {line.split()[-1]}, named \"{self._squeue_job_name()}\" "
+                      f"and submitted from {self.folderExecution}", typeMsg="w")
 
     def _remote_folder_gone(self, output):
         text = output.decode(errors="ignore") if isinstance(output, bytes) else (output or "")
@@ -1851,7 +1884,7 @@ class mitim_job:
 
         txt = "\t* Job was checked"
         if (self.jobid is None) and (self.jobid_found is not None):
-            txt += f' (jobid {self.jobid_found}, found from name "{self._squeue_job_name()}")'
+            txt += f' (jobid {self.jobid_found}, found from name "{self._squeue_job_name()}" and folder)'
         elif self.jobid is not None:
             txt += f" (jobid {self.jobid})"
         txt += f', is {self.infoSLURM["STATE"]} (job.infoSLURM)'

@@ -1519,8 +1519,12 @@ class mitim_simulation:
         launch_slurm = job.launchSlurm
         job.launchSlurm = False   # the scancel is a plain shell command, not a job to queue
         try:
+            # never by name alone: another run's job of the same name (cgyro_ev<N>) would be cancelled too
+            jobid = job.jobid or getattr(job, "jobid_found", None)
+            command = (f"scancel {jobid}" if jobid is not None
+                       else f'{job._jobs_by_folder_bash()}; [ "$_lk_rc" = 0 ] && [ -n "$_ids" ] && scancel ${{_ids//,/ }} || true')
             job.prep(
-                f"scancel -n {job._squeue_job_name()}",
+                command,
                 label_log_files="_finish",
             )
             job.run(removeScratchFolders=False)

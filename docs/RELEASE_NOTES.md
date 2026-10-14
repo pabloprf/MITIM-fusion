@@ -310,6 +310,10 @@ DESCRIPTION
     every later read. Without a terminal, a failed CGYRO read raises its own error instead of asking whether to run
     `cgyro -t` (which raised `InteractiveTerminalError` and killed every chained driver link).
 
+*   🐛 **A driver without a recorded jobid no longer follows or cancels another run's job of the same name.** Every
+    PORTALS CGYRO array is named `cgyro_ev<N>`; the status poll fell back to `squeue -n <name>` and `delete()` ran
+    `scancel -n <name>`. Both now take only the jobs of that name submitted from this job's folder (squeue `%Z`).
+
 *   🐛 **A CGYRO radius that MITIM stopped on purpose no longer shows as FAILED in SLURM.** A run stopped and accepted
     by the watchdog (`mitim_budget.tag`: `wall_budget`, `mitim_kill_cgyro`, cost guard, the stop of an extra case)
     ended with status 143 (the SIGTERM sent to CGYRO), so `sacct` reported FAILED for a radius that counted as
