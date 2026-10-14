@@ -11,7 +11,7 @@ from mitim_tools.misc_tools import IOtools
 from mitim_tools.simulation_tools.gk_control import markers
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.simulation_tools.utils.GKaveraging import GKaverager, PRIMARY_CHANNELS, apply_ac, _grab_ncorrelation, resolve_fixed_tmin  # noqa: F401 (apply_ac/_grab_ncorrelation re-exported for callers)
-from mitim_tools.misc_tools.LOGtools import printMsg as print
+from mitim_tools.misc_tools.LOGtools import printMsg as print, InteractiveTerminalError
 try:
     from pygacode.cgyro.data_plot import cgyrodata_plot
     from pygacode import gacodefuncs
@@ -633,7 +633,14 @@ class CGYROoutput(SIMtools.GACODEoutput):
                 raise Exception(f"[MITIM] Could not find CGYRO data in {folder.resolve()}. Please check the folder path or run CGYRO first.")
             except Exception as e:
                 print(f"\t- Error reading CGYRO data: {e}")
-                if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?', typeMsg='q'):
+                # Without a terminal to answer (SLURM driver, log redirect) LOGtools refuses to ask: take it
+                # as "no" and raise the read error itself, not InteractiveTerminalError
+                try:
+                    run_cgyro_t = print('- Could not read data, do you want me to try do "cgyro -t" in the folder?', typeMsg='q')
+                except InteractiveTerminalError:
+                    print(f"\t- No interactive terminal to offer `cgyro -t` in {folder.resolve()}; raising the original read error", typeMsg='w')
+                    raise e from None
+                if run_cgyro_t:
                     try:
                         subprocess.run(["cgyro", "-t"], cwd=str(self.folder_read))
                     except FileNotFoundError:
