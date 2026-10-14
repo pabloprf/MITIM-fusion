@@ -14,6 +14,8 @@ from pathlib import Path
 from mitim_tools.misc_tools.FARMINGtools import SlurmState
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.simulation_tools.gk_control.status import _SLURM_JOB_GONE_STATES, CgyroProbe, RadiusStatus, TaskState
+from mitim_tools.simulation_tools.gk_control.rescue import _cgyro_handle_stalled_tasks
+from mitim_tools.simulation_tools.gk_control.extra_points import ArrayExtraPoints
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
@@ -278,3 +280,26 @@ def cgyro_per_task_status(sim, session=None):
         rows.append(status.to_row())
 
     return rows
+
+
+def cgyro_per_task_callback(sim):
+    '''
+    Bound as `_custom_check_callback` and called as `custom_checker(sim)` once per poll by
+    `mitim_simulation.check`, which is why this stays a module function. One ssh session for the whole
+    poll: the probe prints and returns the rows, the rescuer acts on the stalled ones, and the extra
+    cases of finished radii are submitted, stopped and classified (ArrayExtraPoints; a no-op without
+    load_balance 'extra_points'). Users who haven't opted into auto_resubmit_settings see the
+    historical detect-only behavior.
+    '''
+    job = getattr(sim, "simulation_job", None)
+    kwargs_organize = getattr(sim, "kwargs_organize", None)
+    if job is None or kwargs_organize is None or not getattr(job, "launchSlurm", False):
+        return
+    try:
+        with job.session() as session:
+            rows = cgyro_per_task_status(sim, session=session)
+            if rows:
+                _cgyro_handle_stalled_tasks(sim, rows, session=session)
+                ArrayExtraPoints(sim, session=session).poll(rows)
+    except Exception as e:
+        print(f"\t- [per-task status] poll over ssh failed ({type(e).__name__}: {e}); continuing", typeMsg='w')
