@@ -299,8 +299,16 @@ DESCRIPTION
     sbatch settings as one element), stopped when the last main radius ends and harvested into
     `Outputs/extra_points.csv` as in bash mode. The extras are tracked in `cgyro_submission.json`, so a re-attaching
     driver keeps them. In both modes the extra case now takes per-radius option lists (e.g. `RESTART_STEP`) at its own radius.
+    A main radius that hits its element wall and is continued in place by the next driver link keeps its extras running;
+    that link takes them over and stops them only when the main radius really ends.
 
 ### Bug Fixes
+
+*   🐛 **PORTALS-CGYRO chains no longer die after an in-place continuation or a failed read in a batch job.** A radius
+    continued in its own folder (rescue or SLURM requeue) now has its per-output binaries cut to the restart output
+    before CGYRO starts, so a continuation that ends before the old trace no longer leaves stale records that crashed
+    every later read. Without a terminal, a failed CGYRO read raises its own error instead of asking whether to run
+    `cgyro -t` (which raised `InteractiveTerminalError` and killed every chained driver link).
 
 *   🐛 **A CGYRO radius that MITIM stopped on purpose no longer shows as FAILED in SLURM.** A run stopped and accepted
     by the watchdog (`mitim_budget.tag`: `wall_budget`, `mitim_kill_cgyro`, cost guard, the stop of an extra case)
