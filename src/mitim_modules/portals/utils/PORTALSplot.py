@@ -2654,66 +2654,8 @@ def _plot_cgyro_near_best_and_last(self, fn, fn_color):
                                         anchor_label=label, targets_per_iter=self._cgyro_targets_cache)
 
 
-def _find_running_cgyro_evaluation(iter_folders, base_subfolder):
-    '''
-    Where the evaluation still in flight is running: (iteration, scratch source) with the source as
-    CGYROplot.live_source_* returns it, or None. A submitted job is the latest evaluation whose
-    cgyro_submission.json exists (written at submit, deleted once its results are read); without one,
-    a bash-mode job of the LAST evaluation is found from its staged execution script (local scratch only).
-    '''
-    from mitim_tools.gacode_tools import CGYROtools
-    from mitim_tools.gacode_tools.utils import CGYROplot
-
-    for it, folder in reversed(iter_folders):
-        path = folder / base_subfolder / CGYROtools.CGYRO._submission_metadata_filename
-        if path.is_file():
-            return it, CGYROplot.live_source_from_submission(path)
-    if iter_folders:
-        it, folder = iter_folders[-1]
-        tmp = folder / "tmp_cgyro"
-        if tmp.is_dir():
-            source = CGYROplot.live_source_from_bash(tmp)
-            if source is not None:
-                return it, source
-    return None
-
-
-def locate_running_cgyro(root_folder):
-    '''
-    The CGYRO evaluation of a PORTALS run still in flight, or None: a dict with the iteration 'it',
-    'machine_settings', 'folder_execution' (scratch), 'pairs' [(subfolder, rho), ...], the run's
-    'read_kwargs' and 'base_subfolder', plus 'params' (namelist) and 'iter_folders'.
-    Settings come from the run's namelist.portals.yaml (the merged parameters prep() writes), not from
-    a powerstate, so this works before any evaluation has finished. Plain YAML load on purpose:
-    read_mitim_yaml would execute the run's import:: sidecar functions.
-    '''
-    import yaml
-    from pathlib import Path
-    from mitim_modules.portals.utils.PORTALSanalysis import _model_highest_fidelity, _resolve_code_from_options
-
-    root_folder = Path(root_folder)
-    try:
-        params = yaml.safe_load((root_folder / "namelist.portals.yaml").read_text())
-        transport = params["transport"]
-        cgyro_key = _model_highest_fidelity(transport["evaluator_instance_attributes"]["turbulence_model"])
-    except (OSError, KeyError, TypeError, yaml.YAMLError) as e:
-        print(f"\t- Could not read the run namelist ({type(e).__name__}: {e}) to locate the running CGYRO evaluation", typeMsg='w')
-        return None
-    if _resolve_code_from_options(transport, cgyro_key) != "cgyro":
-        return None
-    read_cfg = ((transport.get("options") or {}).get(cgyro_key) or {}).get("read") or {}
-    base_subfolder = f"base_{cgyro_key}"
-    iter_folders = list(_iterate_portals_evaluation_folders(root_folder))
-
-    found = _find_running_cgyro_evaluation(iter_folders, base_subfolder)
-    if found is None:
-        return None
-    it, (machine_settings, folder_execution, pairs) = found
-    return {
-        "it": it, "machine_settings": machine_settings, "folder_execution": folder_execution, "pairs": pairs,
-        "read_kwargs": {k: v for k, v in read_cfg.items() if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear", "averaging")},
-        "base_subfolder": base_subfolder, "params": params, "iter_folders": iter_folders,
-    }
+# The running CGYRO evaluation of a PORTALS run is located by gk_control.live (aliases kept as PORTALSplot attributes)
+from mitim_tools.simulation_tools.gk_control.live import _find_running_cgyro_evaluation, locate_running_cgyro
 
 
 def plot_cgyro_live_status(root_folder, fn, fn_color, finished_cache=None):
