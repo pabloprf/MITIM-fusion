@@ -959,6 +959,11 @@ class mitim_simulation:
         the extra case of a radius whose element finished early (kwargs_organize["extra_points"]). None: no extras.'''
         return None
 
+    def _extra_points_handed_over(self):
+        '''Extra ledger a detached submission starts with: what an earlier submission of the same work handed
+        over to it (CGYRO array-mode extra cases). Empty for codes without extra points.'''
+        return {}
+
     def _rescue_interrupted_runs(self, kwargs_run, folders, folders_red, input_file):
         '''Continue in place the radii a previous execution left unfinished in scratch; see gk_control.rescue.rescue_interrupted_runs.'''
         from mitim_tools.simulation_tools.gk_control.rescue import rescue_interrupted_runs
@@ -1278,6 +1283,9 @@ class mitim_simulation:
                 "run_type='normal' to run it as a bash script and wait."
             )
 
+        # Read before run(): a scratch wipe going in consumes preserve_subfolders
+        handed_over = self._extra_points_handed_over()
+
         self.simulation_job.run(
             waitYN=False,
             check_if_files_received=False,
@@ -1297,7 +1305,7 @@ class mitim_simulation:
             # slurm_array + load_balance 'extra_points': launch bodies of the extra cases (None otherwise)
             "extra_points": getattr(script, "extra_points", None),
         }
-        self._extra_ledger = {}
+        self._extra_ledger = handed_over
 
         self.slurm_output = "slurm_output.dat"
 
