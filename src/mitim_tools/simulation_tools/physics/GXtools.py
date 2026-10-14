@@ -19,7 +19,7 @@ _REQUEUE_RESUME_BASH = _shell_text("gx_requeue_resume.sh")
 class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
     # Persist the slurm submission (run_type 'submit'), so a restarted PORTALS driver with check_existing_runs
-    # re-attaches to the in-flight array instead of resubmitting (SIMtools.SubmissionRecord, gk_submission.py)
+    # re-attaches to the in-flight array instead of resubmitting (SIMtools.SubmissionRecord, gk_control/submission.py)
     _submission_metadata_filename = markers.GX_SUBMISSION
 
     # Restart file GX writes every nsave steps and reads back through restart_if_exists (input.gx.controls).

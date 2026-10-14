@@ -8,7 +8,7 @@ from mitim_tools.simulation_tools.gk_control import markers
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.powertorch.physics_models.utils.cgyro_extra_points import ExtraPointHarvester
 from mitim_modules.powertorch.physics_models.utils.cgyro_restart import RestartChain, RestartPlan
-from mitim_modules.powertorch.physics_models.utils.gk_submission import GKSubmission
+from mitim_tools.simulation_tools.gk_control.submission import GKSubmission
 from mitim_modules.powertorch.physics_models.utils.per_iter_overrides import PerIterOverrides
 
 
