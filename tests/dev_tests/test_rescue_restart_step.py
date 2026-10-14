@@ -12,7 +12,7 @@ A SLURM requeue (preemption) reruns the same array script instead: CGYRO resumes
 out.cgyro.tag and adds the FULL MAX_TIME again (engaging reduced3 array 23565718, 2026-09-23:
 radii requeued at t=55-206 of 450 would have run to t~500-650). The launch body now records
 the end time at the first launch of a submission and trims MAX_TIME on a relaunch of the
-same job, rounded up to whole restart periods (templates/cgyro_requeue_trim.sh).
+same job, rounded up to whole restart periods (templates/gk_control/cgyro_requeue_trim.sh).
 
 Run as:
 

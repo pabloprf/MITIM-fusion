@@ -6,7 +6,7 @@ i_current (line 1 of out.cgyro.tag). Its per-output binaries must end at that ou
 starts, or a continuation that stops early leaves stale records the reader cannot reshape (G pt06 ev1
 rho 0.8105: 509 records in bin.cgyro.ky_flux against 501 rows of out.cgyro.time).
 
-The real launch markers (gk_control.watchdog.launch_markers, templates/cgyro_inplace_truncate.sh) run in
+The real launch markers (gk_control.watchdog.launch_markers, templates/gk_control/cgyro_inplace_truncate.sh) run in
 bash on fake radius folders:
   - 509 outputs, tag at 500: every time-series binary ends at 500 records; bin.cgyro.restart, bin.cgyro.geo
     and the ASCII files are untouched;

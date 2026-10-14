@@ -780,7 +780,7 @@ transport:
         #   - The warm-started gxplasma.out.nc starts at t_saved, not at 0 as CGYRO's: a negative
         #     tmin (see read) picks the same window as for CGYRO, an absolute tmin >= 0 does not.
         #   - A preempted array element that SLURM requeues resumes from its own checkpoint and
-        #     runs only the remaining time (templates/gx_requeue_resume.sh), whatever this knob says.
+        #     runs only the remaining time (templates/gk_control/gx_requeue_resume.sh), whatever this knob says.
         restart_from_cases: null
 
         # If True (and run_type=="submit"), a restarted PORTALS driver re-attaches to the slurm job

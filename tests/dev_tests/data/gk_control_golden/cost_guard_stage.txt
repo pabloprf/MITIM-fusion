@@ -17,7 +17,7 @@
     "mitim_guard.json"
    ],
    [
-    "<MITIMROOT>/templates/cgyro_guard.py",
+    "<MITIMROOT>/templates/gk_control/cgyro_guard.py",
     "mitim_guard.py"
    ]
   ],
@@ -27,7 +27,7 @@
     "mitim_guard.json"
    ],
    [
-    "<MITIMROOT>/templates/cgyro_guard.py",
+    "<MITIMROOT>/templates/gk_control/cgyro_guard.py",
     "mitim_guard.py"
    ]
   ]

@@ -6,9 +6,9 @@ a radius that costs too many wall seconds per a/cs while its heat flux is far ab
 stopped by the watchdog, at once, and counts as finished.
 
 Three layers are covered, none needs CGYRO:
-  - templates/cgyro_guard.py, the judge that runs on the compute node: the binary flux reader
+  - templates/gk_control/cgyro_guard.py, the judge that runs on the compute node: the binary flux reader
     and every clause of the stop rule, on synthetic radius folders;
-  - templates/cgyro_watchdog.sh: the real bash around a fake CGYRO (`sleep`), with the guard
+  - templates/gk_control/cgyro_watchdog.sh: the real bash around a fake CGYRO (`sleep`), with the guard
     files staged as CGYROtools.CostGuard stages them;
   - the Python wiring: CostGuard staging and the targets the transport layer hands it.
 A CGYRO that ends on the Cash-Karp abort while over-driven is accepted as a guard stop
@@ -46,7 +46,7 @@ from mitim_tools.gacode_tools import CGYROtools
 from mitim_tools.simulation_tools import SIMtools
 from mitim_modules.powertorch.physics_models import transport_cgyro
 
-_spec = importlib.util.spec_from_file_location("cgyro_guard", mitim_root / "templates" / "cgyro_guard.py")
+_spec = importlib.util.spec_from_file_location("cgyro_guard", mitim_root / "templates" / "gk_control" / "cgyro_guard.py")
 guard = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(guard)
 

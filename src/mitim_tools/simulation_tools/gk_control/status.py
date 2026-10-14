@@ -1,5 +1,5 @@
 """
-Per-radius state of a running CGYRO submission: what one remote probe (templates/cgyro_probe.sh)
+Per-radius state of a running CGYRO submission: what one remote probe (templates/gk_control/cgyro_probe.sh)
 says about every radius folder, classified into a TaskState (running, stalled, finished, ...).
 """
 from dataclasses import dataclass
@@ -232,7 +232,7 @@ class RadiusStatus:
 
 class CgyroProbe:
     '''
-    One remote pass over every radius folder of a submission (templates/cgyro_probe.sh), in a single
+    One remote pass over every radius folder of a submission (templates/gk_control/cgyro_probe.sh), in a single
     ssh round trip. The remote side averages the TOTAL column of out.cgyro.timing, counts its steps,
     and reports the mtime of out.cgyro.timing (the live-append signal) next to that of out.cgyro.info
     (the init timestamp, which never moves) plus the first token of out.cgyro.tag.

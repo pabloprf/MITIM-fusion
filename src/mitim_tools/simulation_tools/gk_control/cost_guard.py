@@ -1,6 +1,6 @@
 """
 Cost guard of a PORTALS-CGYRO radius (namelist transport.options.cgyro.run.cost_guard): stages the
-judge (templates/cgyro_guard.py) and its thresholds, recognises its stops, floors their std.
+judge (templates/gk_control/cgyro_guard.py) and its thresholds, recognises its stops, floors their std.
 """
 import json
 from pathlib import Path
@@ -14,7 +14,7 @@ class CostGuard:
     '''
     Stops a main radius that is burning wall time far from its targets, the way a user watching the
     run would (namelist transport.options.cgyro.run.cost_guard; the knobs are documented there).
-    The decision is taken on the compute node by templates/cgyro_guard.py, which the Watchdog runs
+    The decision is taken on the compute node by templates/gk_control/cgyro_guard.py, which the Watchdog runs
     every couple of minutes: this class only stages, per radius, that script and the mitim_guard.json
     it reads (thresholds + the turbulent heat-flux targets of the radius, GB units). A stop leaves
     mitim_budget.tag starting with GUARD, so the radius counts as finished like any watchdog stop.

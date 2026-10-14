@@ -1,7 +1,7 @@
 """
 Cost guard of one running CGYRO radius (namelist transport.options.cgyro.run.cost_guard).
 
-templates/cgyro_watchdog.sh runs it on the compute node as `python3 mitim_guard.py <radius folder>`,
+templates/gk_control/cgyro_watchdog.sh runs it on the compute node as `python3 mitim_guard.py <radius folder>`,
 next to the mitim_guard.json that CGYROtools.CostGuard staged (thresholds + turbulent targets of this
 radius). Standard library only, Python >= 3.6. It prints ONE line and never raises:
 

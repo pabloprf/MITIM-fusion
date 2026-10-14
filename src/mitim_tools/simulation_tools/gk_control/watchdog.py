@@ -1,5 +1,5 @@
 """
-The supervisor around one radial CGYRO launch (templates/cgyro_watchdog.sh) and the shell that
+The supervisor around one radial CGYRO launch (templates/gk_control/cgyro_watchdog.sh) and the shell that
 runs right before and after it: launch markers, requeue trim, exit verdict.
 """
 from mitim_tools.simulation_tools.gk_control import markers
@@ -8,7 +8,7 @@ from mitim_tools.simulation_tools.gk_control.shell import _ShellTemplate, _WATCH
 
 class Watchdog:
     '''
-    Supervisor around one radial launch (templates/cgyro_watchdog.sh), in its own process group.
+    Supervisor around one radial launch (templates/gk_control/cgyro_watchdog.sh), in its own process group.
     Every launch honors a mitim_stop file in its folder (dropped by the in-allocation scheduler or by
     `mitim_kill_cgyro`): it waits for the next restart write, so the blob a later iteration warm-starts
     from is whole, leaves mitim_budget.tag (accepted as finished by radius_finished) and stops CGYRO.
@@ -69,9 +69,9 @@ def launch_markers(run_dir):
     comparison would delete every legitimately fresh restart. No-op when either file is absent.
     The if-block keeps the slurm_array additional_command's trailing newline from breaking chaining.
 
-    After the markers, templates/cgyro_requeue_trim.sh trims MAX_TIME when SLURM requeues the same
+    After the markers, templates/gk_control/cgyro_requeue_trim.sh trims MAX_TIME when SLURM requeues the same
     job (CGYRO would otherwise add the full MAX_TIME on top of the checkpoint it resumes from), and
-    templates/cgyro_inplace_truncate.sh cuts the per-output binaries of a continuation in place to the
+    templates/gk_control/cgyro_inplace_truncate.sh cuts the per-output binaries of a continuation in place to the
     restart output, so they end where CGYRO's rewound ASCII files do.
     '''
     restart_path = f"{run_dir}/bin.cgyro.restart"
