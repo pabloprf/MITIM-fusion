@@ -31,6 +31,7 @@ src/
     gs_tools/              # FREEGS / VMEC equilibrium tools
     opt_tools/             # generic Bayesian-optimization framework (MITIM_BO)
     simulation_tools/      # SLURM / SSH / mitim_job submission, in-process libs
+      gk_control/          # gyrokinetic run control: watchdog, cost guard, rescue, extra points, live state, marker names
     plasmastate_tools/     # mitim_state object
     surrogate_tools/       # NN / GP utilities (e.g. EPED-NN)
     misc_tools/            # FARMINGtools, IOtools, LOGtools, GUItools, GRAPHICStools

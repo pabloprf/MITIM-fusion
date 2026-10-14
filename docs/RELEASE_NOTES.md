@@ -609,6 +609,13 @@ DESCRIPTION
     `ExtraPointHarvester` in `physics_models/utils/`. Generated scripts and resolved inputs are tested
     byte-identical to the previous code.
 
+*   🔎 **Gyrokinetic run control gathered in `mitim_tools.simulation_tools.gk_control` (behaviour-preserving).**
+    `markers` (every tag/file name: `mitim_budget.tag`, `mitim_stop`, `GUARD`, ...), `watchdog`, `cost_guard`,
+    `completion`, `status`, `rescue` (stall and interrupted-run), `submission` (`GKSubmission`), `extra_points`
+    (bash scheduler and array mode), `live`, and `GKRunControl`, the run-control half of the `CGYRO` class. Old
+    names (`CGYROtools.Watchdog`, `SIMtools.radius_finished`, `SCHEDULERtools`, ...) still work; generated
+    shell and specs are checked byte-identical by `tests/dev_tests/test_gk_control_golden.py`.
+
 *   🔎 **NEW CHANGE**, description
 
 ### Back-compatibility considerations and defaults
