@@ -37,3 +37,4 @@ def _shell_text(name):
 _WATCHDOG_BASH = _shell_text("cgyro_watchdog.sh")
 _PROBE_BASH = _shell_text("cgyro_probe.sh")
 _REQUEUE_TRIM_BASH = _shell_text("cgyro_requeue_trim.sh")
+_INPLACE_TRUNCATE_BASH = _shell_text("cgyro_inplace_truncate.sh")
