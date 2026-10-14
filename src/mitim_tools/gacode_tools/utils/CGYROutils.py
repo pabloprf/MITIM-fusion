@@ -8,6 +8,7 @@ import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools
+from mitim_tools.simulation_tools.gk_control import markers
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.simulation_tools.utils.GKaveraging import GKaverager, PRIMARY_CHANNELS, apply_ac, _grab_ncorrelation, resolve_fixed_tmin  # noqa: F401 (apply_ac/_grab_ncorrelation re-exported for callers)
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -1241,7 +1242,7 @@ def harvest_run_fields(obj):
         m = re.findall(r'^\s*MAX_TIME\s*=\s*(\S+)', read('input.cgyro') or '', flags=re.M)
         if m:
             out['max_time'] = float(m[-1])
-        t0 = read('.mitim_t0')
+        t0 = read(markers.T0)
         if t0 is not None:
             out['t_start'] = float(t0.strip() or 0.0)
         elif info:
@@ -1254,9 +1255,9 @@ def harvest_run_fields(obj):
         i_launch = max([i for i, l in enumerate(lines) if 'n_MPI' in l], default=-1)
         if info:
             out['reached_max_time'] = int(i_exit > i_launch)
-        if info or read('mitim_budget.tag') is not None:
-            out['budget_stop'] = int(read('mitim_budget.tag') is not None)
-            out['guard_stop'] = int((read('mitim_budget.tag') or '').startswith('GUARD'))
+        if info or read(markers.BUDGET_TAG) is not None:
+            out['budget_stop'] = int(read(markers.BUDGET_TAG) is not None)
+            out['guard_stop'] = int((read(markers.BUDGET_TAG) or '').startswith(markers.GUARD_TOKEN))
         if i_launch >= 0 and i_launch + 1 < len(lines):
             vals = dict(zip([s.strip() for s in lines[i_launch].split('|')], lines[i_launch + 1].split()))
             out['n_mpi'], out['n_omp'] = float(vals.get('n_MPI', np.nan)), float(vals.get('n_OMP', np.nan))
