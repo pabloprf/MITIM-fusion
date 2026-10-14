@@ -261,12 +261,32 @@ class gyrokinetic_model:
         ctx.run_kwargs["cost_guard"] = {**options, "targets_GB": targets}
 
     def _gk_report_guard_stops(self, ctx):
-        '''Say which radii of this evaluation the cost guard stopped: their fluxes come from a short trace.'''
-        for rho in ctx.rho_locations:
+        '''
+        Say which radii of this evaluation the cost guard stopped (also a Cash-Karp abort it accepted):
+        their fluxes come from a short trace. With cost_guard.std_floor > 0 every turbulent flux std of
+        such a radius becomes at least std_floor x |flux| (GB units, before any conversion), so the
+        surrogates take the point for its direction only.
+        '''
+        std_floor = float((ctx.run_kwargs.get("cost_guard") or {}).get("std_floor") or 0.0)
+        for i, rho in enumerate(ctx.rho_locations):
             tag = self.folder / ctx.subfolder_name / f"mitim_budget.tag_{rho:.4f}"
-            if tag.is_file() and CGYROtools.CostGuard.stopped(tag.read_text()):
-                print(f"\t- rho = {rho:.4f} was stopped by cost_guard ({tag.read_text().strip()}); "
-                      "its fluxes are whatever the averaging makes of the shorter trace", typeMsg='w')
+            if not (tag.is_file() and CGYROtools.CostGuard.stopped(tag.read_text())):
+                continue
+            print(f"\t- rho = {rho:.4f} was stopped by cost_guard ({tag.read_text().strip()}); "
+                  "its fluxes are whatever the averaging makes of the shorter trace"
+                  + (f", with std >= {std_floor:g} x |flux|" if std_floor > 0 else ""), typeMsg='w')
+            if std_floor > 0:
+                self._gk_floor_stds(i, std_floor)
+
+    def _gk_floor_stds(self, i, std_floor):
+        '''Raise the std of every turbulent flux of radius index i to std_floor x |flux| (single plasma).'''
+        for key in [spec[0] for spec in _FLUX_SPEC + (_EXCHANGE_SPEC,)]:
+            mean, std = getattr(self, f"{key}_turb", None), getattr(self, f"{key}_turb_stds", None)
+            if mean is None or std is None:
+                continue
+            std = np.array(std, dtype=float)
+            std[i] = CGYROtools.CostGuard.floored_std(mean[i], std[i], std_floor)
+            setattr(self, f"{key}_turb_stds", std)
 
     def _gk_prepare(self, ctx, gk_class):
         '''

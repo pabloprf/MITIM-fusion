@@ -40,8 +40,12 @@ DESCRIPTION
 *   💥 **PORTALS-CGYRO cost guard: automatic stop of a slow radius far above its target.** New
     `transport.options.cgyro.run.cost_guard` (off by default): the watchdog stops a radius whose wall cost
     per a/cs is high while its heat flux (Qe or Qi) is far above the turbulent target, at once, and the
-    radius counts as finished (`mitim_budget.tag` starting with `GUARD`, harvest `guard_stop`). Thresholds
-    and time gates are documented in `templates/namelist.portals.yaml`; needs `python3` on the compute node.
+    radius counts as finished (`mitim_budget.tag` starting with `GUARD`, harvest `guard_stop`). The flux
+    ratio is averaged over `[max(floor_time, t/2), t]`, so a single burst cannot trigger a stop. A radius
+    that dies on CGYRO's Cash-Karp abort while over-driven is accepted the same way (`accept_abort`), and
+    every guard-stopped radius gets a flux std of at least `std_floor` x |flux| so the surrogates use it for
+    its direction only. Thresholds and time gates are documented in `templates/namelist.portals.yaml`;
+    needs `python3` on the compute node.
 
 *   💥 **Claude Code agent `portals-cgyro` shipped in `.claude/agents/`: an operator for live PORTALS-CGYRO
     runs.** It checks each radius' cost per a/cs, time step and saturation, stops hopeless radii with

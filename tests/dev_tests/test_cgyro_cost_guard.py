@@ -11,6 +11,9 @@ Three layers are covered, none needs CGYRO:
   - templates/cgyro_watchdog.sh: the real bash around a fake CGYRO (`sleep`), with the guard
     files staged as CGYROtools.CostGuard stages them;
   - the Python wiring: CostGuard staging and the targets the transport layer hands it.
+A CGYRO that ends on the Cash-Karp abort while over-driven is accepted as a guard stop
+(cgyro_guard.abort_verdict, the watchdog's abort branch), and every guard-stopped radius gets
+its flux std floored (cost_guard.std_floor).
 
 Run as:
 
@@ -84,6 +87,20 @@ def _fake_radius(d, nt=300, cost=600.0, qe=80.0, qi=30.0, t_end=450.0, cost_rece
     return d
 
 
+def _burst(d, nt, n_last, qi):
+    '''Overwrite Qi of the last n_last outputs of a _fake_radius flux file (float32, 4 moments).'''
+    data = array.array("f")
+    data.frombytes((d / "bin.cgyro.ky_flux").read_bytes())
+    per_record = N_SPECIES * 4 * N_FIELD * N_N
+    for k in range(nt - n_last, nt):
+        for i_n in range(N_N):
+            for i_field in range(N_FIELD):
+                base = k * per_record + N_SPECIES * (1 + 4 * (i_field + N_FIELD * i_n))
+                for i_species in range(N_SPECIES - 1):
+                    data[base + i_species] = qi / ((N_SPECIES - 1) * N_FIELD * N_N)
+    (d / "bin.cgyro.ky_flux").write_bytes(data.tobytes())
+
+
 def test_flux_reader():
     '''Qe is the last species, Qi the sum of the others, both summed over fields and ky; the
     precision and the number of moments are inferred from the file size.'''
@@ -125,6 +142,14 @@ def test_stop_rule():
             v = guard.verdict(str(_fake_radius(root / f"case{i}", **kwargs)))
             assert v.startswith("STOP" if stops else "WAIT"), (name, v)
             print(f"\t({name}: {v})")
+
+        # pt07 H ev1 (2026-10-13): an ion burst in the last 20 a/cs (8.8x) over a trace at ~3x is
+        # not a stop, because the ratio is averaged over [max(floor_time, t/2), t]
+        d = _fake_radius(root / "burst", nt=348, qe=10.0, qi=30.0)
+        _burst(d, nt=348, n_last=20, qi=88.0)
+        v = guard.verdict(str(d))
+        assert v.startswith("WAIT") and "x_QiGB" in v and "ratio=3." in v, v
+        print(f"\t(burst in the window, trace at 3x: {v})")
 
         # the cost is per a/cs, not per output: the same rows with outputs 0.5 a/cs apart cost double
         d = _fake_radius(root / "spacing", nt=300, cost=60.0)
@@ -251,11 +276,108 @@ def test_targets_from_transport_layer():
     print("PASS test_targets_from_transport_layer")
 
 
+CASH_KARP = "ERROR: (CGYRO) Cash-Carp step exceeded max iteration count"
+
+
+def test_abort_rule():
+    '''An abort is a guard stop only past floor_time (50) and with Qe or Qi >= abort_flux_ratio x target
+    (null = flux_ratio, 5) over the second half of the trace; the cost does not enter.'''
+    root = Path(tempfile.mkdtemp())
+    cases = [
+        # name,                              kwargs,                                                   stops
+        ("pt07: t=77, cheap at the end",     dict(nt=77, cost=10.0),                                   True),
+        ("abort before floor_time",          dict(nt=40),                                              False),
+        ("abort close to target",            dict(nt=77, qe=20.0, qi=20.0),                            False),
+        ("accept_abort off",                 dict(nt=77, options={"accept_abort": False}),             False),
+        ("abort_flux_ratio above the flux",  dict(nt=77, options={"abort_flux_ratio": 10}),            False),
+        ("abort_flux_ratio below flux_ratio", dict(nt=77, qe=40.0, options={"flux_ratio": 5, "abort_flux_ratio": 3}), True),
+    ]
+    try:
+        for i, (name, kwargs, stops) in enumerate(cases):
+            v = guard.abort_verdict(str(_fake_radius(root / f"case{i}", **kwargs)))
+            assert v.startswith("STOP" if stops else "WAIT"), (name, v)
+            print(f"\t({name}: {v})")
+        d = root / "case0"
+        out = subprocess.run([sys.executable, str(d / "mitim_guard.py"), str(d), "--abort"], capture_output=True, text=True)
+        assert out.stdout.startswith("STOP t=77 ratio=8.0x_QeGB"), out
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    print("PASS test_abort_rule")
+
+
+def test_watchdog_accepts_abort():
+    '''The real watchdog around a CGYRO that ends on the Cash-Karp abort: over-driven past floor_time
+    it leaves a GUARD tag with reason=cash_karp_abort (finished, guard_stop = 1); close to target, or
+    with the guard off, no tag. The launch keeps its own exit status either way.'''
+    root = Path(tempfile.mkdtemp())
+    abort = f"echo '{CASH_KARP}' >> out.cgyro.info; exit 3"
+    try:
+        d = _fake_radius(root / "far", nt=77)
+        rc = subprocess.run(["bash", "-c", f"cd {d}; " + _watchdog(d, abort)], timeout=60).returncode
+        tag = (d / "mitim_budget.tag").read_text()
+        assert rc == 3, rc
+        assert tag.startswith("GUARD t=77 ratio=8.0x_QeGB reason=cash_karp_abort"), tag
+        assert _finished(d), "radius_finished must accept an accepted abort"
+        from mitim_tools.gacode_tools.utils import CGYROutils
+        flags = CGYROutils.harvest_run_fields(types.SimpleNamespace(folder=d, suffix_read=''))
+        assert flags['budget_stop'] == 1 and flags['guard_stop'] == 1, flags
+        print(f"\t(far: {tag.strip()})")
+
+        for name, kwargs, guard_on in (("near", dict(qe=20.0, qi=20.0), True), ("off", {}, False)):
+            d = _fake_radius(root / name, nt=77, **kwargs)
+            subprocess.run(["bash", "-c", f"cd {d}; " + _watchdog(d, abort, guard_on=guard_on)], timeout=60)
+            assert not (d / "mitim_budget.tag").exists(), name
+
+        # an abort that is not Cash-Karp is never judged
+        d = _fake_radius(root / "other", nt=77)
+        subprocess.run(["bash", "-c", f"cd {d}; " + _watchdog(d, "echo 'ERROR: (CGYRO) something else' >> out.cgyro.info")], timeout=60)
+        assert not (d / "mitim_budget.tag").exists()
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    print("PASS test_watchdog_accepts_abort")
+
+
+def test_std_floor():
+    '''The transport layer raises every turbulent std of a guard-stopped radius to std_floor x |flux|
+    and leaves the other radii, and a radius stopped by hand (STOP tag), untouched.'''
+    root = Path(tempfile.mkdtemp())
+    try:
+        rhos = [0.5, 0.65, RHO]
+        sub = root / "Evaluation"
+        sub.mkdir()
+        (sub / f"mitim_budget.tag_{RHO:.4f}").write_text("GUARD t=77 ratio=8.0x_QeGB reason=cash_karp_abort elapsed=10s\n")
+        (sub / "mitim_budget.tag_0.6500").write_text("STOP t=300 elapsed=10s budget=0s min_time=0\n")
+
+        model = transport_cgyro.gyrokinetic_model.__new__(transport_cgyro.gyrokinetic_model)
+        model.folder = root
+        for key in [spec[0] for spec in transport_cgyro._FLUX_SPEC + (transport_cgyro._EXCHANGE_SPEC,)]:
+            setattr(model, f"{key}_turb", np.array([2.0, 3.0, -80.0]))
+            setattr(model, f"{key}_turb_stds", np.array([0.1, 0.1, 1.0]))
+        ctx = types.SimpleNamespace(rho_locations=rhos, subfolder_name="Evaluation",
+                                    run_kwargs={"cost_guard": {"enabled": True, "std_floor": 0.5}})
+        model._gk_report_guard_stops(ctx)
+        assert np.allclose(model.QeGB_turb_stds, [0.1, 0.1, 40.0]), model.QeGB_turb_stds
+        assert np.allclose(model.MtGB_turb_stds, [0.1, 0.1, 40.0]), model.MtGB_turb_stds
+
+        # no floor configured: nothing changes
+        model.QeGB_turb_stds = np.array([0.1, 0.1, 1.0])
+        ctx.run_kwargs = {"cost_guard": {"enabled": True, "std_floor": None}}
+        model._gk_report_guard_stops(ctx)
+        assert np.allclose(model.QeGB_turb_stds, [0.1, 0.1, 1.0])
+        assert CGYROtools.CostGuard({"enabled": True, "targets_GB": {RHO: TARGETS}}).thresholds["abort_flux_ratio"] == 5.0
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    print("PASS test_std_floor")
+
+
 if __name__ == "__main__":
     test_flux_reader()
     test_stop_rule()
     test_staging()
     test_targets_from_transport_layer()
+    test_abort_rule()
+    test_std_floor()
+    test_watchdog_accepts_abort()
     test_watchdog_stops_at_once()
     test_watchdog_leaves_the_rest_alone()
     print("\nALL PASS")
