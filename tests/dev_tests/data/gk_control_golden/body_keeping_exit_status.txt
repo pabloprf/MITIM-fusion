@@ -1,0 +1,6 @@
+PRE
+MAIN
+_mitim_rc=$?
+VERDICT
+CLEAN
+(exit $_mitim_rc)
