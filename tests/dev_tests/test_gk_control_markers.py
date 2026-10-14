@@ -48,7 +48,7 @@ def test_templates_spell_the_registry():
 
 def test_no_unregistered_marker_files():
     known = registry_values()
-    for name in list(USES) + ["gx_requeue_resume.sh"]:
+    for name in list(USES) + ["gx_requeue_resume.sh", "cgyro_inplace_truncate.sh"]:
         text = (shell.TEMPLATES / name).read_text()
         found = set(re.findall(r'/(\.?mitim_[A-Za-z0-9_.]*[A-Za-z0-9])', text))
         found |= set(re.findall(r'"(\.?mitim_[a-z0-9_]+\.[a-z]+)"', text))

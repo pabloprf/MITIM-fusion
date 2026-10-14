@@ -3,7 +3,7 @@ The supervisor around one radial CGYRO launch (templates/cgyro_watchdog.sh) and 
 runs right before and after it: launch markers, requeue trim, exit verdict.
 """
 from mitim_tools.simulation_tools.gk_control import markers
-from mitim_tools.simulation_tools.gk_control.shell import _ShellTemplate, _WATCHDOG_BASH, _REQUEUE_TRIM_BASH
+from mitim_tools.simulation_tools.gk_control.shell import _ShellTemplate, _WATCHDOG_BASH, _REQUEUE_TRIM_BASH, _INPLACE_TRUNCATE_BASH
 
 
 class Watchdog:
@@ -70,13 +70,16 @@ def launch_markers(run_dir):
     The if-block keeps the slurm_array additional_command's trailing newline from breaking chaining.
 
     After the markers, templates/cgyro_requeue_trim.sh trims MAX_TIME when SLURM requeues the same
-    job (CGYRO would otherwise add the full MAX_TIME on top of the checkpoint it resumes from).
+    job (CGYRO would otherwise add the full MAX_TIME on top of the checkpoint it resumes from), and
+    templates/cgyro_inplace_truncate.sh cuts the per-output binaries of a continuation in place to the
+    restart output, so they end where CGYRO's rewound ASCII files do.
     '''
     restart_path = f"{run_dir}/bin.cgyro.restart"
     marker_path = f"{run_dir}/{markers.RUN_STARTED}"
     marker_cmd = (f'touch "{marker_path}"; _t0=$(sed -n 2p "{run_dir}/out.cgyro.tag" 2>/dev/null '
                   f'| awk \'{{print $1+0}}\'); echo "${{_t0:-0}}" > "{run_dir}/{markers.T0}"\n'
-                  + _ShellTemplate(_REQUEUE_TRIM_BASH).substitute(run_dir=run_dir).rstrip("\n"))
+                  + _ShellTemplate(_REQUEUE_TRIM_BASH).substitute(run_dir=run_dir).rstrip("\n") + "\n"
+                  + _ShellTemplate(_INPLACE_TRUNCATE_BASH).substitute(run_dir=run_dir).rstrip("\n"))
     cleanup_cmd = (
         f'if [ -f "{restart_path}" ] && [ -f "{marker_path}" ] && '
         f'[ ! "{restart_path}" -nt "{marker_path}" ]; then '
