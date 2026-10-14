@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 from mitim_tools.gacode_tools import CGYROtools
 from mitim_tools.simulation_tools import SIMtools
+from mitim_tools.simulation_tools.gk_control import markers
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.powertorch.physics_models.utils.cgyro_extra_points import ExtraPointHarvester
 from mitim_modules.powertorch.physics_models.utils.cgyro_restart import RestartChain, RestartPlan
@@ -269,7 +270,7 @@ class gyrokinetic_model:
         '''
         std_floor = float((ctx.run_kwargs.get("cost_guard") or {}).get("std_floor") or 0.0)
         for i, rho in enumerate(ctx.rho_locations):
-            tag = self.folder / ctx.subfolder_name / f"mitim_budget.tag_{rho:.4f}"
+            tag = self.folder / ctx.subfolder_name / f"{markers.BUDGET_TAG}_{rho:.4f}"
             if not (tag.is_file() and CGYROtools.CostGuard.stopped(tag.read_text())):
                 continue
             print(f"\t- rho = {rho:.4f} was stopped by cost_guard ({tag.read_text().strip()}); "

@@ -1,7 +1,6 @@
 import os
 import json
 import shutil
-import string
 import tempfile
 import datetime
 from dataclasses import dataclass, field
@@ -47,146 +46,14 @@ def _format_wall_seconds(s):
     return f"{sec}s"
 
 
-def body_keeping_exit_status(pre_cmd, main_cmd, cleanup_cmd, verdict_cmd=""):
-    '''
-    Shell body running pre_cmd, main_cmd, cleanup_cmd in that order, whose exit status is
-    main_cmd's. Without this the trailing cleanup (an rm) set it, so a CGYRO killed by a
-    signal or crashed mid-run was logged by the in-allocation scheduler as rc=0.
-    `(exit $rc)` sets the status without ending the shell, so anything a launcher appends
-    after this body (slurm_array script, bash `{ ... } &` group) still runs.
-    Note: the status is only as good as what the launcher chain propagates, and the
-    wall-budget watchdog stops runs on purpose - completion is judged from CGYRO's own EXIT
-    line (run_specifications["completion_marker"]), not from this code.
-    verdict_cmd runs right after main_cmd and may rewrite _mitim_rc (gacode's `cgyro` script
-    exits 0 even when the executable crashed, see CgyroLaunchBody.exit_verdict).
-    '''
-    return (pre_cmd + "\n" + main_cmd.rstrip("\n") + "\n_mitim_rc=$?\n"
-            + (verdict_cmd + "\n" if verdict_cmd else "")
-            + cleanup_cmd + "\n(exit $_mitim_rc)\n")
-
-
-# ----------------------------------------------------------------------------------------------------
-# The bash MITIM wraps around every CGYRO launch and poll lives in templates/ so it can be read and
-# linted as shell. `@{name}` is the placeholder delimiter, so the shell's own `$` survives verbatim.
-# ----------------------------------------------------------------------------------------------------
-
-class _ShellTemplate(string.Template):
-    delimiter = "@"
-
-
-def _shell_text(name):
-    return (__mitimroot__ / "templates" / name).read_text()
-
-
-_WATCHDOG_BASH = _shell_text("cgyro_watchdog.sh")
-_PROBE_BASH = _shell_text("cgyro_probe.sh")
-_REQUEUE_TRIM_BASH = _shell_text("cgyro_requeue_trim.sh")
-
-
-class Watchdog:
-    '''
-    Supervisor around one radial launch (templates/cgyro_watchdog.sh), in its own process group.
-    Every launch honors a mitim_stop file in its folder (dropped by the in-allocation scheduler or by
-    `mitim_kill_cgyro`): it waits for the next restart write, so the blob a later iteration warm-starts
-    from is whole, leaves mitim_budget.tag (accepted as finished by radius_finished) and stops CGYRO.
-        MANUAL (main radii, default): stop only on request, at any simulated time.
-        BUDGET (main radii, load_balance strategy 'wall_budget'): also stop once the wall budget is
-               spent AND out.cgyro.time shows >= min_time a/cs.
-        STOP   (scheduler extras): a request below min_time discards the case (mitim_discard.tag)
-               instead. Main radii are never discarded: the evaluation needs them.
-    '''
-
-    MANUAL, BUDGET, STOP = "manual", "budget", "stop"
-
-    def __init__(self, rho_dir, mode=None, min_time=0.0, minutes_per_call=None, template=None, guard=False):
-        self.rho_dir = rho_dir
-        self.mode = mode or self.MANUAL
-        # cost guard (CostGuard): main radii only, an extra case has no target of its own
-        self.guard = bool(guard) and self.mode != self.STOP
-        self.min_time = float(min_time)
-        self.template = _WATCHDOG_BASH if template is None else template
-        if self.mode == self.BUDGET and minutes_per_call is None:
-            raise ValueError("[MITIM] load_balance strategy 'wall_budget' needs 'minutes_per_call' (the wall minutes each radial call gets)")
-        self.budget_s = int(float(minutes_per_call) * 60) if self.mode == self.BUDGET else 0
-
-    @classmethod
-    def from_load_balance(cls, rho_dir, load_balance, mode=None, template=None, guard=False):
-        '''mode None picks BUDGET when the load_balance strategy asks for it, else MANUAL.'''
-        lb = load_balance or {}
-        if mode is None:
-            mode = cls.BUDGET if lb.get("strategy") == "wall_budget" else cls.MANUAL
-        return cls(rho_dir, mode=mode, min_time=lb.get("min_time", 0.0),
-                   minutes_per_call=lb.get("minutes_per_call"), template=template, guard=guard)
-
-    def wrap(self, cmd):
-        return _ShellTemplate(self.template).substitute(
-            rhodir=self.rho_dir,
-            budget_s=self.budget_s,
-            min_time=f"{self.min_time:g}",
-            discard="1" if self.mode == self.STOP else "0",
-            guard="1" if self.guard else "0",
-            cgyro_cmd=cmd.rstrip("\n"),
-        )
-
-
-class CostGuard:
-    '''
-    Stops a main radius that is burning wall time far from its targets, the way a user watching the
-    run would (namelist transport.options.cgyro.run.cost_guard; the knobs are documented there).
-    The decision is taken on the compute node by templates/cgyro_guard.py, which the Watchdog runs
-    every couple of minutes: this class only stages, per radius, that script and the mitim_guard.json
-    it reads (thresholds + the turbulent heat-flux targets of the radius, GB units). A stop leaves
-    mitim_budget.tag starting with GUARD, so the radius counts as finished like any watchdog stop.
-    The same tag (with reason=cash_karp_abort) accepts a CGYRO that ended on the Cash-Karp abort
-    while over-driven, and the fluxes of every guard-stopped radius get a wide std (floored_std).
-
-    targets_GB: {rho: {"QeGB": float, "QiGB": float}}, total target minus neoclassical, added by the
-    transport layer (transport_cgyro._gk_cost_guard). Without targets there is nothing to judge.
-    '''
-
-    DEFAULTS = {"seconds_per_acs": 100.0, "flux_ratio": 5.0, "min_time": 250.0,
-                "waive_min_time_hours": 12.0, "floor_time": 50.0, "window": 20.0}
-    FILE, SCRIPT = "mitim_guard.json", "mitim_guard.py"
-    TAG_TOKEN = "GUARD"
-
-    def __init__(self, options=None):
-        options = options or {}
-        self.enabled = bool(options.get("enabled", False))
-        self.thresholds = {k: float(options.get(k, v)) for k, v in self.DEFAULTS.items()}
-        # Cash-Karp abort accepted as a guard stop (cgyro_guard.abort_verdict); null ratio = flux_ratio
-        self.thresholds["accept_abort"] = bool(options.get("accept_abort", True))
-        self.thresholds["abort_flux_ratio"] = float(options.get("abort_flux_ratio") or self.thresholds["flux_ratio"])
-        self.std_floor = float(options.get("std_floor") or 0.0)
-        self.targets_GB = options.get("targets_GB") or {}
-        if self.enabled and not self.targets_GB:
-            print("\t- cost_guard is enabled but no flux targets were given (standalone CGYRO run?); the guard stays off", typeMsg="w")
-            self.enabled = False
-
-    def stage(self, folder, additional_files_to_send=None):
-        '''
-        Writes mitim_guard_<rho>.json under `folder` and returns `additional_files_to_send` with the
-        guard files added to each radius that has targets.
-        '''
-        files = {rho: list(entries or []) for rho, entries in (additional_files_to_send or {}).items()}
-        for rho, targets in self.targets_GB.items():
-            guard_file = Path(folder) / f"mitim_guard_{rho:.4f}.json"
-            guard_file.write_text(json.dumps({**self.thresholds, "targets_GB": targets}, indent=2))
-            files.setdefault(rho, []).extend([(guard_file, self.FILE), (__mitimroot__ / "templates" / "cgyro_guard.py", self.SCRIPT)])
-        return files
-
-    @classmethod
-    def stopped(cls, tag_text):
-        '''True when a mitim_budget.tag was left by the cost guard.'''
-        return bool(tag_text) and tag_text.split()[:1] == [cls.TAG_TOKEN]
-
-    @staticmethod
-    def floored_std(mean, std, std_floor):
-        '''
-        std of a guard-stopped radius: at least std_floor x |mean|, element-wise. Its trace is a short
-        transient, so the standard error of the mean over it would tell the surrogates the magnitude
-        is known; the floor leaves them only the direction.
-        '''
-        return np.maximum(std, std_floor * np.abs(mean))
+# Watchdog, CostGuard, the shell templates and body_keeping_exit_status live in simulation_tools/gk_control
+# (aliases kept as CGYROtools attributes)
+from mitim_tools.simulation_tools.gk_control import markers
+from mitim_tools.simulation_tools.gk_control.shell import (
+    body_keeping_exit_status, _ShellTemplate, _shell_text, _WATCHDOG_BASH, _PROBE_BASH, _REQUEUE_TRIM_BASH)
+from mitim_tools.simulation_tools.gk_control.watchdog import Watchdog
+from mitim_tools.simulation_tools.gk_control import watchdog as _watchdog
+from mitim_tools.simulation_tools.gk_control.cost_guard import CostGuard
 
 
 class CgyroLaunchBody:
@@ -327,54 +194,12 @@ class CgyroLaunchBody:
         return self.env_exports() + self._cgyro_invocation(numa=self.mpi.get("numa") is not None)
 
     def markers(self):
-        '''
-        (marker_cmd, cleanup_cmd) around the launch.
-
-        .mitim_run_started is the baseline for "did this run write a restart?"; .mitim_t0 is the
-        simulated time this launch starts from (0 for a fresh or warm start, the tag time for an
-        in-place rescue), which the scheduler needs to estimate the remaining a/cs as
-        MAX_TIME - (t - t0). t0 comes from out.cgyro.tag line 2, not from the tail of out.cgyro.time:
-        an interrupted run wrote outputs past its last restart and CGYRO rewinds those on resume.
-
-        The cleanup drops a warm-start bin.cgyro.restart the run never overwrote, so the retrieval
-        tarball doesn't ferry back a blob we already have locally: a restart newer than the marker was
-        written during the run (keep), older or equal was staged before it (delete). The baseline is
-        the marker and not out.cgyro.info, whose EXIT line is appended at the END of the run, so that
-        comparison would delete every legitimately fresh restart. No-op when either file is absent.
-        The if-block keeps the slurm_array additional_command's trailing newline from breaking chaining.
-
-        After the markers, templates/cgyro_requeue_trim.sh trims MAX_TIME when SLURM requeues the same
-        job (CGYRO would otherwise add the full MAX_TIME on top of the checkpoint it resumes from).
-        '''
-        restart_path = f"{self.p}/{self.folder}/bin.cgyro.restart"
-        marker_path = f"{self.p}/{self.folder}/.mitim_run_started"
-        marker_cmd = (f'touch "{marker_path}"; _t0=$(sed -n 2p "{self.p}/{self.folder}/out.cgyro.tag" 2>/dev/null '
-                      f'| awk \'{{print $1+0}}\'); echo "${{_t0:-0}}" > "{self.p}/{self.folder}/.mitim_t0"\n'
-                      + _ShellTemplate(_REQUEUE_TRIM_BASH).substitute(run_dir=f"{self.p}/{self.folder}").rstrip("\n"))
-        cleanup_cmd = (
-            f'if [ -f "{restart_path}" ] && [ -f "{marker_path}" ] && '
-            f'[ ! "{restart_path}" -nt "{marker_path}" ]; then '
-            f'rm -f "{restart_path}"; fi; rm -f "{marker_path}"'
-        )
-        return marker_cmd, cleanup_cmd
+        '''(marker_cmd, cleanup_cmd) around the launch; see gk_control.watchdog.launch_markers.'''
+        return _watchdog.launch_markers(f"{self.p}/{self.folder}")
 
     def exit_verdict(self):
-        '''
-        Turn a 0 exit status into 1 when CGYRO did not finish. gacode's `cgyro` script ends with an
-        if-block that returns 0 whatever the executable returned, so a CGYRO that crashed (e.g. disk
-        quota exceeded writing out.cgyro.prec) was recorded by SLURM as COMPLETED 0:0. CGYRO appends
-        "EXIT: (CGYRO) ..." to out.cgyro.info only on a clean end.
-
-        And the other way round: a run the watchdog stopped and accepted (mitim_budget.tag: wall budget,
-        mitim_stop, cost guard) ends with the SIGTERM status 143, which SLURM showed as FAILED although
-        the radius counts as finished; it is reported as 0. A discarded extra case (mitim_discard.tag)
-        produced nothing usable and keeps its own status.
-        '''
-        run_dir = f"{self.p}/{self.folder}"
-        return (f'if [ -f "{run_dir}/mitim_budget.tag" ]; then _mitim_rc=0; fi; '
-                f'if [ "$_mitim_rc" = 0 ] && ! grep -qs "^EXIT: (CGYRO)" "{run_dir}/out.cgyro.info" && '
-                f'[ ! -f "{run_dir}/mitim_budget.tag" ] && [ ! -f "{run_dir}/mitim_discard.tag" ]; then '
-                f'echo "MITIM: cgyro returned 0 but out.cgyro.info has no EXIT line; reporting rc=1" >&2; _mitim_rc=1; fi')
+        '''0 -> 1 when CGYRO did not finish, accepted stop -> 0; see gk_control.watchdog.exit_verdict.'''
+        return _watchdog.exit_verdict(f"{self.p}/{self.folder}")
 
     def build(self, watchdog):
         marker_cmd, cleanup_cmd = self.markers()
@@ -1377,7 +1202,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
     # Opts CGYRO into persisting slurm-submission metadata (jobid, remote
     # folder, retrieval plan) whenever run_type='submit' is used, so a later
     # PORTALS restart can re-attach to the in-flight job rather than resubmit.
-    _submission_metadata_filename = "cgyro_submission.json"
+    _submission_metadata_filename = markers.CGYRO_SUBMISSION
 
     # Restart blob the PORTALS warm-start chain (restart_from_cases) stages, retrieved per rho as
     # bin.cgyro.restart_<rho:.4f> (cgyro_restart.RestartChain)
@@ -1435,10 +1260,10 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                             # a radius continued in place is guarded like a fresh one
                             'keep_staged': [CostGuard.FILE, CostGuard.SCRIPT]},
             # A radius is only 'done' if CGYRO wrote its EXIT line (files exist from step 1 on)...
-            'completion_marker': ('out.cgyro.info', 'EXIT'),
+            'completion_marker': markers.CGYRO_COMPLETION,
             # ...or the watchdog stopped it past min_time. Optional, never mandatory: a run that ends
             # by itself never writes this file.
-            'completion_alt_file': 'mitim_budget.tag',
+            'completion_alt_file': markers.BUDGET_TAG,
         }
         
         print("\n-----------------------------------------------------------------------------------------")
@@ -1484,7 +1309,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "bin.cgyro.kxky_n",
             "bin.cgyro.kxky_phi",
             "bin.cgyro.kxky_v",
-            "mitim_budget.tag",
+            markers.BUDGET_TAG,
         ]
 
         # Nonlinear sim
