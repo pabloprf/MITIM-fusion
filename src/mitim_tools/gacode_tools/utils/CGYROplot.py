@@ -1452,9 +1452,13 @@ def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live",
             ax.legend(loc="upper center", ncol=3, fontsize=7, framealpha=0.9, handlelength=1.2, columnspacing=0.8)
             eta = None
             if live.get("MAX_TIME") is not None:
-                eta = max(live.get("t0", 0.0) + live["MAX_TIME"] - out.t[-1], 0.0) * total[-1] / dt_out
+                # A rescued radius carries the REMAINING MAX_TIME in input.cgyro while .mitim_t0 still holds the
+                # previous launch's start until the new element runs: a negative span means "waiting for the
+                # rescue", not "done"; only an EXIT line or a tag ends a radius.
+                left = live.get("t0", 0.0) + live["MAX_TIME"] - out.t[-1]
+                eta = max(left, 0.0) * total[-1] / dt_out if left > 0 or done else None
             etas[rho] = 0.0 if done else eta
-            state = "done" if done else _fmt_duration(eta)
+            state = "done" if done else ("rescue pending" if eta is None else _fmt_duration(eta))
             ax.set_title(f"{total[-1] / dt_out:.4g} wall s / 1 $a/c_s$  \u00b7  to MAX_TIME: {state}", fontsize=8)
         if r_idx == 0:
             ax.set_ylabel("wall s / 1 $a/c_s$")
@@ -1480,7 +1484,10 @@ def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live",
         slowest = max(known, key=known.get)
         left = known[slowest]
         text = "all radii done" if left == 0 else f"evaluation done in {_fmt_duration(left)} (slowest $\\rho$={slowest:.3f})"
-        missing = len(rhos) - len(known)
+        pending = sum(1 for e in etas.values() if e is None)
+        missing = len(rhos) - len(etas)
+        if pending:
+            text += f" + {pending} radius/radii waiting for a rescue"
         if missing:
             text += f" + {missing} radius/radii with no timing yet"
         fig.suptitle(f"{label}: {text}", fontsize=11)
