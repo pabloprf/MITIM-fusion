@@ -37,6 +37,9 @@ class GKRunControl:
         self._preprocess_options = preprocess_options
         self._load_balance = load_balance
         self._cost_guard = CostGuard(cost_guard)
+        # extra cases of a timed-out radius can wait for the next submission only if that one continues
+        # it in place and reads this submission's ledger back (ArrayExtraPoints hand over)
+        self._rescue_interrupted = bool(kwargs.get("rescue_interrupted", False))
         # code_call reads allocation['omp_threads_cpu'] from here (SIMtools' JobScript passes only n)
         self._allocation = kwargs.get("allocation")
         guard_staging = tempfile.TemporaryDirectory() if self._cost_guard.enabled else None
@@ -52,6 +55,7 @@ class GKRunControl:
             self._cost_guard = None
             self._extra_point_n = None
             self._allocation = None
+            self._rescue_interrupted = False
 
     # The bash itself lives in templates/cgyro_watchdog.sh; kept as an attribute so a caller can supply
     # its own template through `self`
@@ -106,7 +110,23 @@ class GKRunControl:
             rel_extra = ArrayExtraPoints.extra_folder(folder)
             commands[folder] = script._call(rel_extra, watchdog="stop", additional_command=script._redirect(rel_extra))
         print("\t- load_balance 'extra_points': a radius that finishes early gets one extra case as its own job, while the slowest radius leaves time for it", typeMsg="i")
-        return {"commands": commands, "min_time": float(lb.get("min_time", 0.0)), "stop_grace_seconds": 1800}
+        return {"commands": commands, "min_time": float(lb.get("min_time", 0.0)), "stop_grace_seconds": 1800,
+                "hand_over": bool(getattr(self, "_rescue_interrupted", False) and getattr(self, "_reattach_enabled", False))}
+
+    def _extra_points_handed_over(self):
+        '''
+        Extra cases an earlier submission of this evaluation handed over (ArrayExtraPoints.take_over), as
+        the extra ledger this submission starts with. Called before the job is sent: the radii continued in
+        place are the rescued ones still listed in preserve_subfolders, and the extras' folders join that
+        list so a scratch wipe going in keeps them.
+        '''
+        job = self.simulation_job
+        preserve = list(getattr(job, "preserve_subfolders", None) or [])
+        continued = [rel for rel in preserve if rel not in (getattr(self, "_finished_in_scratch", None) or [])]
+        taken = ArrayExtraPoints.take_over(getattr(self, "_extra_ledger", None), continued)
+        if taken:
+            job.preserve_subfolders = preserve + [e["folder"] for e in taken.values() if e["folder"] not in preserve]
+        return taken
 
     def fetch(self):
         if getattr(self, "simulation_job", None) is not None and self.simulation_job.launchSlurm:

@@ -215,6 +215,13 @@ class ArrayExtraPoints:
                  stop_grace_seconds; an extra still pending in the queue is cancelled at once.
         accept   EXIT line or mitim_budget.tag; `collect` adds the accepted folders to the retrieval of
                  fetch(), which stores them under <FolderGACODE>/extra_cgyro/ like the bash-mode ones.
+        hand over  a main element that hit its wall clock (TIMED_OUT) after a restart write is continued
+                 in place by the next submission of this evaluation (rescue_interrupted, with a driver
+                 that re-attaches: plan "hand_over"). Its extras are then left running, marked
+                 HANDED_OVER (not children of this job, so the poll ends and fetch does not settle them),
+                 and that next submission takes them back into its ledger (take_over), stops them when its
+                 own main radii end and collects them. If it does not continue the radius in place, it
+                 stops them at once, as this submission would have.
 
     The ledger {main folder: {folder, jobid, status, ...}} lives on the simulation object and in
     cgyro_submission.json, so a driver that re-attaches keeps polling, stopping and collecting the extras
@@ -223,6 +230,7 @@ class ArrayExtraPoints:
     '''
 
     RUNNING, STOPPING, ACCEPTED, DISCARDED, SKIPPED = "RUNNING", "STOPPING", "ACCEPTED", "DISCARDED", "SKIPPED"
+    HANDED_OVER = "HANDED_OVER"
     IN_FLIGHT = (RUNNING, STOPPING)
     MAIN_OVER = (TaskState.FINISHED.value, TaskState.TIMED_OUT.value, TaskState.ERROR.value)
 
@@ -234,6 +242,7 @@ class ArrayExtraPoints:
         self.commands = plan.get("commands") or {}
         self.min_time = float(plan.get("min_time", 0.0))
         self.stop_grace_s = float(plan.get("stop_grace_seconds", 1800))
+        self.hand_over = bool(plan.get("hand_over", False))
         self.dirty = False
 
     @property
@@ -262,8 +271,13 @@ class ArrayExtraPoints:
             return
         states = self._refresh()
         if self._mains_over(rows):
-            self._stop(states)
+            continued = self._continued_mains(rows)
+            if continued:
+                self._hand_over(continued)
+            else:
+                self._stop(states)
         else:
+            self._stop({rel: s for rel, s in states.items() if self.ledger[rel].get("released")})
             self._launch_due(rows)
         self._save()
 
@@ -317,6 +331,51 @@ class ArrayExtraPoints:
             if not job_gone:
                 return False
         return True
+
+    def _continued_mains(self, rows):
+        '''
+        Main radii that timed out after a restart write (out.cgyro.tag holds the output index), which the
+        next submission of this evaluation continues in place. Empty unless the plan allows the hand over.
+        '''
+        if not self.hand_over:
+            return []
+        rescues = getattr(self.sim, "_resubmit_ledger", None) or {}
+        return [row["folder"] for row in rows
+                if row["effective"] == TaskState.TIMED_OUT.value and str(row.get("tag_token", "-")).isdigit()
+                and not LedgerEntry.from_json(rescues.get(row["folder"])).child_jobids]
+
+    # ------------------------------------------------------------------
+    # Hand over to the next submission of the evaluation
+    # ------------------------------------------------------------------
+
+    def _hand_over(self, continued):
+        flying = self._in_flight()
+        for entry in flying.values():
+            entry["handed_over_from"], entry["status"], entry["awaits"] = entry["status"], self.HANDED_OVER, list(continued)
+            self.dirty = True
+        if flying:
+            print(f"\t- [extra point] {', '.join(continued)} timed out and will be continued in place: "
+                  f"{len(flying)} extra case(s) left running for the next submission of this evaluation", typeMsg="i")
+
+    @classmethod
+    def take_over(cls, ledger, continued_folders):
+        '''
+        The extra cases an earlier submission of this evaluation handed over, back in flight for this one
+        (the ledger it starts with). Those whose timed-out main radius is not continued in place here are
+        released: stopped from the first poll on, as the earlier submission would have done.
+        '''
+        taken = {}
+        for rel, entry in (ledger or {}).items():
+            if entry.get("status") != cls.HANDED_OVER:
+                continue
+            entry = dict(entry)
+            entry["status"] = entry.pop("handed_over_from", cls.RUNNING)
+            if not set(entry.pop("awaits", [])) & set(continued_folders):
+                entry["released"] = True
+            taken[rel] = entry
+            print(f"\t- [extra point] {entry['folder']} (job {entry['jobid']}) taken over from the previous submission"
+                  + ("; its main radius is not continued in place, so it is stopped" if entry.get("released") else ""), typeMsg="i")
+        return taken
 
     # ------------------------------------------------------------------
     # Launch

@@ -608,6 +608,10 @@ transport:
         #                               max_concurrent_calls; it is tracked in cgyro_submission.json,
         #                               so a re-attaching driver (check_existing_runs) keeps it,
         #                               and cancelled 30 min after the stop request if still running.
+        #                               A main radius that hits its wall clock after a restart write
+        #                               (with rescue_interrupted and check_existing_runs) is continued
+        #                               in place by the next driver, which keeps its extras running
+        #                               and stops them only when that radius really ends.
         #                               Not available with run_type "normal" on a slurm array (the
         #                               driver does not poll) nor in a standard slurm job.
         #   min_time is the shared physics floor: the shortest saturated run you accept.

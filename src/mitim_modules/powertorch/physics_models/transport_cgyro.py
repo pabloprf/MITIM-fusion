@@ -355,6 +355,8 @@ class gyrokinetic_model:
             organize_label="per-(plasma,rho) folders" if ctx.batched else "per-rho folders",
         )
 
+        # array-mode extra cases may be handed to the next driver only if it re-attaches (ArrayExtraPoints)
+        gk._reattach_enabled = ctx.check_existing_runs
         if not ctx.unpickled:
             outcome = ctx.submission.try_reattach(
                 on_fresh_fallback=lambda: ctx.chain.rerun_for_fresh_submission(gk, ctx.run_kwargs, ctx.turb_target_GB),
