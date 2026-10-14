@@ -137,6 +137,8 @@ class CostGuard:
     every couple of minutes: this class only stages, per radius, that script and the mitim_guard.json
     it reads (thresholds + the turbulent heat-flux targets of the radius, GB units). A stop leaves
     mitim_budget.tag starting with GUARD, so the radius counts as finished like any watchdog stop.
+    The same tag (with reason=cash_karp_abort) accepts a CGYRO that ended on the Cash-Karp abort
+    while over-driven, and the fluxes of every guard-stopped radius get a wide std (floored_std).
 
     targets_GB: {rho: {"QeGB": float, "QiGB": float}}, total target minus neoclassical, added by the
     transport layer (transport_cgyro._gk_cost_guard). Without targets there is nothing to judge.
@@ -151,6 +153,10 @@ class CostGuard:
         options = options or {}
         self.enabled = bool(options.get("enabled", False))
         self.thresholds = {k: float(options.get(k, v)) for k, v in self.DEFAULTS.items()}
+        # Cash-Karp abort accepted as a guard stop (cgyro_guard.abort_verdict); null ratio = flux_ratio
+        self.thresholds["accept_abort"] = bool(options.get("accept_abort", True))
+        self.thresholds["abort_flux_ratio"] = float(options.get("abort_flux_ratio") or self.thresholds["flux_ratio"])
+        self.std_floor = float(options.get("std_floor") or 0.0)
         self.targets_GB = options.get("targets_GB") or {}
         if self.enabled and not self.targets_GB:
             print("\t- cost_guard is enabled but no flux targets were given (standalone CGYRO run?); the guard stays off", typeMsg="w")
@@ -172,6 +178,15 @@ class CostGuard:
     def stopped(cls, tag_text):
         '''True when a mitim_budget.tag was left by the cost guard.'''
         return bool(tag_text) and tag_text.split()[:1] == [cls.TAG_TOKEN]
+
+    @staticmethod
+    def floored_std(mean, std, std_floor):
+        '''
+        std of a guard-stopped radius: at least std_floor x |mean|, element-wise. Its trace is a short
+        transient, so the standard error of the mean over it would tell the surrogates the magnitude
+        is known; the floor leaves them only the direction.
+        '''
+        return np.maximum(std, std_floor * np.abs(mean))
 
 
 class CgyroLaunchBody:

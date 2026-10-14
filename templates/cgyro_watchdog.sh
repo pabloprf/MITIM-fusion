@@ -57,4 +57,17 @@ while kill -0 $_lb_pid 2>/dev/null; do
     _lb_kill
     break
 done
-wait $_lb_pid 2>/dev/null
+wait $_lb_pid 2>/dev/null; _lb_rc=$?
+# cost guard, abort branch: CGYRO ended on its own with the Cash-Karp abort (dt collapsed). When
+# mitim_guard.py --abort judges the radius over-driven (t >= floor_time, heat flux far above target)
+# the abort is accepted as a guard stop, so the radius counts as finished instead of failing again
+# on the next launch. Any other abort, or no verdict, stays the error it is.
+if (( _lb_guard == 1 )) && [ ! -f "$_lb_dir/mitim_budget.tag" ] && [ -f "$_lb_dir/mitim_guard.json" ] \
+    && grep -qs "^ERROR: (CGYRO) Cash-Carp step exceeded" "$_lb_dir/out.cgyro.info"; then
+    _lb_v=$($(command -v timeout >/dev/null 2>&1 && echo "timeout 60") python3 "$_lb_dir/mitim_guard.py" "$_lb_dir" --abort 2>/dev/null)
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ${_lb_v:-WAIT no verdict (python3 missing?)}" > "$_lb_dir/mitim_guard.status"
+    if [ "${_lb_v%% *}" = "STOP" ]; then
+        echo "GUARD ${_lb_v#STOP } reason=cash_karp_abort elapsed=$(( $(date +%s) - _lb_t0 ))s" > "$_lb_dir/mitim_budget.tag"
+    fi
+fi
+(exit $_lb_rc)
