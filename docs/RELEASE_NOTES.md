@@ -603,7 +603,7 @@ DESCRIPTION
     `SbatchScript`. `SIMtools`: `RadialCall`/`WorkPlan` (the one place the `rho_<r>` naming lives),
     `CompletionSpec`, `JobScript` builders, `SubmissionRecord` (owns `cgyro_submission.json`, same schema),
     `RunType`/`SubmissionType`/`JobStatus`, and `_run` as named steps. `CGYROtools`: `CgyroLaunchBody`,
-    `Watchdog` (bash in `templates/cgyro_watchdog.sh` / `cgyro_probe.sh`), `RadiusStatus`/`CgyroProbe`,
+    `Watchdog` (bash in `templates/gk_control/cgyro_watchdog.sh` / `cgyro_probe.sh`), `RadiusStatus`/`CgyroProbe`,
     `StallRescuer`, `_ResolvedControls`. `transport_cgyro` (1970 → 700 lines) drives single-plasma, batched and
     GX evaluations through one `GKSubmission` engine, with `RestartChain`, `PerIterOverrides` and
     `ExtraPointHarvester` in `physics_models/utils/`. Generated scripts and resolved inputs are tested

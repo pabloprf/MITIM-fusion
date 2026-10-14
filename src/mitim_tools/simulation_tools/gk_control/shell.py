@@ -1,11 +1,11 @@
 """
-The bash MITIM wraps around every CGYRO launch and poll lives in templates/ so it can be read and
+The bash MITIM wraps around every CGYRO launch and poll lives in templates/gk_control/ so it can be read and
 linted as shell. `@{name}` is the placeholder delimiter, so the shell's own `$` survives verbatim.
 """
 import string
 from mitim_tools import __mitimroot__
 
-TEMPLATES = __mitimroot__ / "templates"
+TEMPLATES = __mitimroot__ / "templates" / "gk_control"
 
 
 def body_keeping_exit_status(pre_cmd, main_cmd, cleanup_cmd, verdict_cmd=""):

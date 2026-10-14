@@ -123,7 +123,7 @@ MODES = ((None, None),
 
 def test_launch_bodies_are_byte_identical():
     '''Every launch shape x watchdog mode produces exactly the bash of the reference commit, plus the
-    intended additions since: the requeue trim after the markers (templates/cgyro_requeue_trim.sh) and the
+    intended additions since: the requeue trim after the markers (templates/gk_control/cgyro_requeue_trim.sh) and the
     exit verdict right after the launch (CgyroLaunchBody.exit_verdict).'''
     old = reference_module()
     if old is None:

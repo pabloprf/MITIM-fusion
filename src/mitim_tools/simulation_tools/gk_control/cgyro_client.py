@@ -57,7 +57,7 @@ class GKRunControl:
             self._allocation = None
             self._rescue_interrupted = False
 
-    # The bash itself lives in templates/cgyro_watchdog.sh; kept as an attribute so a caller can supply
+    # The bash itself lives in templates/gk_control/cgyro_watchdog.sh; kept as an attribute so a caller can supply
     # its own template through `self`
     _WALL_BUDGET_WATCHDOG = _WATCHDOG_BASH
 
