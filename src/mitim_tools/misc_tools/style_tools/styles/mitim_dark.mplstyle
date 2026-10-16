@@ -11,8 +11,15 @@ figure.dpi          : 100
 grid.color          : 1.0
 grid.alpha          : 0.12
 
-# ── Lighter tick/frame lines ─────────────────────────────────────────────────
+# ── White ticks, labels and frame (mitim_base pins these to black) ──────────
 axes.linewidth      : 0.6
+axes.edgecolor      : white
+axes.labelcolor     : white
+xtick.color         : white
+ytick.color         : white
+xtick.labelcolor    : white
+ytick.labelcolor    : white
+legend.edgecolor    : 0.5
 
 # ── Color cycle adjusted for dark backgrounds (brighter) ─────────────────────
 axes.prop_cycle : cycler('color', ['56B4E9', 'FF6B6B', '2ECC71', 'F39C12', 'A29BFE', 'FD79A8', '55EFC4', 'FDCB6E', 'B2BEC3', '74B9FF'])

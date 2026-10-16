@@ -75,10 +75,11 @@ def apply_theme(
         str(_STYLES_DIR / f"mitim_{preset}.mplstyle"),
     ]
 
+    # Start from matplotlib defaults so switching presets doesn't leak settings
     if preset == "dark":
-        plt.style.use(["dark_background"] + styles)
+        plt.style.use(["default", "dark_background"] + styles)
     else:
-        plt.style.use(styles)
+        plt.style.use(["default"] + styles)
 
     if size is not None:
         _base_size = float(size)

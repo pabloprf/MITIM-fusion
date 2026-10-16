@@ -338,16 +338,19 @@ def addDenseAxis(ax, grid=True, n=10, axTwinx=None, ensure_floats=False):
         ensurefloatsticks(ax)
 
     addMinor(ax, n=n)
+
+    # Follow the active theme (black by default, white under apply_theme("dark"))
+    color = plt.rcParams["xtick.color"]
     ax.tick_params(
-        which="major", length=5, width=0.8, color="k", bottom=True, top=True, left=True, right=True
+        which="major", length=5, width=0.8, color=color, bottom=True, top=True, left=True, right=True
     )
     ax.tick_params(
-        which="minor", length=3, width=0.4, color="k", bottom=True, top=True, left=True, right=True
+        which="minor", length=3, width=0.4, color=color, bottom=True, top=True, left=True, right=True
     )
 
     if grid:
-        ax.grid(axis="x", color="k", alpha=1.0, linewidth=0.2, linestyle="-")
-        ax.grid(axis="y", color="k", alpha=1.0, linewidth=0.2, linestyle="-")
+        ax.grid(axis="x", color=color, alpha=1.0, linewidth=0.2, linestyle="-")
+        ax.grid(axis="y", color=color, alpha=1.0, linewidth=0.2, linestyle="-")
 
     if axTwinx is not None:
         adjustYlimToYtick(ax)
