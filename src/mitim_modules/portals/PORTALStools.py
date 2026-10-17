@@ -358,6 +358,9 @@ def stopping_criteria_portals(mitim_bo, parameters = {}):
 
     converged_by_ricci = chiR.min() < ricci_value
 
+    # The Ricci metric is THE convergence test; residual target and stagnating inputs only stop the run
+    mitim_bo.convergence_verdict = bool(converged_by_ricci)
+
     if converged_by_default:
         print("\t- Default stopping criteria converged, providing as iteration values the scalarized objective")
         return True, yvals

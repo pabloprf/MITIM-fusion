@@ -1,6 +1,8 @@
 import os
+import json
 import shutil
 import string
+import tempfile
 import datetime
 from dataclasses import dataclass, field
 from enum import Enum
@@ -96,9 +98,11 @@ class Watchdog:
 
     MANUAL, BUDGET, STOP = "manual", "budget", "stop"
 
-    def __init__(self, rho_dir, mode=None, min_time=0.0, minutes_per_call=None, template=None):
+    def __init__(self, rho_dir, mode=None, min_time=0.0, minutes_per_call=None, template=None, guard=False):
         self.rho_dir = rho_dir
         self.mode = mode or self.MANUAL
+        # cost guard (CostGuard): main radii only, an extra case has no target of its own
+        self.guard = bool(guard) and self.mode != self.STOP
         self.min_time = float(min_time)
         self.template = _WATCHDOG_BASH if template is None else template
         if self.mode == self.BUDGET and minutes_per_call is None:
@@ -106,13 +110,13 @@ class Watchdog:
         self.budget_s = int(float(minutes_per_call) * 60) if self.mode == self.BUDGET else 0
 
     @classmethod
-    def from_load_balance(cls, rho_dir, load_balance, mode=None, template=None):
+    def from_load_balance(cls, rho_dir, load_balance, mode=None, template=None, guard=False):
         '''mode None picks BUDGET when the load_balance strategy asks for it, else MANUAL.'''
         lb = load_balance or {}
         if mode is None:
             mode = cls.BUDGET if lb.get("strategy") == "wall_budget" else cls.MANUAL
         return cls(rho_dir, mode=mode, min_time=lb.get("min_time", 0.0),
-                   minutes_per_call=lb.get("minutes_per_call"), template=template)
+                   minutes_per_call=lb.get("minutes_per_call"), template=template, guard=guard)
 
     def wrap(self, cmd):
         return _ShellTemplate(self.template).substitute(
@@ -120,8 +124,54 @@ class Watchdog:
             budget_s=self.budget_s,
             min_time=f"{self.min_time:g}",
             discard="1" if self.mode == self.STOP else "0",
+            guard="1" if self.guard else "0",
             cgyro_cmd=cmd.rstrip("\n"),
         )
+
+
+class CostGuard:
+    '''
+    Stops a main radius that is burning wall time far from its targets, the way a user watching the
+    run would (namelist transport.options.cgyro.run.cost_guard; the knobs are documented there).
+    The decision is taken on the compute node by templates/cgyro_guard.py, which the Watchdog runs
+    every couple of minutes: this class only stages, per radius, that script and the mitim_guard.json
+    it reads (thresholds + the turbulent heat-flux targets of the radius, GB units). A stop leaves
+    mitim_budget.tag starting with GUARD, so the radius counts as finished like any watchdog stop.
+
+    targets_GB: {rho: {"QeGB": float, "QiGB": float}}, total target minus neoclassical, added by the
+    transport layer (transport_cgyro._gk_cost_guard). Without targets there is nothing to judge.
+    '''
+
+    DEFAULTS = {"seconds_per_acs": 100.0, "flux_ratio": 5.0, "min_time": 250.0,
+                "waive_min_time_hours": 12.0, "floor_time": 50.0, "window": 20.0}
+    FILE, SCRIPT = "mitim_guard.json", "mitim_guard.py"
+    TAG_TOKEN = "GUARD"
+
+    def __init__(self, options=None):
+        options = options or {}
+        self.enabled = bool(options.get("enabled", False))
+        self.thresholds = {k: float(options.get(k, v)) for k, v in self.DEFAULTS.items()}
+        self.targets_GB = options.get("targets_GB") or {}
+        if self.enabled and not self.targets_GB:
+            print("\t- cost_guard is enabled but no flux targets were given (standalone CGYRO run?); the guard stays off", typeMsg="w")
+            self.enabled = False
+
+    def stage(self, folder, additional_files_to_send=None):
+        '''
+        Writes mitim_guard_<rho>.json under `folder` and returns `additional_files_to_send` with the
+        guard files added to each radius that has targets.
+        '''
+        files = {rho: list(entries or []) for rho, entries in (additional_files_to_send or {}).items()}
+        for rho, targets in self.targets_GB.items():
+            guard_file = Path(folder) / f"mitim_guard_{rho:.4f}.json"
+            guard_file.write_text(json.dumps({**self.thresholds, "targets_GB": targets}, indent=2))
+            files.setdefault(rho, []).extend([(guard_file, self.FILE), (__mitimroot__ / "templates" / "cgyro_guard.py", self.SCRIPT)])
+        return files
+
+    @classmethod
+    def stopped(cls, tag_text):
+        '''True when a mitim_budget.tag was left by the cost guard.'''
+        return bool(tag_text) and tag_text.split()[:1] == [cls.TAG_TOKEN]
 
 
 class CgyroLaunchBody:
@@ -131,7 +181,7 @@ class CgyroLaunchBody:
     assembles them into the body SIMtools' JobScript builders stage.
     '''
 
-    def __init__(self, folder, p, n=1, additional_command="", resolved=None, cpus_per_node=1):
+    def __init__(self, folder, p, n=1, additional_command="", resolved=None, cpus_per_node=1, omp_threads_cpu=None):
         from mitim_tools.misc_tools import SLURMtools
 
         self.folder = folder
@@ -141,9 +191,14 @@ class CgyroLaunchBody:
         self.machine = CONFIGread.machineSettings(code='cgyro')
 
         # MPI layout is resolved centrally in SLURMtools so the invented knobs (full-node MPI on GPU
-        # machines, MPS sharing) live in one place instead of here and in code_slurm_settings
+        # machines, MPS sharing) live in one place instead of here and in code_slurm_settings.
+        # omp_threads_cpu (allocation knob, CPU-only machines) must reach this resolve too: it sets
+        # the -n/-nomp written below, while SIMtools' own resolve only sizes the sbatch
+        allocation = {'resources_per_call': int(n)}
+        if omp_threads_cpu is not None:
+            allocation['omp_threads_cpu'] = omp_threads_cpu
         self.resolved = resolved if resolved is not None else SLURMtools.resolve(
-            code='cgyro', allocation={'resources_per_call': int(n)}, verbose=False)
+            code='cgyro', allocation=allocation, verbose=False)
         self.mpi = self.resolved.mpi
         self.nodes = self.mpi.get("nodes", 1)   # >1 for multi-node radial calls (resources_per_call > gpus_per_node)
 
@@ -293,11 +348,16 @@ class CgyroLaunchBody:
         Turn a 0 exit status into 1 when CGYRO did not finish. gacode's `cgyro` script ends with an
         if-block that returns 0 whatever the executable returned, so a CGYRO that crashed (e.g. disk
         quota exceeded writing out.cgyro.prec) was recorded by SLURM as COMPLETED 0:0. CGYRO appends
-        "EXIT: (CGYRO) ..." to out.cgyro.info only on a clean end; a watchdog stop (mitim_budget.tag)
-        or discard (mitim_discard.tag) is intentional and keeps its own status.
+        "EXIT: (CGYRO) ..." to out.cgyro.info only on a clean end.
+
+        And the other way round: a run the watchdog stopped and accepted (mitim_budget.tag: wall budget,
+        mitim_stop, cost guard) ends with the SIGTERM status 143, which SLURM showed as FAILED although
+        the radius counts as finished; it is reported as 0. A discarded extra case (mitim_discard.tag)
+        produced nothing usable and keeps its own status.
         '''
         run_dir = f"{self.p}/{self.folder}"
-        return (f'if [ "$_mitim_rc" = 0 ] && ! grep -qs "^EXIT: (CGYRO)" "{run_dir}/out.cgyro.info" && '
+        return (f'if [ -f "{run_dir}/mitim_budget.tag" ]; then _mitim_rc=0; fi; '
+                f'if [ "$_mitim_rc" = 0 ] && ! grep -qs "^EXIT: (CGYRO)" "{run_dir}/out.cgyro.info" && '
                 f'[ ! -f "{run_dir}/mitim_budget.tag" ] && [ ! -f "{run_dir}/mitim_discard.tag" ]; then '
                 f'echo "MITIM: cgyro returned 0 but out.cgyro.info has no EXIT line; reporting rc=1" >&2; _mitim_rc=1; fi')
 
@@ -338,6 +398,22 @@ class TaskState(str, Enum):
             return None
 
 
+def seconds_remaining(cost, t, t0, max_time):
+    '''
+    Wall seconds a running launch still needs: the a/cs left, MAX_TIME - (t - t0), at `cost` seconds per
+    a/cs (last TOTAL of out.cgyro.timing, one row per PRINT_STEP = 1 a/cs). t0 is the simulated time the
+    launch started from (.mitim_t0): MAX_TIME counts from there, not from zero.
+    '''
+    if cost is None or t is None or max_time is None:
+        return None
+    return max(max_time - (t - (t0 or 0.0)), 0.0) * cost
+
+
+def seconds_to_accept(cost, min_time):
+    '''Wall seconds an extra case needs to reach min_time a/cs at `cost` seconds per a/cs, plus 5 min of start-up.'''
+    return None if cost is None else float(min_time) * cost + 300.0
+
+
 def _as_seconds(token):
     try:
         return max(0, int(token))
@@ -370,11 +446,15 @@ class RadiusStatus:
     tag_suffix: str = ""
     line: str = ""
     rescue_child: str = None
+    seconds_per_step_last: float = None
+    t: float = None
+    t0: float = None
+    max_time: float = None
 
     @classmethod
     def from_probe_line(cls, line, slurm_state=None, job_terminal=False, rescue_child=None):
         '''
-        One `folder|state|avg|steps|wall|since_update|tag|exited` probe line.
+        One `folder|state|avg|steps|wall|since_update|tag|exited[|last|t|t0|max_time]` probe line.
 
         Reclassification, in priority order:
             1. a terminal out.cgyro.tag token (FINISHED/TIMEOUT/ERROR), or CGYRO's EXIT line
@@ -407,9 +487,15 @@ class RadiusStatus:
             exited=(parts[7] if len(parts) > 7 else "0") == "1",
             line=line.strip(),
             rescue_child=rescue_child,
+            **{name: _as_float(parts[i]) for i, name in enumerate(("seconds_per_step_last", "t", "t0", "max_time"), start=8) if len(parts) > i},
         )
         status._reclassify(slurm_state, job_terminal and rescue_child is None)
         return status
+
+    @property
+    def remaining_seconds(self):
+        '''Wall seconds this launch still needs (see seconds_remaining); None while any piece is unknown.'''
+        return seconds_remaining(self.seconds_per_step_last, self.t, self.t0, self.max_time)
 
     @property
     def stale_threshold(self):
@@ -489,6 +575,8 @@ class RadiusStatus:
             "avg_f": self.seconds_per_step,
             "stale_threshold_warn": self.stale_threshold,
             "tag_token": self.tag,
+            "cost_last": self.seconds_per_step_last,
+            "remaining_s": self.remaining_seconds,
         }
 
 
@@ -582,26 +670,29 @@ def _slurm_elapsed_seconds(token):
 def _slurm_state_for_target(job, target):
     '''
     (state, seconds running) for `target` (a "<jobid>" or "<jobid>_<idx>" string), queried via
-    `sacct -X --format=State,Elapsed`. For a requeued element sacct reports only its latest instance,
-    so the elapsed time counts from the latest (re)start. state is the uppercased token, or None if
-    sacct produced no useful output (e.g. site without sacct, jobid too old to be in the accounting
-    window); the caller treats None as "no signal -- continue with the existing decision tree"
-    rather than as a terminal verdict. seconds is None unless the state is RUNNING.
+    `sacct -X --format=State,Elapsed`, then `squeue -j -o "%T|%M"` when sacct has nothing: a job
+    submitted seconds ago has no accounting record yet but is already in the queue, and without this
+    fallback a PENDING element whose folder holds old files (an interrupted run kept for the in-place
+    rescue, a requeue) was cancelled as stalled before it ever started. For a requeued element sacct
+    reports only its latest instance, so the elapsed time counts from the latest (re)start. state is
+    the uppercased token, or None if neither command produced useful output (e.g. site without sacct
+    and a job that already left the queue); the caller treats None as "no signal -- continue with the
+    existing decision tree" rather than as a terminal verdict. seconds is None unless the state is RUNNING.
     '''
-    cmd = f'sacct -j {target} -X --format=State,Elapsed -n -P'
-    try:
-        out, _err = job.execute(cmd, printYN=False)
-    except Exception as e:
-        print(f"\t    * sacct query for {target} failed ({type(e).__name__}: {e}); proceeding without per-task slurm-state guard", typeMsg='w')
-        return None, None
-    if isinstance(out, bytes):
-        out = out.decode(errors='replace')
-    out = (out or "").strip()
-    if not out:
-        return None, None
-    # Multiple lines possible (sacct emits one row per step). The first non-empty
-    # line is the parent task state — what we actually care about.
-    first = out.splitlines()[0].strip()
+    first = ""
+    for cmd in (f'sacct -j {target} -X --format=State,Elapsed -n -P', f'squeue -h -j {target} -o "%T|%M"'):
+        try:
+            out, _err = job.execute(cmd, printYN=False)
+        except Exception as e:
+            print(f"\t    * {cmd.split()[0]} query for {target} failed ({type(e).__name__}: {e}); proceeding without per-task slurm-state guard", typeMsg='w')
+            return None, None
+        if isinstance(out, bytes):
+            out = out.decode(errors='replace')
+        # Multiple lines possible (sacct emits one row per step). The first non-empty
+        # line is the parent task state — what we actually care about.
+        first = next((l.strip() for l in (out or "").splitlines() if l.strip()), "")
+        if first:
+            break
     if not first:
         return None, None
     state_token, _, elapsed_token = first.partition("|")
@@ -879,8 +970,7 @@ class StallRescuer:
 
         entry.n_attempts = attempt
         entry.child_jobids.append(new_jobid)
-        # naive UTC plus an explicit "Z", the format already stored in cgyro_submission.json
-        entry.last_action_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+        entry.last_action_at = _utc_now()
         self.metadata_dirty = True
         print(f"\t    * rescued {folder}: new jobid={new_jobid} (attempt {attempt}/{self.cap}, exclude={bad_node})", typeMsg='i')
 
@@ -895,12 +985,299 @@ def _cgyro_handle_stalled_tasks(sim, rows, session=None):
     StallRescuer(sim, settings, session=session).rescue(rows)
 
 
+class ArrayExtraPoints:
+    '''
+    load_balance strategy 'extra_points' when every radius is its own slurm element (slurm_array,
+    run_type 'submit'): the array-mode counterpart of SCHEDULERtools.InAllocationScheduler. A finished
+    element gives its GPUs back to the partition, so the extra case of that radius is submitted as a
+    standalone single-radius job with the sbatch settings of one element (mitim_job.resubmit_single_task,
+    the primitive of the stall rescue), from the driver's poll (`cgyro_per_task_callback`).
+
+    Same rules as in bash mode:
+        launch   one extra per finished radius, once every main radius has started and the slowest one
+                 still needs longer than the extra needs to reach min_time (seconds_remaining against
+                 seconds_to_accept); never while a main element is still waiting for a node.
+        stop     when the last main radius ends: mitim_stop in the extra's folder (its STOP watchdog ends
+                 it after a restart write past min_time, or discards it below), scancel after
+                 stop_grace_seconds; an extra still pending in the queue is cancelled at once.
+        accept   EXIT line or mitim_budget.tag; `collect` adds the accepted folders to the retrieval of
+                 fetch(), which stores them under <FolderGACODE>/extra_cgyro/ like the bash-mode ones.
+
+    The ledger {main folder: {folder, jobid, status, ...}} lives on the simulation object and in
+    cgyro_submission.json, so a driver that re-attaches keeps polling, stopping and collecting the extras
+    the previous one submitted. The launch bodies were built at submit time (kwargs_organize
+    ["extra_points"]), with the allocation and the min_time of that submission.
+    '''
+
+    RUNNING, STOPPING, ACCEPTED, DISCARDED, SKIPPED = "RUNNING", "STOPPING", "ACCEPTED", "DISCARDED", "SKIPPED"
+    IN_FLIGHT = (RUNNING, STOPPING)
+    MAIN_OVER = (TaskState.FINISHED.value, TaskState.TIMED_OUT.value, TaskState.ERROR.value)
+
+    def __init__(self, sim, session=None):
+        self.sim = sim
+        self.job = getattr(sim, "simulation_job", None)
+        self.session = session   # live ssh session of the poll; None -> collect() opens its own
+        plan = (getattr(sim, "kwargs_organize", None) or {}).get("extra_points") or {}
+        self.commands = plan.get("commands") or {}
+        self.min_time = float(plan.get("min_time", 0.0))
+        self.stop_grace_s = float(plan.get("stop_grace_seconds", 1800))
+        self.dirty = False
+
+    @property
+    def ledger(self):
+        if getattr(self.sim, "_extra_ledger", None) is None:
+            self.sim._extra_ledger = {}
+        return self.sim._extra_ledger
+
+    @property
+    def exec_folder(self):
+        return str(self.job.folderExecution)
+
+    def _in_flight(self):
+        return {rel: e for rel, e in self.ledger.items() if e.get("status") in self.IN_FLIGHT}
+
+    @staticmethod
+    def extra_folder(rel):
+        return f"extra_cgyro/{Path(rel).name}"
+
+    # ------------------------------------------------------------------
+    # Every poll
+    # ------------------------------------------------------------------
+
+    def poll(self, rows):
+        if not (self.commands or self.ledger):
+            return
+        states = self._refresh()
+        if self._mains_over(rows):
+            self._stop(states)
+        else:
+            self._launch_due(rows)
+        self._save()
+
+    def _refresh(self):
+        '''
+        Print the extras in flight and classify the ones that left the queue. Returns {main folder:
+        probe status} of those still in it; with no answer from slurm every one counts as still there.
+        '''
+        flying = self._in_flight()
+        if not flying:
+            return {}
+        queued = SIMtools.jobids_in_queue(self.job, [e["jobid"] for e in flying.values()])[0]
+        probed = self._probe(flying)
+
+        print(f"\t- Extra case(s) of finished radii ({len(flying)} in flight):")
+        states = {}
+        for rel, entry in flying.items():
+            status = probed.get(entry["folder"])
+            if status is not None:
+                print(status.describe()[0] + f" [extra job {entry['jobid']}]")
+            if queued is None or entry["jobid"] in queued:
+                states[rel] = status
+            elif status is not None:
+                self._classify(entry, status.exited, "left the queue")
+        return states
+
+    def _probe(self, entries):
+        lines = CgyroProbe(self.job, session=self.session).run([e["folder"] for e in entries.values()]) or []
+        return {st.folder: st for st in (RadiusStatus.from_probe_line(l) for l in lines) if st is not None}
+
+    def _classify(self, entry, accepted, why):
+        entry["status"] = self.ACCEPTED if accepted else self.DISCARDED
+        self.dirty = True
+        print(f"\t- [extra point] {entry['folder']} {why}: {'accepted' if accepted else 'discarded (it did not reach min_time)'}", typeMsg="i")
+
+    def _mains_over(self, rows):
+        '''
+        True when no main radius is integrating any more. A radius handed to a rescue job follows that
+        job (the array's own state says nothing about it) until the stall rescuer closes it.
+        '''
+        job_gone = SlurmState.from_token((getattr(self.job, "infoSLURM", None) or {}).get("STATE")) in _SLURM_JOB_GONE_STATES
+        rescues = getattr(self.sim, "_resubmit_ledger", None) or {}
+        for row in rows:
+            if row["effective"] in self.MAIN_OVER:
+                continue
+            rescue = LedgerEntry.from_json(rescues.get(row["folder"]))
+            if rescue.child_jobids:
+                if rescue.status.startswith(("EXHAUSTED", "TERMINAL_NO_RESCUE")):
+                    continue
+                return False
+            if not job_gone:
+                return False
+        return True
+
+    # ------------------------------------------------------------------
+    # Launch
+    # ------------------------------------------------------------------
+
+    def _launch_due(self, rows):
+        if getattr(self.sim, "extra_point_builder", None) is None:
+            return
+        candidates = [r for r in rows if r["effective"] == TaskState.FINISHED.value
+                      and r["folder"] in self.commands and r["folder"] not in self.ledger]
+        running = [r for r in rows if r["effective"] not in self.MAIN_OVER]
+        if not candidates or not running:
+            return
+        # A main element without an estimate has not started (or just did): it needs the nodes more
+        # than an extra does, and without its remaining time the idle window would pass blindly
+        remaining = [r.get("remaining_s") for r in running]
+        if any(x is None for x in remaining):
+            return
+        window = max(remaining)
+        limit = (getattr(self.job, "slurm_settings", None) or {}).get("array_limit")
+
+        for row in candidates:
+            rel = row["folder"]
+            if limit is not None and len(running) + len(self._in_flight()) >= int(limit):
+                return   # max_concurrent_calls also bounds mains + extras; asked again next poll
+            needed = seconds_to_accept(row.get("cost_last"), self.min_time)
+            if needed is not None and window < needed:
+                self._skip(rel, f"idle window ~{window/60:.0f} min < {needed/60:.0f} min needed for an acceptable extra")
+                continue
+            self._launch(rel, window)
+
+    def _skip(self, rel, why):
+        self.ledger[rel] = {"folder": self.extra_folder(rel), "jobid": None, "status": self.SKIPPED, "reason": why}
+        self.dirty = True
+        print(f"\t- [extra point] {rel}: {why}; no extra case", typeMsg="i")
+
+    def _launch(self, rel, window):
+        rho = float(rel.rsplit("rho_", 1)[-1])
+        rel_extra = self.extra_folder(rel)
+        local_dir = Path(self.sim.FolderGACODE) / rel_extra
+        spec = SIMtools.CompletionSpec.from_run_specifications(self.sim.run_specifications)
+        if SIMtools.CompletionSpec.coerce(spec, alt_file="mitim_budget.tag").finished(local_dir)[0]:
+            return self._skip(rel, "its extra case is already stored locally")
+        try:
+            local_dir.mkdir(parents=True, exist_ok=True)
+            input_cgyro = self.sim.extra_point_builder(rho, self._finished_outputs(rel), local_dir)
+            if input_cgyro is None:
+                return self._skip(rel, "the builder returned no case")
+            jobid = self._stage_and_submit(rel, rel_extra, input_cgyro)
+        except Exception as e:
+            return self._skip(rel, f"extra-point launch failed ({type(e).__name__}: {e})")
+        if not jobid:
+            return self._skip(rel, "sbatch returned no jobid")
+        self.ledger[rel] = {"folder": rel_extra, "jobid": jobid, "status": self.RUNNING, "submitted_at": _utc_now()}
+        self.dirty = True
+        print(f"\t- [extra point] {rel} finished: extra case {rel_extra} submitted as job {jobid} (idle window ~{window/60:.0f} min)", typeMsg="i")
+
+    def _finished_outputs(self, rel):
+        '''
+        Folder holding the finished radius's outputs under their plain names, for the builder to read
+        its fluxes: the scratch folder itself when the driver shares its filesystem, else a copy of the
+        files a fetch brings (never the restart blob) pulled into the job's local folder.
+        '''
+        if self.job.ssh is None:
+            return Path(self.exec_folder) / rel
+        from mitim_tools.misc_tools.FARMINGtools import RetrievalSpec
+        files = list(self.sim.kwargs_organize["filesToRetrieve"])
+        # best_effort: a failed pull must not raise the interactive disk-full prompt inside the poll
+        if not self.job.retrieve(check_if_files_received=False, best_effort=True, spec=RetrievalSpec(folders=[rel], selective={rel: files})):
+            raise RuntimeError(f"could not pull the outputs of {rel}")
+        return Path(self.job.folder_local) / rel
+
+    def _stage_and_submit(self, rel, rel_extra, input_cgyro):
+        '''The perturbed input.cgyro plus the finished run's restart blob as warm start (no out.cgyro.tag: t from 0).'''
+        src, dst = f"{self.exec_folder}/{rel}", f"{self.exec_folder}/{rel_extra}"
+        self.job.execute(f'mkdir -p "{dst}" && if [ -f "{src}/bin.cgyro.restart" ]; then cp "{src}/bin.cgyro.restart" "{dst}/"; fi', printYN=False)
+        self.job.put_file(input_cgyro, f"{dst}/input.cgyro")
+        return self.job.resubmit_single_task(self.commands[rel], f"_extra_{Path(rel_extra).name}")
+
+    # ------------------------------------------------------------------
+    # Stop
+    # ------------------------------------------------------------------
+
+    def _stop(self, states):
+        '''`states`: {main folder: probe status} of the extras still in the queue.'''
+        for rel, status in states.items():
+            entry = self.ledger[rel]
+            if status is not None and status.raw == TaskState.NOT_STARTED:
+                # never started: a stop file would be removed by its watchdog at launch
+                self._scancel(entry, "the main radii ended before it started")
+                self._classify(entry, False, "cancelled")
+                continue
+            # dropped again every poll: a requeued extra clears the file when it restarts
+            self.job.execute(f'echo stop > "{self.exec_folder}/{entry["folder"]}/mitim_stop"', printYN=False)
+            if entry["status"] == self.RUNNING:
+                entry["status"], entry["stop_requested_at"] = self.STOPPING, _utc_now()
+                self.dirty = True
+                print(f"\t- [extra point] main radii done; asked {entry['folder']} (job {entry['jobid']}) to stop (graceful if past min_time)", typeMsg="i")
+            elif _seconds_since(entry.get("stop_requested_at")) > self.stop_grace_s:
+                self._scancel(entry, f"it did not stop within {self.stop_grace_s/60:.0f} min")
+
+    def _scancel(self, entry, why):
+        print(f"\t- [extra point] {entry['folder']} (job {entry['jobid']}): {why}; cancelling it", typeMsg="w")
+        self.job.execute(f"scancel {entry['jobid']}", printYN=False)
+
+    # ------------------------------------------------------------------
+    # Fetch
+    # ------------------------------------------------------------------
+
+    def collect(self):
+        '''
+        Before fetch(): settle every extra (one still in the queue is cancelled: the evaluation is
+        being collected) and add the accepted ones to the retrieval, best-effort, with the file
+        patterns of the main folders. _organize_results then moves them next to the main results.
+        '''
+        if not self.ledger or self.job is None:
+            return
+        flying = self._in_flight()
+        if flying:
+            with self.job.session() as self.session:
+                queued = SIMtools.jobids_in_queue(self.job, [e["jobid"] for e in flying.values()])[0] or {}
+                for entry in flying.values():
+                    if entry["jobid"] in queued:
+                        self._scancel(entry, "the evaluation is being collected")
+                probed = self._probe(flying)
+            for entry in flying.values():
+                status = probed.get(entry["folder"])
+                self._classify(entry, status is not None and status.exited, "ended")
+
+        accepted = [e["folder"] for e in self.ledger.values() if e.get("status") == self.ACCEPTED]
+        discarded = [e["folder"] for e in self.ledger.values() if e.get("status") == self.DISCARDED]
+        selective = self.job.output_folders_selective
+        patterns = next(iter(selective.values()), None) if selective else None
+        for folder in accepted:
+            if folder not in self.job.output_folders:
+                self.job.output_folders.append(folder)
+            if patterns is not None:
+                selective[folder] = list(patterns)
+        self.job.scheduler_result = {"accepted": accepted, "discarded": discarded}
+        if accepted or discarded:
+            print(f"\t- [extra point] extras accepted: {accepted or 'none'}; discarded: {discarded or 'none'}", typeMsg="i")
+        self._save()
+
+    def _save(self):
+        if not self.dirty:
+            return
+        self.dirty = False
+        try:
+            self.sim._write_submission_metadata(getattr(self.sim, "_base_subfolder", None))
+        except Exception as e:
+            print(f"\t- [extra point] metadata write failed ({type(e).__name__}: {e}); ledger held in-memory only", typeMsg='w')
+
+
+def _utc_now():
+    '''Naive UTC plus an explicit "Z", the format stored in cgyro_submission.json.'''
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+
+
+def _seconds_since(stamp):
+    try:
+        then = datetime.datetime.fromisoformat(stamp.rstrip("Z")).replace(tzinfo=datetime.timezone.utc)
+    except (AttributeError, ValueError):
+        return 0.0
+    return (datetime.datetime.now(datetime.timezone.utc) - then).total_seconds()
+
+
 def cgyro_per_task_callback(sim):
     '''
     Bound as `_custom_check_callback` and called as `custom_checker(sim)` once per poll by
     `mitim_simulation.check`, which is why this stays a module function. One ssh session for the whole
-    poll: the probe prints and returns the rows, the rescuer acts on the stalled ones. Users who
-    haven't opted into auto_resubmit_settings see the historical detect-only behavior.
+    poll: the probe prints and returns the rows, the rescuer acts on the stalled ones, and the extra
+    cases of finished radii are submitted, stopped and classified (ArrayExtraPoints; a no-op without
+    load_balance 'extra_points'). Users who haven't opted into auto_resubmit_settings see the
+    historical detect-only behavior.
     '''
     job = getattr(sim, "simulation_job", None)
     kwargs_organize = getattr(sim, "kwargs_organize", None)
@@ -911,6 +1288,7 @@ def cgyro_per_task_callback(sim):
             rows = cgyro_per_task_status(sim, session=session)
             if rows:
                 _cgyro_handle_stalled_tasks(sim, rows, session=session)
+                ArrayExtraPoints(sim, session=session).poll(rows)
     except Exception as e:
         print(f"\t- [per-task status] poll over ssh failed ({type(e).__name__}: {e}); continuing", typeMsg='w')
 
@@ -989,6 +1367,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
     # Restart blob the PORTALS warm-start chain (restart_from_cases) stages, retrieved per rho as
     # bin.cgyro.restart_<rho:.4f> (cgyro_restart.RestartChain)
     _warm_start_file = "bin.cgyro.restart"
+    # Set by the PORTALS evaluator when restart_from_cases reads this run's restart files back (_restart_retrieval)
+    keep_warm_start_file = False
 
     # Per-task inspection for `check(custom_checker=...)`. Picked up by
     # transport_cgyro.py via `getattr(gk_object, '_custom_check_callback', None)`
@@ -1009,9 +1389,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         self._preprocess_options = None
         self._extra_point_n = None
 
-        # On GPU machines, always use a job array so each radius gets its own GPU allocation.
-        _cgyro_machine_settings = CONFIGread.machineSettings(code='cgyro')
-        _force_submission_type = 'slurm_array' if (_cgyro_machine_settings.get('gpus_per_node') or 0) > 0 else None
+        # On SLURM machines, always use a job array so each radius gets its own allocation: its GPUs on
+        # GPU machines, its whole nodes on CPU-only machines (a nonlinear CPU radius takes one or more
+        # full nodes). allocation['submission_type'] still overrides it, and machines without SLURM
+        # run bash regardless (SLURMtools.resolve).
+        _force_submission_type = 'slurm_array'
 
         self.run_specifications = {
             'code': 'cgyro',
@@ -1034,7 +1416,9 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                             # (and be excluded from the identity md5, like MAX_TIME, for the next rescue)
                             'after_trim': self._restart_step_after_trim,
                             'checksum_ignore': ['MAX_TIME', 'RESTART_STEP'],
-                            'report_files': ['out.cgyro.time', 'bin.cgyro.ky_flux', 'bin.cgyro.restart', 'out.cgyro.tag']},
+                            'report_files': ['out.cgyro.time', 'bin.cgyro.ky_flux', 'bin.cgyro.restart', 'out.cgyro.tag'],
+                            # a radius continued in place is guarded like a fresh one
+                            'keep_staged': [CostGuard.FILE, CostGuard.SCRIPT]},
             # A radius is only 'done' if CGYRO wrote its EXIT line (files exist from step 1 on)...
             'completion_marker': ('out.cgyro.info', 'EXIT'),
             # ...or the watchdog stopped it past min_time. Optional, never mandatory: a run that ends
@@ -1129,19 +1513,30 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         return int(digits) if digits else 1
 
     # Thin wrapper: capture preprocess_options / load_balance and delegate to the generic run()
-    def run(self, *args, preprocess_options=None, load_balance=None, **kwargs):
+    def run(self, *args, preprocess_options=None, load_balance=None, cost_guard=None, **kwargs):
         '''
         load_balance: {'strategy': None | 'wall_budget' | 'extra_points', 'minutes_per_call': float, 'min_time': float}
         (namelist transport.options.cgyro.run.load_balance); see Watchdog and _extra_point_hooks.
+        cost_guard: namelist transport.options.cgyro.run.cost_guard plus 'targets_GB'; see CostGuard.
         '''
         self._preprocess_options = preprocess_options
         self._load_balance = load_balance
+        self._cost_guard = CostGuard(cost_guard)
+        # code_call reads allocation['omp_threads_cpu'] from here (SIMtools' JobScript passes only n)
+        self._allocation = kwargs.get("allocation")
+        guard_staging = tempfile.TemporaryDirectory() if self._cost_guard.enabled else None
         try:
+            if guard_staging is not None:
+                kwargs["additional_files_to_send"] = self._cost_guard.stage(guard_staging.name, kwargs.get("additional_files_to_send"))
             return super().run(*args, **kwargs)
         finally:
+            if guard_staging is not None:
+                guard_staging.cleanup()
             self._preprocess_options = None
             self._load_balance = None
+            self._cost_guard = None
             self._extra_point_n = None
+            self._allocation = None
 
     def code_call(self, folder, p, n=1, additional_command="", watchdog=None, resolved=None):
         '''
@@ -1151,9 +1546,12 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         resolved: an already-resolved SLURMtools allocation, when the caller has one.
         '''
         body = CgyroLaunchBody(folder, p, n=n, additional_command=additional_command,
-                               resolved=resolved, cpus_per_node=self._allocation_cpus_per_node())
+                               resolved=resolved, cpus_per_node=self._allocation_cpus_per_node(),
+                               omp_threads_cpu=(getattr(self, "_allocation", None) or {}).get("omp_threads_cpu"))
+        guard = getattr(self, "_cost_guard", None)
         return body.build(Watchdog.from_load_balance(
-            f"{p}/{folder}", getattr(self, "_load_balance", None), mode=watchdog, template=self._WALL_BUDGET_WATCHDOG))
+            f"{p}/{folder}", getattr(self, "_load_balance", None), mode=watchdog, template=self._WALL_BUDGET_WATCHDOG,
+            guard=guard is not None and guard.enabled))
 
     # The bash itself lives in templates/cgyro_watchdog.sh; kept as an attribute so a caller can supply
     # its own template through `self`
@@ -1165,10 +1563,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             rho_dir, getattr(self, "_load_balance", None), mode=mode, template=self._WALL_BUDGET_WATCHDOG).wrap(cgyro_cmd)
 
     # ------------------------------------------------------------------
-    # load_balance strategy 'extra_points' (bash mode): hooks for the in-allocation
-    # scheduler (SCHEDULERtools). The transport layer registers `extra_point_builder`,
-    # a callable (rho, finished_scratch_dir, local_dir) -> path of a ready input.cgyro
-    # for a perturbed case at that radius (or None); everything else is generic here.
+    # load_balance strategy 'extra_points': hooks for the in-allocation scheduler
+    # (SCHEDULERtools, bash mode) and the plan for ArrayExtraPoints (slurm_array). The
+    # transport layer registers `extra_point_builder`, a callable
+    # (rho, finished_run_dir, local_dir) -> path of a ready input.cgyro for a perturbed
+    # case at that radius (or None); everything else is generic here.
     # ------------------------------------------------------------------
     extra_point_builder = None
 
@@ -1184,6 +1583,35 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 "estimate_remaining": self._estimate_remaining,
                 "estimate_to_accept": self._estimate_to_accept,
                 "idle_slot_sources": self._idle_slot_sources}
+
+    def _extra_point_array_plan(self, script, settings):
+        '''
+        slurm_array counterpart of _extra_point_hooks: the launch body of every radius's extra case,
+        built now, while the allocation and load_balance of this submission are on the object (both
+        are gone once run() returns, and a re-attaching driver never had them). See ArrayExtraPoints.
+        '''
+        lb = getattr(self, "_load_balance", None) or {}
+        if lb.get("strategy") != "extra_points":
+            return None
+        if settings.run_type is not SIMtools.RunType.SUBMIT:
+            # TODO (Pablo, 2026-10-13, deferred): cover run_type 'normal' (the template default) by sending such an
+            # evaluation through the submit / poll / fetch path; today its driver blocks in `sbatch --wait` and never polls
+            print(f"\t- load_balance 'extra_points' with a slurm array needs run_type 'submit' (the driver polls the elements); with '{settings.run_type.value}' array elements just release their nodes", typeMsg="w")
+            return None
+        if self.extra_point_builder is None:
+            print("\t- load_balance 'extra_points' requested but no extra_point_builder is registered (standalone CGYRO run?); array elements just release their nodes", typeMsg="w")
+            return None
+        commands = {}
+        for folder in script.folders:
+            rel_extra = ArrayExtraPoints.extra_folder(folder)
+            commands[folder] = script._call(rel_extra, watchdog="stop", additional_command=script._redirect(rel_extra))
+        print("\t- load_balance 'extra_points': a radius that finishes early gets one extra case as its own job, while the slowest radius leaves time for it", typeMsg="i")
+        return {"commands": commands, "min_time": float(lb.get("min_time", 0.0)), "stop_grace_seconds": 1800}
+
+    def fetch(self):
+        if getattr(self, "simulation_job", None) is not None and self.simulation_job.launchSlurm:
+            ArrayExtraPoints(self).collect()
+        super().fetch()
 
     def _scratch(self, rel):
         return Path(self.simulation_job.folderExecution) / rel
@@ -1210,12 +1638,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             max_time = float(next(l.split("=")[1] for l in (d / "input.cgyro").read_text().splitlines() if l.strip().startswith("MAX_TIME")))
         except (OSError, StopIteration, ValueError):
             return None
-        return max(max_time - (t - t0), 0.0) * cost
+        return seconds_remaining(cost, t, t0, max_time)
 
     def _estimate_to_accept(self, rel):
-        cost = self._cost_per_acs(rel)
         lb = getattr(self, "_load_balance", None) or {}
-        return None if cost is None else float(lb.get("min_time", 0.0)) * cost + 300.0
+        return seconds_to_accept(self._cost_per_acs(rel), lb.get("min_time", 0.0))
 
     def _idle_slot_sources(self, main_rels):
         '''
@@ -1224,7 +1651,9 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         Each is made to look like a radius that just finished in scratch: its stored `<file>_<rho>`
         outputs are symlinked into the scratch folder under their plain names (skipped when the
         folder is still there), which is all _launch_extra_point, _estimate_to_accept and the
-        builder read. Radii whose extra is already done locally are left out.
+        builder read. Radii that finished in scratch before this run (SIMtools._rescue_interrupted_runs
+        keeps them there and does not relaunch them) are sources as they are. Radii whose extra is
+        already done locally are left out.
         '''
         spec = SIMtools.CompletionSpec.from_run_specifications(self.run_specifications)
         extra_done = SIMtools.CompletionSpec.coerce(spec, alt_file="mitim_budget.tag")
@@ -1241,6 +1670,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                     continue
                 self._stage_finished_radius(local, rho, self._scratch(rel))
                 sources.append(rel)
+        for rel in getattr(self, "_finished_in_scratch", []):
+            rho = float(rel.rsplit("rho_", 1)[-1])
+            if rel in main or rel in sources or extra_done.finished(Path(self.FolderGACODE) / "extra_cgyro" / SIMtools.rho_folder(rho))[0]:
+                continue
+            sources.append(rel)
         return sources
 
     @staticmethod
@@ -1270,6 +1704,16 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             shutil.copy2(restart, dst / "bin.cgyro.restart")   # no out.cgyro.tag: warm start, t from 0
         body = self.run_specifications["code_call"](folder=rel_extra, p=str(self.simulation_job.folderExecution), n=self._extra_point_n, watchdog="stop")
         return rel_extra, body
+
+    def _restart_retrieval(self, only_minimal_files):
+        '''
+        A minimal retrieval (keep_files "none"/"pickle") skips the restart blob (~0.7 GB per radius on Perlmutter
+        grids) unless a PORTALS warm-start chain reads it back locally (keep_warm_start_file). Rescue, requeue
+        resumes and mitim_kill_cgyro only use the copy in the remote scratch.
+        '''
+        if only_minimal_files and not self.keep_warm_start_file:
+            restart = (self._warm_start_file, f"{self._warm_start_file}.flag")
+            self.output_files_simulation["optional"] = [f for f in self.output_files_simulation["optional"] if f not in restart]
 
     # Redefine to raise warning and allow selection of output files
     def _run_prepare(
@@ -1307,15 +1751,18 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             self.output_files_simulation["minimal"] = copy.deepcopy(self.output_files_simulation["minimal_nonlinear"])
         # Optional-retrieval set is the same for linear and nonlinear.
         self.output_files_simulation["optional"] = copy.deepcopy(self.output_files_simulation["optional_base"])
+        self._restart_retrieval(kwargs.get("only_minimal_files", False))
 
         # Pre-process BOX_SIZE / N_RADIAL from local equilibrium if requested.
         # Model yaml (input.cgyro.models.yaml) can supply per-model defaults;
         # user-supplied self._preprocess_options override on a per-key basis.
+        # fft_friendly / fft_tol only tune the preprocessing: alone they do not switch it on
+        # (a model without preprocess_options, e.g. "Linear", keeps its KY / BOX_SIZE / N_RADIAL).
         from mitim_tools.gacode_tools.utils import GACODEdefaults
         model_preprocess = GACODEdefaults.getCGYROpreprocessDefaults(kwargs.get("code_settings"))
         user_preprocess = getattr(self, "_preprocess_options", None) or {}
         merged_preprocess = {**model_preprocess, **user_preprocess}
-        if merged_preprocess:
+        if model_preprocess or set(user_preprocess) - {'fft_friendly', 'fft_tol'}:
             saved_preprocess = getattr(self, "_preprocess_options", None)
             self._preprocess_options = merged_preprocess
             try:
@@ -1356,10 +1803,12 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
     def _enforce_toroidals_per_proc(self, extraOptions, allocation, code_settings=None):
         """
-        CGYRO distributes N_TOROIDAL across MPI ranks (= resources_per_call GPUs).
+        CGYRO distributes N_TOROIDAL across MPI ranks (= resources_per_call GPUs on GPU
+        machines; resources_per_call / omp_threads_cpu on CPU-only machines).
         Each rank holds N_TOROIDAL/resources toroidal modes, so TOROIDALS_PER_PROC
         must be a multiple of that ratio. If the user's value is incompatible (or
-        missing), coerce it to the preferred valid value and warn.
+        missing), coerce it to the preferred valid value and warn. A rank count that no
+        TOROIDALS_PER_PROC can fit to the velocity/configuration grid raises instead (CPU and GPU).
         """
         from mitim_tools.misc_tools import SLURMtools
 
@@ -1373,10 +1822,24 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # all-to-all on-node; if the machine block cannot be read we fall back to a value
         # that makes the locality preference a no-op.
         try:
-            gpus_per_node = int(CONFIGread.machineSettings(code='cgyro').get("gpus_per_node") or 0)
+            machine = CONFIGread.machineSettings(code='cgyro')
+            gpus_per_node = int(machine.get("gpus_per_node") or 0)
+            cores_per_node = int(machine.get("cores_per_node") or 0)
+            on_cpu = gpus_per_node == 0
         except Exception:
-            gpus_per_node = 0
-        ranks_per_node = min(resources_per_call, gpus_per_node) if gpus_per_node > 0 else resources_per_call
+            gpus_per_node, cores_per_node, on_cpu = 0, 0, False
+        if on_cpu:
+            # CPU-only machine: resources_per_call is cores, split into ranks x omp_threads_cpu threads
+            nomp = max(1, int(allocation.get("omp_threads_cpu") or 1))
+            n_ranks = resources_per_call // nomp
+            if n_ranks <= 0:
+                return extraOptions   # SLURMtools.resolve rejects this layout with its own error
+            ranks_per_node = min(n_ranks, cores_per_node // nomp) if cores_per_node >= nomp else n_ranks
+            ranks_txt = f"resources_per_call={resources_per_call} / omp_threads_cpu={nomp} = {n_ranks} MPI ranks"
+        else:
+            n_ranks = resources_per_call
+            ranks_per_node = min(resources_per_call, gpus_per_node) if gpus_per_node > 0 else resources_per_call
+            ranks_txt = f"resources_per_call={resources_per_call}"
 
         resolved = _ResolvedControls(self, extraOptions, code_settings)
         n_tor_src = resolved.get('N_TOROIDAL', 1)
@@ -1398,14 +1861,16 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             )
             return extraOptions
 
+        self._warn_self_connected_modes(resolved, n_tor_list)
+
         # CGYRO aborts at startup unless the MPI rank count (= resources_per_call) is a
         # multiple of the number of toroidal groups, N_TOROIDAL/TOROIDALS_PER_PROC (which
         # also requires TOROIDALS_PER_PROC to divide N_TOROIDAL). The smallest valid
         # TOROIDALS_PER_PROC maximizes toroidal parallelism (leftover rank multiplicity
         # goes to the velocity/radial decomposition); TOROIDALS_PER_PROC=N_TOROIDAL (a
         # single group) is always valid, so a solution always exists.
-        def _is_valid(nt, tpp):
-            return tpp > 0 and nt % tpp == 0 and resources_per_call % (nt // tpp) == 0
+        def _is_valid(nt, tpp, ranks=n_ranks):
+            return tpp > 0 and nt % tpp == 0 and ranks % (nt // tpp) == 0
 
         # CGYRO's process grid is n_proc = n_proc_1 x n_toroidal_procs, where
         # n_toroidal_procs = N_TOROIDAL/TOROIDALS_PER_PROC and n_proc_1 splits nc and nv
@@ -1416,11 +1881,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # instead. This only ever bites on multi-node radial calls: when the call fits in one
         # node, validity already forces n_toroidal_procs <= resources_per_call, so every valid
         # value is on-node and this rule reduces to taking the smallest valid one.
-        def _grid_allows(nt, tpp, n_radial):
+        def _grid_allows(nt, tpp, n_radial, ranks=n_ranks):
             # n_proc_1 > 1 additionally requires n_proc_1 to divide nv and nc, or CGYRO aborts
             # (cgyro_mpi_grid.F90:240-248). N_SPECIES is not resolved at this point, so require
             # n_proc_1 | N_ENERGY*N_XI, which is sufficient for nv = N_ENERGY*N_XI*N_SPECIES.
-            n_proc_1 = resources_per_call // (nt // tpp)
+            n_proc_1 = ranks // (nt // tpp)
             if n_proc_1 == 1:
                 return True
             if None in (n_energy, n_xi, n_theta, n_radial):
@@ -1431,7 +1896,34 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             valid = [tpp for tpp in range(1, nt + 1) if _is_valid(nt, tpp)]
             on_node = [tpp for tpp in valid
                        if (nt // tpp) <= ranks_per_node and _grid_allows(nt, tpp, n_radial)]
-            return min(on_node) if on_node else min(valid)
+            if on_node:
+                return min(on_node)
+            return _off_node_fallback(nt, n_radial, valid)
+
+        def _off_node_fallback(nt, n_radial, valid):
+            # No on-node candidate. A candidate that passes the grid rule off-node is still fine;
+            # one that fails it makes CGYRO abort at startup, so refuse instead of guessing
+            grid_ok = [tpp for tpp in valid if _grid_allows(nt, tpp, n_radial)]
+            if grid_ok:
+                return min(grid_ok)
+            if None in (n_energy, n_xi, n_theta, n_radial):
+                print(
+                    f"\t- [preprocess] N_ENERGY/N_XI/N_THETA/N_RADIAL not all resolved; cannot check the CGYRO "
+                    f"grid rule for {ranks_txt}, keeping the smallest valid TOROIDALS_PER_PROC={min(valid)}",
+                    typeMsg="w",
+                )
+                return min(valid)
+            nv, nc = n_energy * n_xi, n_radial * n_theta
+            fits = [r for r in range(1, 2 * n_ranks + 1)
+                    if any(_is_valid(nt, t, ranks=r) and _grid_allows(nt, t, n_radial, ranks=r) for t in range(1, nt + 1))]
+            raise ValueError(
+                f"[MITIM] CGYRO cannot run N_TOROIDAL={nt} on {ranks_txt} (n_proc): for every TOROIDALS_PER_PROC, "
+                f"n_proc_1 = n_proc / (N_TOROIDAL/TOROIDALS_PER_PROC) fails to divide nv = N_ENERGY*N_XI = {n_energy}*{n_xi} = {nv} "
+                f"(N_SPECIES not counted) or nc = N_RADIAL*N_THETA = {n_radial}*{n_theta} = {nc}, and CGYRO aborts at startup. "
+                f"Rank counts that fit this grid up to {2 * n_ranks}: {fits} "
+                f"({'resources_per_call = ranks x omp_threads_cpu' if on_cpu else 'resources_per_call = GPUs = ranks'}). "
+                f"Set TOROIDALS_PER_PROC in extraOptions to bypass this check."
+            )
 
         def _as_int(v):
             try:
@@ -1459,7 +1951,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 if not _is_valid(nt, tpp):
                     print(
                         f"\t- [preprocess] User-supplied TOROIDALS_PER_PROC={tpp} is incompatible with "
-                        f"N_TOROIDAL={nt} and resources_per_call={resources_per_call} "
+                        f"N_TOROIDAL={nt} and {ranks_txt} "
                         f"(MPI ranks must be a multiple of N_TOROIDAL/TOROIDALS_PER_PROC); CGYRO may abort",
                         typeMsg="w",
                     )
@@ -1500,7 +1992,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             n_groups = [nt // tpp for nt, tpp in zip(n_tor_list, coerced)]
             print(
                 f"\t- [preprocess] TOROIDALS_PER_PROC {tpp_list} -> {coerced} "
-                f"(MPI ranks {resources_per_call}, {ranks_per_node} per node; toroidal groups "
+                f"(MPI ranks {n_ranks}, {ranks_per_node} per node; toroidal groups "
                 f"{n_groups}, which sets the size of the nonlinear all-to-all)",
                 typeMsg="i",
             )
@@ -1512,6 +2004,32 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             extraOptions['TOROIDALS_PER_PROC'] = coerced
 
         return extraOptions
+
+    def _warn_self_connected_modes(self, resolved, n_tor_list):
+        """
+        Nonlinear multi-mode runs: warn, per radius, when a simulated toroidal mode connects to itself after
+        one poloidal turn (CGYROutils.self_connected_modes) on the BOX_SIZE / N_RADIAL / N_TOROIDAL that will
+        be written (preprocessing result or values set by hand in extraOptions). Changes nothing.
+        """
+        box_list, _ = resolved.as_list('BOX_SIZE', cast=int)
+        nr_list, _ = resolved.as_list('N_RADIAL', cast=int)
+        if box_list is None or nr_list is None or int(resolved.get('NONLINEAR_FLAG', 0)) != 1:
+            return
+        n_rho = max(len(self.rhos), len(box_list), len(nr_list), len(n_tor_list))
+        grids = zip(*(resolved.broadcast(v, n_rho) for v in (box_list, nr_list, n_tor_list)))
+        for i, (box, nr, nt) in enumerate(grids):
+            closed = CGYROutils.self_connected_modes(box, nr, nt)
+            if not closed:
+                continue
+            where = f"rho={self.rhos[i]:.4f}" if len(self.rhos) == n_rho else f"radius #{i}"
+            print(
+                f"\t- [preprocess] {where}: BOX_SIZE={box} and N_RADIAL={nr} (N_RADIAL/BOX_SIZE={nr / box:g}) make toroidal "
+                f"mode(s) n={closed} of N_TOROIDAL={nt} (ky = n*KY) connect to themselves after one poloidal turn (CGYRO "
+                f"links radial index ir to ir +- n*BOX_SIZE modulo N_RADIAL at the ends of the field line), so the flux of "
+                f"those modes can be set by the grid and not by the plasma. No simulated mode closes on itself once "
+                f"N_RADIAL/BOX_SIZE >= N_TOROIDAL.",
+                typeMsg="w",
+            )
 
     def _enforce_print_step(self, extraOptions, code_settings=None):
         """
@@ -1645,9 +2163,10 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         Compute BOX_SIZE and N_RADIAL per rho from the caller-provided
         ky_min plus Q, S, RMIN from self.inputs_files[rho], and inject them
         (along with KY=ky_min) into a copy of extraOptions as per-rho arrays.
+        fft_friendly is off unless given (the PORTALS namelist template sets it to true).
         """
 
-        allowed_keys = {'ky_min', 'L_x', 'N_radial', 'min_box_size'}
+        allowed_keys = {'ky_min', 'L_x', 'N_radial', 'min_box_size', 'fft_friendly', 'fft_tol'}
         opts = dict(self._preprocess_options) if self._preprocess_options else {}
         unknown = set(opts) - allowed_keys
         if unknown:
@@ -1659,6 +2178,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         L_x           = opts.get('L_x', 90.0)
         N_radial      = opts.get('N_radial', 256)
         min_box_size  = opts.get('min_box_size', 100)
+        fft_friendly  = opts.get('fft_friendly', False)
+        fft_tol       = opts.get('fft_tol', 0.06)
 
         extraOptions = copy.deepcopy(extraOptions)
 
@@ -1694,6 +2215,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 L_x=L_x,
                 N_radial=N_radial,
                 min_box_size=min_box_size,
+                fft_friendly=fft_friendly,
+                fft_tol=fft_tol,
             )
 
             print(
@@ -1718,6 +2241,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         tmin_is_rel = True,
         minimal = False,
         last_tmin_for_linear = True,
+        input_gacode = None,  # State to take the physical units from when CGYRO did not write them (PROFILE_MODEL=1)
         **kwargs
     ):
 
@@ -1726,6 +2250,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             tmin_is_rel = tmin_is_rel,
             minimal = minimal,
             last_tmin_for_linear = last_tmin_for_linear,
+            input_gacode = input_gacode,
+            state_for_units = input_gacode,
             **kwargs)
 
     def read_linear_scan(

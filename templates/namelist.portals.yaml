@@ -73,6 +73,11 @@ solution:
   # If False, remove full model folder after evaluation, to avoid carrying large folders (e.g. in MAESTRO runs)
   keep_full_model_folder: true
 
+  # If true, every time new evaluations are in (initial training, then each iteration, before the surrogates are fitted)
+  # the run refreshes Outputs/figures_saved/ with the PNGs of `mitim_plot_portals <folder> --full --save`, to follow
+  # a long run (e.g. PORTALS-CGYRO) without loading it. Costs one full plotting pass per iteration; a failure only warns
+  plot_after_each_evaluation: false
+
   # If True, fit surrogate model to GZ/nZ instead of GZ, valid on the trace limit
   impurity_trick: true
 
@@ -341,6 +346,22 @@ transport:
         code_settings: "Nonlinear_reduced1"
         extraOptions: {}
 
+        # Per-key overrides of the model's preprocess_options (templates/input.cgyro.models.yaml:
+        # ky_min, L_x, N_radial, min_box_size, fft_friendly, fft_tol), from which MITIM sets KY, BOX_SIZE
+        # and N_RADIAL per radius. Keys not given here keep the model's values.
+        #   fft_friendly : move BOX_SIZE / N_RADIAL to the nearest grid with a fast radial FFT length
+        #                  (3*N_RADIAL/2 without prime factors above 7), changing box length and kx_max by
+        #                  at most fft_tol each. true in this template. When the key is ABSENT (e.g. a
+        #                  namelist written before it existed) the selector is OFF, the code default, which
+        #                  is the plain recipe; false gives the same grid as an absent key.
+        #   fft_tol      : largest relative change allowed in box length and in kx_max (0.06 when absent).
+        # These two keys only tune the BOX_SIZE / N_RADIAL preprocessing and never switch it on by themselves:
+        # a model without preprocess_options (e.g. "Linear") keeps its KY / BOX_SIZE / N_RADIAL.
+        # A changed grid needs a cold start: restart files carry the grid.
+        preprocess_options:
+          fft_friendly: true
+          fft_tol: 0.06
+
         # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
 
@@ -494,17 +515,10 @@ transport:
         # flaps. Defaults below match the historical 5 s / 3-attempt cap.
         ssh_retry_wait_seconds: 5
         ssh_retry_attempts: 3
-        # Continue interrupted CGYRO runs in place. When an evaluation is re-run (driver
-        # killed, allocation expired, relaunch with cold_start=False) and its scratch
-        # folder on the CGYRO machine still holds, for a radius, bin.cgyro.restart +
-        # out.cgyro.tag and a byte-identical input.cgyro, that radius is NOT wiped and
-        # re-staged: `cgyro -e` runs again in the same folder and CGYRO itself continues
-        # the time integration from the last restart write for the REMAINING time
-        # (MAX_TIME minus the restart time in out.cgyro.tag; true restart, restart_flag=1;
-        # traces stay continuous). Radii without a
-        # usable orphan, or whose input.cgyro changed, follow the normal path
-        # (restart_from_cases warm start or cold start). Requires the scratch folder
-        # to survive between launches (same machine; mind scratch purge policies).
+        # When an evaluation is re-run (driver killed, allocation expired), radii left in the
+        # scratch folder with the same input.cgyro are continued from their last restart
+        # instead of starting over; radii that already finished there are just collected.
+        # Needs the scratch folder to survive between launches.
         rescue_interrupted: True
 
         # Auto stall-detect-and-resubmit. The custom checker classifies each
@@ -531,10 +545,19 @@ transport:
 
         # Slurm allocation (optional; each field falls back to per-code defaults +
         # machine config if omitted).
-        #   resources_per_call : GPUs per radial call on the CGYRO GPU path. Drives
-        #                        both the cgyro MPI layout (1 rank + 1 NUMA per GPU,
-        #                        mpinuma=1, nomp = cores_per_mpi hint) and the sbatch
-        #                        --gpus-per-node / --ntasks-per-node counts
+        #   resources_per_call : GPU machines: GPUs per radial call. Drives both the
+        #                        cgyro MPI layout (1 rank + 1 NUMA per GPU, mpinuma=1,
+        #                        nomp = cores_per_mpi hint) and the sbatch
+        #                        --gpus-per-node / --ntasks-per-node counts.
+        #                        CPU-only machines (gpus_per_node 0): CPU cores per
+        #                        radial call, split into resources_per_call/omp_threads_cpu
+        #                        MPI ranks (cgyro -n, sbatch ntasks) x omp_threads_cpu
+        #                        threads (cgyro -nomp, sbatch --cpus-per-task). Above one
+        #                        node it must be a whole number of nodes (e.g. 128 = 2
+        #                        engaging nodes of 64 cores, 2048 = 16 Perlmutter CPU nodes).
+        #   omp_threads_cpu    : (CPU-only machines) OMP threads per MPI rank; must divide
+        #                        resources_per_call (and cores_per_node for multi-node calls).
+        #                        Default 1 (pure MPI). Ignored on GPU machines.
         #   minutes            : slurm --time in minutes of every submitted element. REQUIRED
         #                        when run_type is "submit" (MITIM refuses to submit without it;
         #                        it used to fall back to 5 minutes and time every radius out);
@@ -543,17 +566,18 @@ transport:
         #                        enclosing job's wall clock applies and this is ignored.
         #   mem                : per-node memory string passed to sbatch --mem
         #                        (e.g. "500GB" ≈ whole node on engaging GPU nodes).
-        #   submission_type    : "slurm_array" (default on GPU machines: one array
-        #                        element per rho, whole node per element on
-        #                        OverSubscribe=NO partitions) or "slurm_standard"
+        #   submission_type    : "slurm_array" (default for CGYRO on any SLURM machine,
+        #                        GPU or CPU: one array element per rho, whole node per
+        #                        element on OverSubscribe=NO partitions) or "slurm_standard"
         #                        (single allocation, parallel '&' body).
         #   max_concurrent_calls : (slurm_array only) at most N radii running at once
         #                        (sbatch --array=...%N); the rest queue behind them.
         #   exclusive          : force sbatch --exclusive. Omit/null to defer to
         #                        the machine config's slurm.exclusive.
 
-        # Radii finish at different times inside one allocation (bash mode: the driver waits for
-        # the slowest one while the other nodes idle). What to do with that gap:
+        # Radii finish at different times (bash mode: the driver waits for the slowest one while
+        # the other nodes of the allocation idle; slurm_array: a finished element gives its node
+        # back to the partition). What to do with that gap:
         #   strategy: null           -> wait for the slowest radius
         #             "wall_budget"  -> a watchdog around every radial call stops CGYRO once BOTH
         #                               minutes_per_call has elapsed AND the run reached min_time
@@ -564,9 +588,10 @@ transport:
         #                               flux window is whatever averaging.method makes of the
         #                               shorter trace. Works in every submission mode; in slurm
         #                               modes keep allocation.minutes above minutes_per_call.
-        #             "extra_points" -> (bash mode) a radius that finishes while the slowest one
-        #                               still has enough time left runs ONE extra case on its
-        #                               idle node: same radius, the gradient of the channel with
+        #             "extra_points" -> a radius that finishes while the slowest one still has
+        #                               enough time left (its remaining a/cs at its own s per a/cs
+        #                               against min_time at the finished radius's) runs ONE extra
+        #                               case: same radius, the gradient of the channel with
         #                               the largest residual scaled by (1 -/+ perturbation)
         #                               toward reducing it, warm-started from the finished run.
         #                               It is stopped (after a restart write) when the last main
@@ -575,6 +600,16 @@ transport:
         #                               per-radius surrogates read as extra training points
         #                               (surrogate_options.extrapointsFile); otherwise discarded.
         #                               Results live under transport_simulation_folder/extra_cgyro/.
+        #                               Bash mode: the extra runs on the idle node of the
+        #                               allocation. slurm_array with run_type "submit": the driver's
+        #                               poll submits it as its own job with the sbatch settings of
+        #                               one element (same partition and allocation.minutes), once
+        #                               every main radius has started and within
+        #                               max_concurrent_calls; it is tracked in cgyro_submission.json,
+        #                               so a re-attaching driver (check_existing_runs) keeps it,
+        #                               and cancelled 30 min after the stop request if still running.
+        #                               Not available with run_type "normal" on a slurm array (the
+        #                               driver does not poll) nor in a standard slurm job.
         #   min_time is the shared physics floor: the shortest saturated run you accept.
         load_balance:
           strategy: null
@@ -582,6 +617,36 @@ transport:
           min_time: 300
           extra_points:
             perturbation: 0.15
+
+        # Stop a radius that is burning wall time far from its target, as a user watching the run
+        # would: its flux already says which way the next step goes, and its magnitude would not be
+        # trusted anyway. The watchdog around every radial call checks, every 2 minutes, the last
+        # `window` a/cs of the run and stops CGYRO at once when ALL of these hold:
+        #   - cost >= seconds_per_acs  [wall seconds per a/cs: TOTAL of out.cgyro.timing over the
+        #     output spacing of out.cgyro.time]. The last quarter of the window must be that slow
+        #     too, so a radius whose cost is coming back down is left alone.
+        #   - Qe or Qi (turbulent, GB units, all fields) >= flux_ratio x its turbulent target (total
+        #     target minus neoclassical, as in restart_from_cases "best"). Only ABOVE the target: a
+        #     flux far below it at early times may just not have saturated. Particle flux is not
+        #     used (its target is near zero).
+        #   - t >= min_time [a/cs]; waived when the wall time still needed to reach the end of the
+        #     run at the current cost is >= waive_min_time_hours.
+        #   - t >= floor_time [a/cs], which is never waived (keeps the linear overshoot out).
+        # The radius then counts as complete, like a load_balance stop (mitim_budget.tag, here
+        # starting with GUARD; harvest guard_stop = 1), and its fluxes are whatever read.averaging
+        # makes of the shorter trace: expect a fallback window and a poor uncertainty. The stop
+        # does not wait for a restart write, so bin.cgyro.restart is up to RESTART_STEP a/cs older
+        # than the end of the trace. Independent of load_balance.min_time. Works in every
+        # submission mode; needs python3 on the compute node (without it nothing is stopped) and
+        # is not available in the batched multi-plasma dispatch.
+        cost_guard:
+          enabled: false
+          seconds_per_acs: 100
+          flux_ratio: 5
+          min_time: 250
+          waive_min_time_hours: 12
+          floor_time: 50
+          window: 20
 
       read:
         # tmin: left edge of the signal-analysis window.
@@ -640,7 +705,28 @@ transport:
       #     none: all runs will only keep minimal files
       #     all: retrieve all files from all runs
       #     pickle: retrieve only the gk_object as pickle file (removing all other files to save space)
+      # bin.cgyro.restart_<rho:.4f> (up to ~0.7 GB per radius) comes back under every keep_files when
+      # restart_from_cases is set; without it, only keep_files "all" brings it back (so a run meant to serve
+      # later as a restart_from_folder source needs "all").
       keep_files: "pickle" 
+
+      # Wipe the CGYRO restart files once the run has converged, keeping only those of the
+      # result evaluation (the one PORTALS reports and writes to Outputs/input.gacode_final_*,
+      # which may not be the last one run). Default false.
+      #   Deleted: bin.cgyro.restart* (including any .old) found anywhere under
+      #     Execution/Evaluation.*/transport_simulation_folder/ and
+      #     Initialization/initialization_simple_relax/portals_sr_ev_*/transport_simulation_folder/
+      #     (base_cgyro, extra_cgyro, multi-fidelity and per-plasma subfolders).
+      #   Kept: the result evaluation's restarts (and the simple-relax files its symlinks point to),
+      #     and everything else: outputs, traces, inputs, fluxes_*.json, restart_sources.json.
+      #     Harvest is unaffected (records never hold restarts).
+      #   When: only when the run stops because a convergence criterion was met ("Optimization
+      #     considered converged": Ricci, residual or DV variation). Never when it stops on
+      #     maximum_iterations without converging or crashes, so such a run can still be extended
+      #     with warm starts.
+      #   IRREVERSIBLE: the pruned evaluations can no longer seed restart_from_cases/restart_from_folder.
+      # For a finished run, `mitim_prune_portals <folder>` applies the same pruning (dry-run by default).
+      prune_restarts_at_convergence: false
 
     # *********************************************************************************************************
     # GX
@@ -822,7 +908,8 @@ optimization_options:
     # Criterion 1: Maximum iterations
     maximum_iterations: 50
 
-    # Stopping function for the rest of criteria
+    # Stopping function for the rest of criteria. Any criterion stops the run, but only the Ricci metric
+    # (criterion 4) marks it CONVERGED (portals_converged.txt, maestro.max_unconverged_portals_beats, prune)
     stopping_criteria: "import::mitim_modules.portals.PORTALStools.stopping_criteria_portals"
     
     stopping_criteria_parameters:

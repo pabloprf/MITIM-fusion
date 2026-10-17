@@ -11,8 +11,9 @@ Key teaching points:
        local processes) on machines without SLURM; on SLURM machines,
        'slurm_standard' (a single allocation running all radii) when
        everything fits in one node, and 'slurm_array' (one sbatch array
-       element per radius) otherwise. On GPU machines, CGYRO always uses an
-       array so each radius gets its own GPU allocation.
+       element per radius) otherwise. CGYRO always uses an array on SLURM
+       machines, so each radius gets its own GPUs (GPU machines) or its own
+       whole nodes (CPU-only machines, see cgyro_08_run_cpu.py).
     2. The heuristic can be overridden per run through the allocation dict:
        allocation={'submission_type': 'slurm_array' | 'slurm_standard' |
        'bash'}. Here we force an array explicitly.

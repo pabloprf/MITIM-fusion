@@ -29,7 +29,7 @@ Key teaching points:
 
 Usage:
     python cgyro_07_flux_averaging_methods.py [folder] [--suffix _0.55]
-    Without arguments it reads the output of cgyro_02 (tests/scratch/capability_cgyro_nonlinear).
+    Without arguments it reads the output of cgyro_02 (tests/scratch/capability_cgyro_nonlinear/nonlinear_silly, rho=0.5).
 """
 
 import argparse
@@ -40,8 +40,8 @@ from mitim_tools.misc_tools.GUItools import FigureNotebook
 from mitim_tools.simulation_tools.utils import GKaveraging
 
 parser = argparse.ArgumentParser()
-parser.add_argument("folder", nargs="?", default=str(__mitimroot__ / "tests" / "scratch" / "capability_cgyro_nonlinear" / "cgyro_run"))
-parser.add_argument("--suffix", default="", help="per-rho suffix of the output files when several radii share a folder (e.g. _0.55)")
+parser.add_argument("folder", nargs="?", default=str(__mitimroot__ / "tests" / "scratch" / "capability_cgyro_nonlinear" / "nonlinear_silly"))
+parser.add_argument("--suffix", default="_0.5000", help="per-rho suffix of the output files (MITIM runs name them <file>_<rho>; pass '' for a plain CGYRO folder)")
 parser.add_argument("--noshow", action="store_true")
 args = parser.parse_args()
 

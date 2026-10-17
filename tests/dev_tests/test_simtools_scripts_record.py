@@ -4,7 +4,8 @@ The refactored pieces of SIMtools must be drop-in replacements for what HEAD did
 Checks:
   1. The three JobScript builders produce byte-identical command strings to the inline
      builders of commit 33212239, driven through `_run(run_type='prep')` on both versions
-     with the same fake mitim_job and the same fake SLURMtools.resolve.
+     with the same fake mitim_job and the same fake SLURMtools.resolve. The array script
+     differs by the per-element rename only, which has its own check.
   2. SubmissionRecord round-trips, and is byte-compatible with the old
      `_write_submission_metadata` / `load_submission_state` pair in both directions.
   3. RunType.parse('run') is NORMAL, and the run-type/submission-type parsers reject junk.
@@ -157,6 +158,10 @@ def test_script_byte_identity(old):
         for submission_type, hosts in cases:
             new_cmd, new_kwargs = _command_for(SIMtools, submission_type, hosts, tmp)
             old_cmd, old_kwargs = _command_for(old, submission_type, hosts, tmp)
+            if submission_type == "slurm_array":
+                # The per-element rename is the one line added on purpose since HEAD
+                assert new_cmd.count(SIMtools.ArraySlurmScript._RENAME_ELEMENT) == 1, new_cmd
+                new_cmd = new_cmd.replace(SIMtools.ArraySlurmScript._RENAME_ELEMENT, "")
             assert new_cmd == old_cmd, (
                 f"{submission_type} (hosts={bool(hosts)}) script differs:\n--- new ---\n{new_cmd}\n--- old ---\n{old_cmd}")
             assert sorted(new_kwargs["output_folders"]) == sorted(old_kwargs["output_folders"])
@@ -175,6 +180,23 @@ def test_array_rescue_pieces():
                     SIMtools.StandardSlurmScript(folders, _code_call, 4, EXEC_FOLDER)):
         assert builder.per_folder_commands == {} and builder.array_index_by_folder == {}
     print("PASS: every builder defines the three attributes; only the array one fills the rescue maps")
+
+
+def test_array_element_rename():
+    """Each array element renames itself to <job-name>_<folder name>, once, and a rescue body never does."""
+    folders = ["base_cgyro/rho_0.3486", "base_cgyro/rho_0.6712"]
+    array = SIMtools.ArraySlurmScript(folders, _code_call, 4, EXEC_FOLDER)
+    assert all("scontrol update" not in body for body in array.per_folder_commands.values())
+
+    # Run the script head with a fake scontrol: first start, then a requeue that already carries the suffix
+    head = array.command.split(SIMtools.ArraySlurmScript._RENAME_ELEMENT)[0] + SIMtools.ArraySlurmScript._RENAME_ELEMENT
+    for name_at_start in ("cgyro_ev0", "cgyro_ev0_rho_0.6712"):
+        out = subprocess.run(
+            ["bash", "-c", 'scontrol() { echo "$@"; }\n' + head],
+            env={"SLURM_ARRAY_TASK_ID": "1", "SLURM_ARRAY_JOB_ID": "100", "SLURM_JOB_NAME": name_at_start, "PATH": "/usr/bin:/bin"},
+            capture_output=True, text=True, check=True).stdout.strip()
+        assert out == "update JobId=100_1 JobName=cgyro_ev0_rho_0.6712", out
+    print("PASS: array element 1 renames itself to cgyro_ev0_rho_0.6712, also after a requeue")
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +339,7 @@ if __name__ == "__main__":
         old_module = _load_old_simtools(Path(workdir))
         test_script_byte_identity(old_module)
         test_array_rescue_pieces()
+        test_array_element_rename()
         test_submission_record_compat(old_module)
         test_submission_record_schema_guard()
         test_enums()

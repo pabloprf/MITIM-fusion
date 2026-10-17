@@ -6,7 +6,7 @@ import os
 import copy
 import numpy as np
 import dill as pickle_dill
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum, IntEnum
 from pathlib import Path
 from mitim_tools import __version__ as mitim_version
@@ -70,6 +70,9 @@ class JobStatus(IntEnum):
     PENDING = 0
     RUNNING = 1
     GONE = 2
+
+# Pause before the one re-poll that confirms a first NOT FOUND (mitim_simulation.check)
+GONE_CONFIRMATION_SECONDS = 60
 
 # ----------------------------------------------------------------------------------------------------
 # Per-radius naming convention (the ONE place it lives; writers and readers must not drift)
@@ -255,6 +258,28 @@ def slurm_allocation_hostnames():
         return []
 
 
+def jobids_in_queue(job, job_ids):
+    '''
+    ({jobid: state} of the `job_ids` squeue still lists, the parsed answer), asked on the job's live
+    connection. The dict is None when slurm gave no verdict (a slurmctld timeout is not "they left").
+    '''
+    job_ids = [str(j) for j in job_ids]
+    cmd = f'squeue -h -j {",".join(job_ids)} -o "%.15i %.10T"; echo "{FARMINGtools.SqueueAnswer.TRAILER}$?"'
+    out, err = job.execute(cmd, printYN=False)
+    out, err = (x.decode(errors='replace') if isinstance(x, bytes) else (x or "") for x in (out, err))
+
+    answer = FARMINGtools.SqueueAnswer.parse(out, error=err)
+    if not answer.answered:
+        return None, answer
+
+    states = {}
+    for line in answer.table.strip().splitlines():
+        toks = line.split()
+        if toks and toks[0] in job_ids:
+            states.setdefault(toks[0], toks[1] if len(toks) > 1 else '?')
+    return states, answer
+
+
 class JobScript:
     '''
     The shell text that launches every call of one submission, plus the per-folder pieces
@@ -335,6 +360,15 @@ class ArraySlurmScript(JobScript):
 
     _INDEXED_FOLDER = "${FOLDERS[$SLURM_ARRAY_TASK_ID]}"
 
+    # An array has ONE --job-name, so each element appends its own folder name when it starts
+    # (cgyro_ev0 -> cgyro_ev0_rho_0.5500); a pending element still shows the array name. The
+    # suffix strip keeps a requeued element from stacking it, and a refused rename never stops the run.
+    # JobId is <array>_<index> on purpose: one element's $SLURM_JOB_ID can equal the array id, which
+    # scontrol reads as the whole array.
+    _RENAME_ELEMENT = ('MITIM_ELEMENT=$(basename "${FOLDERS[$SLURM_ARRAY_TASK_ID]}")\n'
+                       'scontrol update JobId=${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID} '
+                       'JobName="${SLURM_JOB_NAME%_$MITIM_ELEMENT}_$MITIM_ELEMENT" || true\n\n')
+
     def _redirect(self, folder):
         return (f'1> {self.exec_folder}/{folder}/slurm_output.dat '
                 f'2> {self.exec_folder}/{folder}/slurm_error.dat\n')
@@ -346,6 +380,7 @@ class ArraySlurmScript(JobScript):
         folders_list += ")"
 
         command = folders_list + "\n\n"
+        command += self._RENAME_ELEMENT
         command += self._call(self._INDEXED_FOLDER, additional_command=self._redirect(self._INDEXED_FOLDER))
 
         # Literal-folder bodies and the folder -> element map let the stall-rescue path
@@ -377,6 +412,7 @@ class SubmissionRecord:
     slurm_output: str = None
     kwargs_organize: dict = field(default_factory=dict)
     resubmit_ledger: dict = field(default_factory=dict)
+    extra_ledger: dict = field(default_factory=dict)
     restart_sources: dict = None
     results_per_plasma: dict = None
     job: dict = field(default_factory=dict)
@@ -417,7 +453,11 @@ class SubmissionRecord:
                 # survives a PORTALS restart between submit and the first stall decision
                 "array_index_by_folder": dict(sim.kwargs_organize.get("array_index_by_folder", {})),
                 "per_folder_commands": dict(sim.kwargs_organize.get("per_folder_commands", {})),
+                "extra_points": sim.kwargs_organize.get("extra_points"),
             },
+            # Extra cases submitted for finished radii (load_balance 'extra_points' in array mode):
+            # a re-attach must keep polling, stopping and collecting them
+            extra_ledger=dict(getattr(sim, "_extra_ledger", None) or {}),
             # Per-folder stall-rescue ledger (empty until the first resubmit); it spans poll
             # cycles within one PORTALS iteration, so a re-attach must pick up child jobids
             # spawned before the prior process was killed
@@ -453,6 +493,7 @@ class SubmissionRecord:
             "slurm_output": self.slurm_output,
             "kwargs_organize": self.kwargs_organize,
             "resubmit_ledger": self.resubmit_ledger,
+            "extra_ledger": self.extra_ledger,
             "restart_sources": self.restart_sources,
             "results_per_plasma": self.results_per_plasma,
             "job": self.job,
@@ -489,6 +530,7 @@ class SubmissionRecord:
             slurm_output=data["slurm_output"],
             kwargs_organize=data["kwargs_organize"],
             resubmit_ledger=dict(data.get("resubmit_ledger", {})),
+            extra_ledger=dict(data.get("extra_ledger") or {}),
             restart_sources=data.get("restart_sources"),
             results_per_plasma=data.get("results_per_plasma"),
             job=data["job"],
@@ -531,10 +573,12 @@ class SubmissionRecord:
             "optional_files_to_retrieve": list(self.kwargs_organize.get("optional_files_to_retrieve", [])),
             "array_index_by_folder": dict(self.kwargs_organize.get("array_index_by_folder", {})),
             "per_folder_commands": dict(self.kwargs_organize.get("per_folder_commands", {})),
+            "extra_points": self.kwargs_organize.get("extra_points"),
         }
 
         # The base_subfolder is needed to rewrite this record after a future resubmit
         sim._resubmit_ledger = dict(self.resubmit_ledger)
+        sim._extra_ledger = dict(self.extra_ledger)
         sim._base_subfolder = self.base_subfolder
 
         # restart_sources.json is re-derived from the embedded copy, which reflects what was
@@ -620,6 +664,13 @@ class mitim_simulation:
         # harvest_recorder (mitim_tools.harvest_tools.HARVESTtools) attached by PORTALS when the
         # user opted into harvesting; None -> read() records nothing
         self.harvest = None
+
+    def _rhos_to_read(self):
+        '''
+        Radii that read() and the plots loop over. An object built without radii and never
+        prepared (e.g. `CGYRO()` only used to read a folder) reads that folder as one unlabeled radius.
+        '''
+        return self.rhos if len(self.rhos) > 0 else np.array([None])
 
     def _harvest(self, label, folder=None):
         if self.harvest is not None:
@@ -948,6 +999,11 @@ class mitim_simulation:
         the SCHEDULERtools hook dict here; None keeps the plain bash loop.'''
         return None
 
+    def _extra_point_array_plan(self, script, settings):
+        '''Array-mode counterpart of _extra_point_hooks: what the poll needs to submit, as its own job,
+        the extra case of a radius whose element finished early (kwargs_organize["extra_points"]). None: no extras.'''
+        return None
+
     def _rescue_interrupted_runs(self, kwargs_run, folders, folders_red, input_file):
         '''
         Continue, in place, radial runs that a previous execution left unfinished in
@@ -963,7 +1019,9 @@ class mitim_simulation:
              "after_trim": optional callable (text, remaining) -> (text, log_note) applied
                 to the staged input after the time_key rewrite, for keys whose value must
                 follow the trimmed run length (CGYRO: RESTART_STEP),
-             "report_files": files whose sizes are logged for forensics (optional)}
+             "report_files": files whose sizes are logged for forensics (optional),
+             "keep_staged": staged files a continued radius still receives (optional; CGYRO: the
+                cost-guard files, which a launch made before the guard existed left no copy of)}
         A rho sub-folder is rescued only if the required files are there and its
         input file is byte-identical (md5) to the one just generated, so a changed
         namelist, preset or gradient never continues a stale run. Rescued folders
@@ -978,35 +1036,54 @@ class mitim_simulation:
         printed time: the restart blob predates the last output by up to one restart
         interval, and counting from the wrong point over- or under-shoots the target.
         Everything else is staged and run as usual.
+
+        A sub-folder whose run already ENDED there (the code's completion marker, e.g. CGYRO's
+        EXIT line or mitim_budget.tag) passes the same identity check but is not run again: in
+        bash mode results come back only when the whole evaluation ends, so a driver killed
+        after some radii finished leaves them finished in scratch only. Such folders are kept
+        across the wipe like the rescued ones and returned, so `_run` launches the others and
+        retrieves them all.
+        Returns the scratch-relative folders that ended.
         '''
         spec = self.run_specifications.get("rescue_spec")
         self.simulation_job.preserve_subfolders = []
+        self._finished_in_scratch = []
         if not (kwargs_run.get("rescue_interrupted", False) and spec):
-            return
+            return []
         if getattr(self.simulation_job, "run_in_place", False):
             print("\t- rescue_interrupted requested but the run is in-place (no scratch folder): nothing to rescue", typeMsg="i")
-            return
+            return []
 
         time_key = spec.get("time_key")
         ignore_prefixes = list(spec.get("checksum_ignore") or ([time_key] if time_key else []))
+        completion = CompletionSpec.from_run_specifications(self.run_specifications)
         found = self.simulation_job.probe_interrupted_runs(
             folders_red, spec.get("required", []), input_file,
             progress_file=spec.get("progress_file"), progress_line=spec.get("progress_line"),
             checksum_ignore_prefix=ignore_prefixes, report_files=spec.get("report_files"),
+            completion=None if completion is None else (completion.marker_file, completion.marker_text, completion.alt_file),
         )
         if not found:
-            return
+            return []
 
         import hashlib, re
-        rescued = []
+        rescued, finished = [], []
         for folder_sim_this, rel in zip(folders, folders_red):
             if rel not in found:
                 continue
-            md5_remote, progress, report = found[rel]
+            md5_remote, progress, report, ended = found[rel]
             text = (folder_sim_this / input_file).read_text()
             kept = "".join(l for l in text.splitlines(keepends=True) if not any(l.startswith(p) for p in ignore_prefixes))
             if hashlib.md5(kept.encode()).hexdigest() != md5_remote:
-                print(f"\t- [rescue] {rel}: interrupted run found but its {input_file} differs from the new one; discarding it", typeMsg="w")
+                print(f"\t- [rescue] {rel}: {'finished' if ended else 'interrupted'} run found but its {input_file} differs from the new one; discarding it", typeMsg="w")
+                continue
+            if ended:
+                # Staged restarts would overwrite the finished run's own files on extraction
+                for f in folder_sim_this.iterdir():
+                    if f.name != input_file:
+                        f.unlink()
+                finished.append(rel)
+                print(f"\t- [rescue] {rel}: run already finished in scratch (t={progress}); not relaunched, collected with the others [{report}]", typeMsg="i")
                 continue
             # Without a resume time the trim below cannot happen and the radius would run
             # the full time_key again on top of the restart point, so it is not rescued
@@ -1015,10 +1092,11 @@ class mitim_simulation:
             except (TypeError, ValueError):
                 print(f"\t- [rescue] {rel}: interrupted run found but no resume time could be read ({progress!r}); discarding it", typeMsg="w")
                 continue
-            # Keep only the input file locally: staged restarts would overwrite the
-            # orphan's own (more advanced) restart on extraction
+            # Keep only the input file locally (plus what the code declares safe to send again):
+            # staged restarts would overwrite the orphan's own (more advanced) restart on extraction
+            keep_staged = {input_file, *spec.get("keep_staged", [])}
             for f in folder_sim_this.iterdir():
-                if f.name != input_file:
+                if f.name not in keep_staged:
                     f.unlink()
             # Trim the run length to what is left (the code counts steps from the restart point)
             remaining_msg = ""
@@ -1036,7 +1114,9 @@ class mitim_simulation:
             rescued.append(rel)
             print(f"\t- [rescue] {rel}: continuing interrupted run in place (resuming from t={progress}{remaining_msg}) [{report}]", typeMsg="i")
 
-        self.simulation_job.preserve_subfolders = rescued
+        self.simulation_job.preserve_subfolders = rescued + finished
+        self._finished_in_scratch = finished
+        return finished
 
     def _run(
         self,
@@ -1061,13 +1141,24 @@ class mitim_simulation:
         print(f"\t- {settings.code.upper()} needs to run because not all results files found",typeMsg="i")
 
         folders, folders_red = self._stage_inputs(plan, settings)
-        self._rescue_interrupted_runs(kwargs_run, folders, folders_red, settings.input_file)
-        resolved = self._resolve_allocation(folders_red, settings)
-        script = self._build_script(folders_red, resolved, settings)
+        # Radii that already finished in scratch are retrieved with the rest but not launched
+        finished = self._rescue_interrupted_runs(kwargs_run, folders, folders_red, settings.input_file)
+        to_launch = [rel for rel in folders_red if rel not in finished]
+        retrieve_now = not to_launch and settings.run_type is RunType.SUBMIT
+        if not to_launch:
+            # Nothing left to run: an empty bash script, then the usual retrieval. A slurm job
+            # with no calls would not be accepted, and a detached run would have nothing to poll
+            print(f"\t- Every {settings.code.upper()} radius already finished in scratch; retrieving them without launching anything", typeMsg="i")
+            settings = replace(settings, launch_slurm=False, run_type=RunType.NORMAL if retrieve_now else settings.run_type)
+        resolved = self._resolve_allocation(to_launch, settings)
+        script = self._build_script(to_launch, resolved, settings)
         self._prepare_job(folders, folders_red, script, resolved, settings)
 
         if settings.run_type.blocking:
             self._dispatch_blocking(code_executor, folders, settings)
+            if retrieve_now:
+                # Results are local already: check()/fetch() see "not run" and return
+                self.simulation_job = None
         elif settings.run_type is RunType.SUBMIT:
             self._dispatch_detached(code_executor, script, settings)
 
@@ -1210,7 +1301,8 @@ class mitim_simulation:
         return SLURMtools.resolve(
             code=settings.code,
             allocation={"resources_per_call": settings.resources_per_call, "minutes": settings.minutes,
-                        "mem": settings.allocation.get("mem"), "max_concurrent_calls": settings.allocation.get("max_concurrent_calls")},
+                        "mem": settings.allocation.get("mem"), "max_concurrent_calls": settings.allocation.get("max_concurrent_calls"),
+                        "omp_threads_cpu": settings.allocation.get("omp_threads_cpu")},
             n_rhos=n_calls, n_subfolders=1,
             machine_settings=self._machine_limits(settings),
             launch_slurm=settings.launch_slurm,
@@ -1236,17 +1328,16 @@ class mitim_simulation:
             self._attach_scheduler(script, settings)
             return script
 
-        if (getattr(self, "_load_balance", None) or {}).get("strategy") == "extra_points":
-            print("\t- load_balance 'extra_points' needs the driver inside the allocation (bash mode); "
-                  + ("array elements release their nodes on their own" if submission_type is SubmissionType.SLURM_ARRAY
-                     else "in slurm mode radii just wait for the slowest one"), typeMsg="w")
-
         if submission_type is SubmissionType.SLURM_STANDARD:
+            if (getattr(self, "_load_balance", None) or {}).get("strategy") == "extra_points":
+                print("\t- load_balance 'extra_points' needs bash mode or a slurm array; in a standard slurm job radii just wait for the slowest one", typeMsg="w")
             print(f"\t- {code} will be executed in SLURM as standard job (cpus: {total_cores_required})",typeMsg="i")
             return StandardSlurmScript(folders_red, settings.code_call, settings.resources_per_call, exec_folder)
 
         print(f"\t- {code} will be executed in SLURM as job array due to its size (cpus: {total_cores_required})",typeMsg="i")
-        return ArraySlurmScript(folders_red, settings.code_call, settings.resources_per_call, exec_folder)
+        script = ArraySlurmScript(folders_red, settings.code_call, settings.resources_per_call, exec_folder)
+        script.extra_points = self._extra_point_array_plan(script, settings)
+        return script
 
     def _attach_scheduler(self, script, settings):
         '''
@@ -1254,7 +1345,7 @@ class mitim_simulation:
         that gives the nodes freed by early calls to extra cases. The bash script is still
         written for reference but not executed.
         '''
-        hooks = self._extra_point_hooks(settings.resources_per_call) if script.hosts else None
+        hooks = self._extra_point_hooks(settings.resources_per_call) if (script.hosts and script.folders) else None
         if hooks is None:
             return
         from mitim_tools.simulation_tools.utils import SCHEDULERtools
@@ -1307,16 +1398,17 @@ class mitim_simulation:
                     execute_case_flag=executes,
                     )
                 break
-            except LOGtools.InteractiveTerminalError:
-                # A failed retrieval already removed the local rho folders (they are
-                # both the staged inputs and the retrieval targets), so a repeat would
-                # die in the tarball step with a confusing FileNotFoundError.
-                if any(not Path(f).exists() for f in folders):
+            except LOGtools.InteractiveTerminalError as exc:
+                # A failed retrieval removes the local rho folders (they are both the staged
+                # inputs and the retrieval targets) and may recreate them holding only partial
+                # outputs, so test for the input file itself: a repeat without it re-sends
+                # outputs-only folders and fails again (e.g. NEO's FileNotFoundError 'input.neo').
+                if any(not (Path(f) / settings.input_file).exists() for f in folders):
                     raise RuntimeError(
                         f"[MITIM] {settings.code.upper()} run did not return its expected outputs and the staged "
                         f"inputs under {settings.tmpFolder} are gone; not retrying. Check {settings.tmpFolder}/mitim_farming.err "
-                        f"and the code's own logs in the scratch folder."
-                    )
+                        f"and the code's own logs in the scratch folder. Cause: {exc}"
+                    ) from exc
                 if attempts >= 1:
                     # The retry was already spent; a second failure is not random,
                     # and falling through would organize results of a run that never produced them
@@ -1356,7 +1448,10 @@ class mitim_simulation:
             # stall-rescue path can map a stalled folder back to its element and its body.
             "array_index_by_folder": script.array_index_by_folder,
             "per_folder_commands": script.per_folder_commands,
+            # slurm_array + load_balance 'extra_points': launch bodies of the extra cases (None otherwise)
+            "extra_points": getattr(script, "extra_points", None),
         }
+        self._extra_ledger = {}
 
         self.slurm_output = "slurm_output.dat"
 
@@ -1375,14 +1470,18 @@ class mitim_simulation:
 
     def _child_jobids(self):
         '''
-        Deduplicated rescue jobids recorded in the auto-resubmit ledger (insertion
-        order). Empty until a stalled radius has been resubmitted.
+        Deduplicated jobids this submission spawned next to its own job (insertion order): the
+        rescue jobs of the auto-resubmit ledger, then the extra cases still in flight (load_balance
+        'extra_points' in array mode). Empty until a radius was resubmitted or given an extra.
         '''
         seen = []
         for entry in (getattr(self, "_resubmit_ledger", None) or {}).values():
             for jid in entry.get("child_jobids", []):
                 if jid not in seen:
                     seen.append(jid)
+        for entry in (getattr(self, "_extra_ledger", None) or {}).values():
+            if entry.get("status") in ("RUNNING", "STOPPING") and entry.get("jobid") not in seen:
+                seen.append(entry["jobid"])
         return seen
 
     def _live_child_jobids(self, alive_if_unreachable=False):
@@ -1400,26 +1499,26 @@ class mitim_simulation:
         if not child_ids or job is None:
             return []
 
-        cmd = f'squeue -h -j {",".join(child_ids)} -o "%.15i %.10T"'
+        unreachable = list(child_ids) if alive_if_unreachable else []
+        treated_as = 'alive' if alive_if_unreachable else 'not alive'
+
         try:
             job.connect()
-            out, _err = job.execute(cmd, printYN=False)
+            states, answer = jobids_in_queue(job, child_ids)
             job.close()
         except Exception as e:
-            print(f"\t- [child-jobid liveness] squeue failed ({type(e).__name__}: {e}); treating rescue children as "
-                  f"{'alive' if alive_if_unreachable else 'not alive'}", typeMsg='w')
-            return list(child_ids) if alive_if_unreachable else []
+            print(f"\t- [child-jobid liveness] squeue failed ({type(e).__name__}: {e}); treating child jobs as {treated_as}", typeMsg='w')
+            return unreachable
 
-        if isinstance(out, bytes):
-            out = out.decode(errors='replace')
+        # No rows and no verdict from slurm (slurmctld timeout) is not "the children left the queue"
+        if states is None:
+            print(f"\t- [child-jobid liveness] squeue gave no answer (exit code {answer.exit_code}, stderr: {answer.error or 'none'}); "
+                  f"treating child jobs as {treated_as}", typeMsg='w')
+            return unreachable
 
-        alive = []
-        for line in (out or "").strip().splitlines():
-            toks = line.split()
-            if toks and toks[0] in child_ids and toks[0] not in alive:
-                print(f"\t- [child-jobid liveness] rescue child jobid {toks[0]} is still in the queue (state={toks[1] if len(toks) > 1 else '?'})", typeMsg='i')
-                alive.append(toks[0])
-        return alive
+        for jid, state in states.items():
+            print(f"\t- [child-jobid liveness] child jobid {jid} is still in the queue (state={state})", typeMsg='i')
+        return list(states)
 
     def _any_child_job_alive(self, alive_if_unreachable=False):
         '''Boolean form of `_live_child_jobids`.'''
@@ -1427,7 +1526,8 @@ class mitim_simulation:
 
     def check(self, every_n_minutes=None, skip_first_iteration_squeue=False, max_completing_polls=2, custom_checker=None):
         '''
-        Poll slurm until the job leaves the queue (state "NOT FOUND" / status=2).
+        Poll slurm until the job leaves the queue (state "NOT FOUND" / status=2). A first
+        NOT FOUND is re-polled once, GONE_CONFIRMATION_SECONDS later, before it ends the wait.
 
         skip_first_iteration_squeue: when True, the first loop iteration does NOT
         run a fresh `squeue`; instead it reuses `self.simulation_job.status`
@@ -1460,12 +1560,20 @@ class mitim_simulation:
 
             first = True
             completing_streak = 0
+            gone_confirmed = False
             while True:
                 if first and skip_first_iteration_squeue:
                     print(f"\t- Reusing status from the earlier liveness probe (skipping redundant squeue)", typeMsg='i')
                 else:
                     self.simulation_job.check(file_output = slurm_output)
                 first = False
+
+                # A first NOT FOUND is confirmed once before it can end the wait
+                if self.simulation_job.status != JobStatus.GONE:
+                    gone_confirmed = False
+                elif not gone_confirmed and every_n_minutes is not None:
+                    gone_confirmed = self._confirm_gone(slurm_output, every_n_minutes)
+
                 state = self.simulation_job.infoSLURM.get("STATE")
                 print(f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.simulation_job.status} ({state})')
 
@@ -1483,7 +1591,7 @@ class mitim_simulation:
                     if not live_children:
                         print("\n\t* Job considered finished (please do .fetch() to retrieve results)",typeMsg="i")
                         break
-                    print(f"\t- Parent job left the queue but rescue child jobid(s) {live_children} are still in it; continuing to poll", typeMsg='i')
+                    print(f"\t- Parent job left the queue but child jobid(s) (rescue or extra case) {live_children} are still in it; continuing to poll", typeMsg='i')
 
                 # Track consecutive COMPLETING polls — slurm's "COMPLETING"
                 # state normally lasts seconds; when it persists it is almost
@@ -1506,6 +1614,17 @@ class mitim_simulation:
                     time.sleep(every_n_minutes * 60)
         else:
             print("- Not checking status because this was run command line (not slurm)")
+
+    def _confirm_gone(self, slurm_output, every_n_minutes):
+        '''
+        Ask slurm once more, a short pause after a first NOT FOUND, and keep whatever it says
+        then. Ending the wait on a wrong NOT FOUND fetches radii that are still running.
+        '''
+        wait = min(GONE_CONFIRMATION_SECONDS, every_n_minutes * 60)
+        print(f"\t- Job NOT FOUND; asking slurm again in {wait:.0f} s before believing it", typeMsg='i')
+        time.sleep(wait)
+        self.simulation_job.check(file_output = slurm_output)
+        return self.simulation_job.status == JobStatus.GONE
 
     def fetch(self):
         """
@@ -2132,7 +2251,7 @@ class mitim_simulation:
         self.results[label] = {
             'output':[],
             'parsed': [],
-            "x": np.array(self.rhos),
+            "x": np.array(self._rhos_to_read()),
             }
 
         # Try get normalizations if they weren't populated (e.g. this is just a "read" of an already run folder)
@@ -2141,7 +2260,7 @@ class mitim_simulation:
             from mitim_tools.gacode_tools import PROFILEStools
             self.NormalizationSets, _ = NORMtools.normalizations(PROFILEStools.gacode_state(input_gacode))
 
-        for rho in self.rhos:
+        for rho in self._rhos_to_read():
 
             SIMout = class_output(
                 folder,

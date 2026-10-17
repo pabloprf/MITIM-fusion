@@ -599,3 +599,29 @@ def debug_transformation(p, p_new, s):
     axs[5].plot(s.plasma['rho'][0],s.plasma['aLne'][0],'--o',c='k',markersize=5)
 
     fn.show()
+
+def enforce_impurity_radiation_existence(profiles):
+    '''
+    Renames every species absent from radiation_chebyshev.csv to the ion of closest Z in it (Z of the input.gacode,
+    fully stripped assumption), so that the radiation target counts its line radiation (otherwise only bremsstrahlung).
+    Only the name changes (Z and mass stay). profiles is modified in place.
+    '''
+
+    data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics_models" / "radiation_chebyshev.csv")
+    Z = data_df['Z'].to_numpy()
+
+    for i in range(len(profiles.Species)):
+        if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
+            print(f"\t\t- '{profiles.Species[i]['N']}' species not found in radiation table, looking for closest Z (+- 5) using the Z specified in the input.gacode (fully stripped assumption)",typeMsg='w')
+            iZ = np.argmin(abs(Z - profiles.Species[i]["Z"]))
+
+            if abs(Z[iZ] - profiles.Species[i]["Z"]) > 5:
+                print(f"\t\t- {profiles.Species[i]['N']} not found in radiation table, closest Z is {Z[iZ]} but not close enough",typeMsg='q')
+
+            new_name = data_df['Ion'][iZ]
+
+            print(f'\t\t\t- Changing name of ion from {profiles.Species[i]["N"]} ({profiles.Species[i]["Z"]}) to {new_name} ({Z[iZ]})')
+
+            profiles.profiles['name'][i] = profiles.Species[i]["N"] = new_name
+
+    return profiles

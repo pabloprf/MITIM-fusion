@@ -57,6 +57,7 @@ ones you will use most:
 | `mitim_plot_maestro <folder> [--beats N] [--only transp]` | Plot MAESTRO results |
 | `mitim_check_maestro` | Inspect MAESTRO state / progress |
 | **`mitim_kill_cgyro <folder> [--rho r \| --all]`** | **Stop running CGYRO radii of a PORTALS evaluation at their next restart write, keeping the fluxes simulated so far** |
+| **`mitim_prune_portals <folder(s)> [--apply] [--keep best\|last] [--force]`** | **Wipe the CGYRO restart files of a finished, converged PORTALS run except the result evaluation's (dry-run by default)** |
 | `mitim_plot_gacode / _tglf / _neo / _cgyro / _gx / _eq / _eped / _transp / _vgen` | Read+plot per-code outputs |
 | `mitim_run_tglf` / `mitim_run_transp` | Run a single code instance |
 | `mitim_slurm` | Submit a wrapper job to SLURM |
@@ -132,7 +133,7 @@ Top-level sections of the PORTALS namelist:
 - `optimization_options`: overrides on top of `templates/namelist.optimization.yaml` —
   `initialization_options.initial_training` (default 5 SR points),
   `convergence_options.{maximum_iterations, stopping_criteria_parameters.maximum_value, …}`,
-  `acquisition_options.{type, optimizers}` (`optimizers: ["sr","root","botorch"]`
+  `acquisition_options.{type, optimizers}` (`optimizers: ["sr","root"]` by default, `"botorch"` optional;
   applied sequentially), `surrogate_options`, `strategy_options.AllowedExcursions`.
 
 #### Multi-fidelity (`turbulence_model` as int-keyed dict)
@@ -242,10 +243,11 @@ pa.plotPORTALS(...)        # full FigureNotebook with all tabs
 ### 3.6 Interpreting common results
 
 - **Residual** (Outputs/optimization_results.out, "Sum of residuals" column):
-  channel-summed |Q_target − Q_predicted|/Q_target across rhos. Convergence is
-  declared when this drops by `maximum_value` (default `5e-3` ⇒ 200× reduction
+  channel-summed |Q_target − Q_predicted|/Q_target across rhos. The run stops
+  when this drops by `maximum_value` (default `5e-3` ⇒ 200× reduction
   from iter 0) OR Ricci metric < `ricci_value` (0.05 default) OR DVs stop
-  varying for `minimum_inputs_variation` consecutive iters.
+  varying for `minimum_inputs_variation` consecutive iters. **Only the Ricci
+  criterion marks it converged (`MITIM_BO.converged`, MAESTRO's `portals_converged.txt`).**
 - **PORTALS Metrics tab**: residual vs iter (log), DV trajectories, profile
   evolution. `i0` = first iter, `ibest` = best-residual iter, `iextra` =
   user-marked.
@@ -257,6 +259,10 @@ pa.plotPORTALS(...)        # full FigureNotebook with all tabs
 - **fluxes_turb.json / fluxes_neoc.json**: per-iteration JSON blobs with the
   GB-normalized turbulent and neoclassical fluxes per channel/rho. These are
   what `restart_from_cases: "best"` uses to pick parents.
+- **Babysitting a live PORTALS-CGYRO run: the shipped agent `.claude/agents/portals-cgyro.md` (per-radius cost and
+  saturation, graceful `mitim_kill_cgyro` stops under a written rule, holds of failing chains, one line per action in
+  `Outputs/agent_actions.log`). For a days-long watch run it as the main session:
+  `claude --bg --agent portals-cgyro "Watch <run folder> on <ssh alias>"`.**
 
 ---
 

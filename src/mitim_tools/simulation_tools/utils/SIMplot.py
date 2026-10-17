@@ -12,7 +12,7 @@ class GKplotting:
         results = {}
         labels_with_rho = []
         for label in labels:
-            for i,rho in enumerate(self.rhos):
+            for i,rho in enumerate(self._rhos_to_read()):
                 labels_with_rho.append(f"{label}_{rho}")
                 results[f'{label}_{rho}'] = self.results_all[label]['output'][i]
         labels = labels_with_rho

@@ -56,6 +56,9 @@ class FakeJob:
         self.sacct_state_for_target = "RUNNING"
         # Canned sacct Elapsed of the element's latest (re)start; None emits the state alone
         self.sacct_elapsed = "01:00:00"
+        # Canned squeue "%T|%M" for the target, consulted only when sacct returned empty (a job
+        # submitted seconds ago has no accounting record yet). None means squeue found nothing either
+        self.squeue_state_for_target = None
 
     def node_of(self, array_index):
         return self.node_by_array_index.get(array_index)
@@ -80,6 +83,8 @@ class FakeJob:
             if self.sacct_elapsed is None:
                 return self.sacct_state_for_target.encode(), b""
             return f"{self.sacct_state_for_target}|{self.sacct_elapsed}".encode(), b""
+        if cmd.startswith("squeue -h -j"):
+            return (self.squeue_state_for_target or "").encode(), b""
         return b"", b""
 
     def resubmit_single_task(self, code_call_str, label, exclude_node=None):
@@ -312,6 +317,24 @@ def test_sacct_no_signal_falls_through_to_rescue():
     print("PASS: sacct empty signal -> rescue proceeds (no false block)")
 
 
+def test_sacct_empty_but_squeue_pending_skips_rescue():
+    """A just-submitted element has no sacct record yet (pt24, 2026-10-06: the salvaged scratch kept
+    old mtimes, the probe called it stalled while the element was PENDING, and the single rescue was
+    spent cancelling a healthy queued job). squeue still knows the job: PENDING means not started,
+    no scancel, no resubmit, and the ledger stays untouched for a real stall later."""
+    sim = FakeSim(cap=1)
+    sim.simulation_job.sacct_state_for_target = None
+    sim.simulation_job.squeue_state_for_target = "PENDING|0:00"
+    rows = [make_row("base_cgyro/rho_0.6712", "STALLED", 15745)]
+    CGYROtools._cgyro_handle_stalled_tasks(sim, rows)
+    cmds = [e[1] for e in sim.simulation_job.executed if e[0] == "execute"]
+    assert any(c.startswith("squeue -h -j 12345_2") for c in cmds), cmds
+    assert not any(c.startswith("scancel") for c in cmds), cmds
+    assert sim.simulation_job.last_resubmit_args is None
+    assert sim._resubmit_ledger["base_cgyro/rho_0.6712"]["n_attempts"] == 0, sim._resubmit_ledger
+    print("PASS: sacct empty + squeue PENDING -> not started, rescue skipped, attempt not spent")
+
+
 def test_sacct_running_state_proceeds_with_rescue():
     """Healthy 'task is hung in RUNNING' case — sacct says RUNNING, orchestrator
     proceeds with the rescue."""
@@ -475,6 +498,7 @@ if __name__ == "__main__":
     test_sacct_completed_skips_rescue_marks_terminal()
     test_sacct_failed_also_skips_rescue()
     test_sacct_no_signal_falls_through_to_rescue()
+    test_sacct_empty_but_squeue_pending_skips_rescue()
     test_sacct_running_state_proceeds_with_rescue()
     test_terminal_no_rescue_row_is_skipped_on_the_next_poll()
     test_restarted_after_preemption_is_not_a_stall()

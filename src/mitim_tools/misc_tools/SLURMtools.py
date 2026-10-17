@@ -25,9 +25,11 @@ The resolver is the single place where:
 Callers pass the user-facing `allocation` dict:
 
     {'resources_per_call': int,   # parallelism unit per radial call
-                                  # (CPU cores for TGLF/NEO, GPUs for CGYRO/GX)
+                                  # (CPU cores for TGLF/NEO and for CGYRO on CPU-only
+                                  #  machines, GPUs for CGYRO/GX on GPU machines)
      'minutes': int,              # wall-clock
-     'mem': str|None}             # sbatch --mem string, optional
+     'mem': str|None,             # sbatch --mem string, optional
+     'omp_threads_cpu': int|None} # CGYRO on CPU-only machines: OMP threads per MPI rank (default 1)
 """
 
 import os
@@ -96,10 +98,12 @@ def resolve(
     code : str
         Code name ('tglf', 'neo', 'cgyro', ...). Used to look up CODE_HINTS.
     allocation : dict | None
-        User-facing knobs: {'resources_per_call', 'minutes', 'mem'}. `None` → defaults.
+        User-facing knobs: {'resources_per_call', 'minutes', 'mem', 'omp_threads_cpu'}. `None` → defaults.
         `resources_per_call` is the unit of parallelism per radial call — CPU cores
-        for CPU codes (TGLF/NEO), GPUs for GPU codes (CGYRO/GX). The resolver maps
-        it to the right sbatch flag and logs the mapping.
+        for CPU codes (TGLF/NEO), GPUs for GPU codes (CGYRO/GX) on GPU machines, and
+        CPU cores for CGYRO on CPU-only machines (gpus_per_node 0), where
+        `omp_threads_cpu` (default 1) splits them into ranks x threads. The resolver
+        maps it to the right sbatch flag and logs the mapping.
     n_rhos : int
         Number of radial locations per subfolder.
     n_subfolders : int
@@ -139,7 +143,16 @@ def resolve(
     # caller passed a raw dict (tests) or a typed MachineConfig (real runs).
     cores_per_node = int(machine_settings.get("cores_per_node") or 0)
     gpus_per_node = int(machine_settings.get("gpus_per_node") or 0)
-    code_cores_per_mpi = hints.get("cores_per_mpi")
+    # OMP threads per MPI rank. The cores_per_mpi hint is a GPU value (16 cores feeding each GPU
+    # rank); a full-node MPI code on a CPU-only machine takes allocation['omp_threads_cpu'] instead
+    cpu_mpi = hints["full_node_mpi"] and gpus_per_node == 0
+    if cpu_mpi:
+        code_cores_per_mpi = int(allocation.get("omp_threads_cpu") or 1)
+    else:
+        code_cores_per_mpi = hints.get("cores_per_mpi")
+        if hints["full_node_mpi"] and allocation.get("omp_threads_cpu") and verbose:
+            from mitim_tools.misc_tools.LOGtools import printMsg as _print
+            _print(f"\t- {code}: allocation['omp_threads_cpu'] is ignored on GPU machines (threads per rank = {code_cores_per_mpi})", typeMsg="w")
     machine_slurm = machine_settings.get("slurm", {}) or {}
     # Any non-empty slurm block makes the machine SLURM-capable (same rule as
     # FARMINGtools.mitim_job). `partition` is optional: NERSC Perlmutter selects
@@ -173,7 +186,8 @@ def resolve(
             submission_type = "slurm_array"
 
     # --- MPI layout (consumed by code_call) --------------------------------
-    mpi = _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node, code_cores_per_mpi)
+    mpi = _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node, code_cores_per_mpi,
+                              submission_type=submission_type)
 
     # --- Bash concurrency (non-SLURM mode) ---------------------------------
     concurrency = 1
@@ -244,7 +258,7 @@ def resolve(
 
     # --- One log line documenting the abstract → native mapping ------------
     if verbose:
-        _log_mapping(code, hints, resources_per_call, submission_type, sbatch, gpus_per_node)
+        _log_mapping(code, hints, resources_per_call, submission_type, sbatch, gpus_per_node, mpi=mpi)
 
     return ResolvedAllocation(
         use_slurm=use_slurm,
@@ -260,7 +274,8 @@ def resolve(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node, code_cores_per_mpi=None):
+def _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node, code_cores_per_mpi=None,
+                        submission_type=None):
     """MPI parameters that the per-code `code_call` needs.
 
     GPU/full-node-MPI (CGYRO): one MPI rank per requested GPU, one rank per
@@ -275,7 +290,20 @@ def _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node
         rpc=1 -> n=1 / nomp=16 / numa=1 / mpinuma=1
         rpc=2 -> n=2 / nomp=16 / numa=2 / mpinuma=1
         rpc=4 -> n=4 / nomp=16 / numa=4 / mpinuma=1   (full-node, 1 rank/GPU)
+
+    CPU/full-node-MPI (CGYRO on gpus_per_node 0): resources_per_call is CPU cores per radial
+    call, `code_cores_per_mpi` the OMP threads per rank (allocation['omp_threads_cpu'], default 1):
+
+        n = resources_per_call // nomp,  nodes = resources_per_call // cores_per_node (whole nodes
+        when the call exceeds one node), numa = mpinuma = None (no -numa/-mpinuma on the cgyro line)
+
+    Concrete on engaging CPU (cores=64): rpc=128, nomp=1 -> n=128 / nodes=2; on Perlmutter CPU
+    (cores=128): rpc=2048, nomp=4 -> n=512 / nodes=16. In bash mode a call never spans nodes (no
+    host placement on CPU), so nodes=1 and an oversized call only oversubscribes (resolve warns).
     """
+    if hints["full_node_mpi"] and gpus_per_node == 0:
+        return _resolve_mpi_layout_cpu(resources_per_call, cores_per_node, code_cores_per_mpi,
+                                       multi_node=(submission_type != "bash"))
     if hints["uses_gpu"] and hints["full_node_mpi"] and gpus_per_node > 0 and cores_per_node > 0:
         rpc = max(1, int(resources_per_call))
         nomp = int(code_cores_per_mpi) if code_cores_per_mpi else max(1, cores_per_node // gpus_per_node)
@@ -291,6 +319,33 @@ def _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node
             )
         return {"n": rpc, "nomp": nomp, "numa": gpus_per_node, "mpinuma": 1, "nodes": rpc // gpus_per_node}
     return {"n": resources_per_call, "nomp": 1, "numa": None, "mpinuma": None, "nodes": 1}
+
+
+def _resolve_mpi_layout_cpu(resources_per_call, cores_per_node, nomp=None, multi_node=True):
+    """CPU full-node-MPI layout (see _resolve_mpi_layout): ranks x OMP threads over whole nodes."""
+    rpc = max(1, int(resources_per_call))
+    nomp = max(1, int(nomp or 1))
+    if rpc % nomp != 0:
+        raise ValueError(
+            f"[MITIM] resources_per_call={rpc} CPU cores is not a multiple of omp_threads_cpu={nomp}; "
+            f"every MPI rank needs {nomp} cores (e.g. resources_per_call={nomp * (rpc // nomp + 1)})"
+        )
+    n = rpc // nomp
+    if not multi_node or cores_per_node <= 0 or rpc <= cores_per_node:
+        return {"n": n, "nomp": nomp, "numa": None, "mpinuma": None, "nodes": 1}
+    # Multi-node radial call (e.g. 2048 cores = 16 Perlmutter CPU nodes): whole nodes only,
+    # with the same number of ranks on every node
+    if rpc % cores_per_node != 0:
+        raise ValueError(
+            f"[MITIM] resources_per_call={rpc} CPU cores exceeds one node ({cores_per_node} cores) "
+            f"and is not a multiple of it; use a whole number of nodes (e.g. {cores_per_node * (rpc // cores_per_node + 1)})"
+        )
+    if cores_per_node % nomp != 0:
+        raise ValueError(
+            f"[MITIM] omp_threads_cpu={nomp} does not divide cores_per_node={cores_per_node}; a multi-node "
+            f"radial call needs the same number of ranks on every node"
+        )
+    return {"n": n, "nomp": nomp, "numa": None, "mpinuma": None, "nodes": rpc // cores_per_node}
 
 
 def _fill_sbatch_layout(sbatch, *, submission_type, hints, resources_per_call,
@@ -321,6 +376,25 @@ def _fill_sbatch_layout(sbatch, *, submission_type, hints, resources_per_call,
         sbatch["cpus-per-task"] = omp_per_task
         sbatch["gpus-per-node"] = n_gpus_requested
 
+    elif hints["full_node_mpi"] and gpus_per_node == 0:
+        # CGYRO CPU path: resources_per_call = CPU cores per radial call, split into MPI ranks
+        # (ntasks) x OMP threads (cpus-per-task = nomp), so ntasks x cpus-per-task = the cores
+        # of the cgyro `-n x -nomp` layout. No GPUs requested.
+        mpi = _resolve_mpi_layout_cpu(resources_per_call, cores_per_node, code_cores_per_mpi)
+        n_nodes_per_call = mpi["nodes"]
+        if submission_type == "slurm_standard":
+            n_radii = n_rhos * n_subfolders
+            sbatch["ntasks"] = mpi["n"] * n_radii
+            if n_nodes_per_call > 1:
+                sbatch["nodes"] = n_nodes_per_call * n_radii
+        elif submission_type == "slurm_array":
+            sbatch["nodes"] = n_nodes_per_call
+            sbatch["ntasks-per-node"] = mpi["n"] // n_nodes_per_call
+            sbatch["array"] = ",".join(array_list or [])
+            if max_concurrent_calls:
+                sbatch["array_limit"] = int(max_concurrent_calls)   # sbatch --array=...%N
+        sbatch["cpus-per-task"] = mpi["nomp"]
+
     elif hints["uses_gpu"]:
         # GX-style GPU codes: one MPI rank per GPU; resources_per_call = GPUs per
         # radial call. `gpus-per-task` is set from the hints table, so we just
@@ -338,7 +412,7 @@ def _fill_sbatch_layout(sbatch, *, submission_type, hints, resources_per_call,
                 sbatch["array_limit"] = int(max_concurrent_calls)   # sbatch --array=...%N
 
     else:
-        # CPU codes (TGLF / NEO / CPU-CGYRO). One resource == one CPU core.
+        # CPU codes (TGLF / NEO). One resource == one CPU core.
         if submission_type == "slurm_standard":
             sbatch["ntasks"] = n_rhos * n_subfolders
         elif submission_type == "slurm_array":
@@ -347,11 +421,18 @@ def _fill_sbatch_layout(sbatch, *, submission_type, hints, resources_per_call,
         sbatch["cpus-per-task"] = resources_per_call
 
 
-def _log_mapping(code, hints, resources_per_call, submission_type, sbatch, gpus_per_node=0):
+def _log_mapping(code, hints, resources_per_call, submission_type, sbatch, gpus_per_node=0, mpi=None):
     """One-line explainer at resolve time — makes the CPU-vs-GPU unit obvious."""
     try:
         from mitim_tools.misc_tools.LOGtools import printMsg as _print
     except Exception:
+        return
+    if hints.get("full_node_mpi") and gpus_per_node == 0 and mpi is not None:
+        # CPU full-node MPI (CGYRO on a CPU-only machine): cores = nodes x ranks/node x threads/rank
+        nodes = mpi.get("nodes", 1)
+        mode = "bash" if submission_type == "bash" else submission_type
+        _print(f"\t- {code}: resources_per_call={resources_per_call} CPU cores per radial call → {nodes} node(s) × "
+               f"{mpi['n'] // nodes} MPI rank(s)/node × {mpi['nomp']} OMP thread(s)/rank ({mode})", typeMsg="i")
         return
     if submission_type == "bash":
         # Only call it a GPU unit when the machine actually has GPUs; a local

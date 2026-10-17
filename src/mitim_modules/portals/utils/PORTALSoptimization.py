@@ -84,6 +84,26 @@ def _normalize_initialization_params(raw):
     return normalized
 
 
+# Warm-start files of the gyrokinetic codes (bin.cgyro.restart_<rho>, gxplasma.restart.nc_<rho>, .old included)
+_RESTART_PREFIXES = ("bin.cgyro.restart", "gxplasma.restart.nc")
+
+
+def _link_restarts_copy_rest(src, dst):
+    '''
+    copytree copy_function for the SR -> Execution/Evaluation.{i} promotion: a restart file becomes
+    a hard link to the Initialization original (a relative symlink where the filesystem refuses hard
+    links), every other file is copied. Safe because MITIM never rewrites a restart in place (a
+    retrieval unlinks the old name first), and pruning or --cold removing one name leaves the other.
+    '''
+    if not os.path.basename(src).startswith(_RESTART_PREFIXES):
+        return shutil.copy2(src, dst)
+    try:
+        os.link(src, dst)
+    except OSError:
+        os.symlink(os.path.relpath(src, start=os.path.dirname(dst)), dst)
+    return dst
+
+
 def initialization_simple_relax(self):
     # ------------------------------------------------------------------------------------
     # Perform flux matching using powerstate.
@@ -302,7 +322,8 @@ def initialization_simple_relax(self):
             if (ff / "transport_simulation_folder").exists():
                 IOtools.shutil_rmtree(ff / "transport_simulation_folder")
 
-            shutil.copytree(source, ff / "transport_simulation_folder", symlinks=True)
+            # Restart blobs (GB each) are hard-linked, not copied, so the run holds them once
+            shutil.copytree(source, ff / "transport_simulation_folder", symlinks=True, copy_function=_link_restarts_copy_rest)
 
             # For n_traj > 1 the copy above carries only the per-plasma JSON fan-out;
             # restart binaries (bin.cgyro.restart_<rho>) live in the per-plasma SIMtools

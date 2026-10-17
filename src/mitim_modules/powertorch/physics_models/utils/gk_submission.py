@@ -190,8 +190,8 @@ class GKSubmission:
 
     def _job_alive(self):
         '''
-        The parent array, or any rescue child the auto-resubmit path spawned before the prior
-        driver died. An unreachable probe counts as "not alive" here (no signal: fall through
+        The parent array, or any child job (auto-resubmit rescue, extra case of a finished radius)
+        spawned before the prior driver died. An unreachable probe counts as "not alive" here (no signal: fall through
         to the local-results checks), unlike in the poll loop.
         '''
         print("\t- Liveness probe via squeue...", typeMsg='i')
@@ -204,7 +204,7 @@ class GKSubmission:
 
         live_summary = f"jobid={self.sim.simulation_job.jobid}, state={self.sim.simulation_job.infoSLURM.get('STATE')}"
         if any_child_alive:
-            live_summary += f"; rescue child jobid(s) still alive: {self.sim._child_jobids()}"
+            live_summary += f"; child jobid(s) (rescue or extra case) still alive: {self.sim._child_jobids()}"
         print(f"\t- Slurm reports job is still live ({live_summary}); proceeding with check()/fetch()", typeMsg='i')
         print("")
         return True

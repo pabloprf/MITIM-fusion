@@ -4,6 +4,31 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **PORTALS can save its figures after every evaluation.** `solution.plot_after_each_evaluation: true` refreshes
+    `Outputs/figures_saved/` with the PNGs of `mitim_plot_portals --full --save` each time new evaluations are in
+    (before the surrogates are fitted), to follow long runs (e.g. PORTALS-CGYRO) without loading them.
+
+*   💥 **Nonlinear CGYRO on CPU-only machines.** On machine blocks with `gpus_per_node: 0`, `resources_per_call` is
+    CPU cores per radius, split into MPI ranks x `allocation.omp_threads_cpu` threads; radii larger than a node take
+    whole nodes, with one SLURM array element per radius. A rank count that no `TOROIDALS_PER_PROC` fits to the grid
+    now stops with the counts that do fit (on GPU too). Example: `tests/capability_tests/cgyro_08_run_cpu.py`.
+
+*   💥 **FFT-friendly CGYRO radial grid.** `transport.options.cgyro.run.preprocess_options.fft_friendly` (true in the
+    PORTALS namelist template, off when the key is absent) moves `BOX_SIZE`/`N_RADIAL` to the nearest grid with a fast
+    radial FFT length (11-28% cheaper per a/cs on A100 where the old length had a large prime), within `fft_tol` (6%)
+    in box length and kx_max; a changed grid needs a cold start. MITIM also warns when a simulated toroidal mode
+    connects to itself (`N_RADIAL/BOX_SIZE` below `N_TOROIDAL` and dividing n).
+
+*   🖥️ **Typed GPU requests in SLURM machine blocks**: new optional key `gres` in a machine's `slurm` block of
+    `config_user.json` (e.g. `"gres": "gpu:a100:4"`) writes `#SBATCH --gres=...` instead of `--gpus-per-node`, for
+    partitions that only accept typed GPU requests (heterogeneous GPU pools, multi-partition submissions).
+
+*   🔬 **DIII-D experimental data (MDSplus)**: new `mitim_tools/experiment_tools/diiid/` (`retrieval.py` + `plotting.py`) pulls DIII-D time traces, EFIT equilibria and Thomson/CER profiles via the pure-python `mdsthin` thin client (optional extra: `pip install mitim-fusion[mds]`), over a direct connection or ONE reused SSH tunnel, with on-disk caching (server-side resampling, polite to the shared server). Signals are resolved with the standard DIII-D MDSplus cascade (findsig → ptdata2 → pseudo). `plotting.overview(shots, layout, …)` draws a declarative multi-column layout — scalar time traces, flux-surface equilibria (R,Z), and Te/ne/Ti profiles vs ρ (time-averaged over a chosen analysis window and mapped through each shot's EFIT, with error bars). CER profiles select the analysis flavor (CERQUICK/CERAUTO/CERFIT, including a per-panel overlay of several) and pull BOTH viewing systems — tangential and vertical; the `Profiles` column supports multiple analysis windows (one equilibrium+profile snapshot each), an all-time-samples scatter (`average=False`) and a ρ cutoff (`rho_max`). Window-averaging is STRICT — no out-of-window/nearest-slice fallback — so a too-narrow window honestly yields no point rather than a nearby one. `plotting.profiles_cer(…)` is a per-shot CER "check" plot that stacks the standard quantities (Ti, toroidal rotation, n_Z, n_Z/n_e) as rows (pick via `quantities`), each analysis flavor overlaid with one equilibrium per flavor; `ProfilePanel` likewise plots any CER quantity and takes a per-panel `alpha`. `retrieval.fetch_geqdsk(time, tree)` writes a GEQDSK file from the EFIT tree for a shot+time (read-back verified against `fetch_equilibrium`). `overview(…)` returns `(fig, axes)`, folds a trace's label and its source signal into one legend entry, and exposes `label_scale`/`line_scale`/`marker_scale` for talk-sized figures. See `tests/capability_tests/diiid_01_fetch_and_plot.py`.
+
+*   🔬 **DIII-D `DIIIDExperiment` analysis class**: new `experiment_tools/diiid/experiment.py` adds an object-oriented layer on top of the retrieval — `DIIIDExperiment(shot, time, …)` with `overview`/`plot_cer_coverage`/`plot_cer_profiles`, QUICKFIT (Tomas Odstrcil's map2grid) profile fits `fit_te/ne/ti/omega/nimp`, `impurity_concentration()` from Zeff, and `to_gacode()` translating the fits into an `input.gacode` (`gacode_state`). QUICKFIT is an OPTIONAL, lazily-imported capability (`pip install mitim-fusion[quickfit]` → scikit-sparse; the quickfit clone is auto-located at `../quickfit` or `$QUICKFIT_PATH`), so retrieval/plotting still work without it. `DIIIDExperiment.multishot(…)` returns a `DIIIDMultiShot` group (one shared tunnel) with `overview`/`load_fits`/`merged_fits`/`to_gacode` across shots. See `tests/capability_tests/diiid_02_experiment_class.py`.
+
+*   🔬 **C-Mod experimental data (MDSplus)**: new `experiment_tools/cmod/` (`CMODConnection` / `CMODFetcher`) pulls EFIT scalars and equilibria (plus g-file writing), Thomson core/edge Te/ne, HIREXSR Ti and rotation (THACO profiles on psi_N; rotation is a frequency in kHz), Zeff, P_rad and stored energy over one SSH tunnel to `alcdata`, drawn by the same `overview(...)` plotting as DIII-D. `overview(...)` now returns an `Overview` object (still unpacks as `fig, axes`), and `overview_together([ov_cmod, ov_diiid])` overlays several of them, even from different machines, in one figure from the data already loaded (each shot keeps its own EFIT tree and analysis window; no server access). The machine-agnostic tunnel/connection/cache layer now lives in `experiment_tools/MDStools.py`, shared by both machines, and each user's MDSplus access (jump-host alias, server) can be set once in a new `"mdsplus"` block of `config_user.json`. See `tests/capability_tests/cmod_01_fetch_and_plot.py` and `mdsplus_01_quicklook_cmod_diiid.py`.
+
 *   💥 **`mitim_kill_cgyro`: stop hopeless CGYRO radii of a running PORTALS evaluation and use what they
     simulated.** `mitim_kill_cgyro <portals folder>` lists each radius of the evaluation in flight (time,
     end time, last write, status); `--rho ...` or `--all` asks the chosen radii to stop. Each one ends
@@ -11,6 +36,24 @@ DESCRIPTION
     finished, and its fluxes are averaged over the simulated trace. Every CGYRO launch now runs inside the
     stop watchdog, which also waits for every MPI rank to exit before returning (OpenMPI launchers put ranks
     in their own process groups). Works for bash/in-allocation and submitted runs, local or over SFTP.
+
+*   💥 **PORTALS-CGYRO cost guard: automatic stop of a slow radius far above its target.** New
+    `transport.options.cgyro.run.cost_guard` (off by default): the watchdog stops a radius whose wall cost
+    per a/cs is high while its heat flux (Qe or Qi) is far above the turbulent target, at once, and the
+    radius counts as finished (`mitim_budget.tag` starting with `GUARD`, harvest `guard_stop`). Thresholds
+    and time gates are documented in `templates/namelist.portals.yaml`; needs `python3` on the compute node.
+
+*   💥 **Claude Code agent `portals-cgyro` shipped in `.claude/agents/`: an operator for live PORTALS-CGYRO
+    runs.** It checks each radius' cost per a/cs, time step and saturation, stops hopeless radii with
+    `mitim_kill_cgyro` only under a written rule, and holds chains whose links keep failing. It never changes
+    physics or grids and never deletes data, and it writes one line per action to `Outputs/agent_actions.log`.
+    For a watch lasting days: `claude --bg --agent portals-cgyro "Watch <run folder> on <ssh alias>"`.
+
+*   💥 **Opt-in pruning of CGYRO restart files once a PORTALS run converges.** New namelist knob
+    `transport.options.cgyro.prune_restarts_at_convergence` (default `false`): when the run stops on a
+    convergence criterion, the restart files of every evaluation except the result one are deleted
+    (outputs, traces and harvest records are untouched). `mitim_prune_portals <folder> [--apply]
+    [--keep best|last] [--force]` does the same on a finished run, dry-run by default.
 
 *   💥 **Live view of the CGYRO evaluation still running, in `mitim_plot_portals --complete`.** A new
     "CGYRO live" tab reads the in-progress outputs of the evaluation in flight and plots one column per
@@ -258,7 +301,65 @@ DESCRIPTION
     `restart_from_cases` warm starts (t_max is added time, as CGYRO's MAX_TIME), resume of preempted array
     elements from their own checkpoint, and multi-GPU radii that scale ~ideally (2.06x/4.07x on 2/4 A100).
 
+*   💥 **RAPIDS can take its core gradients from a user scaling.** `rapids_evaluator(..., core_scaling=fn)` calls
+    `fn(p, rhotop, imposed=None) -> {'aLTe', 'aLTi'}` at the pedestal top at every iteration of the BetaN loop (the
+    given `core` is then only the first guess; `thr_scaling`, `scaling_start`); MITIM ships no scaling. New default
+    `require_power_through_top=True`: a case that radiates more than it is heated inside the pedestal top is not a
+    solution and raises. Example: `tests/capability_tests/rapids_01_scenario_evaluation.py`.
+
+*   ✨ **`load_balance: extra_points` now works with SLURM-array submissions (`run_type: "submit"`).** A radius whose
+    array element finishes while the slowest radius still leaves enough time gets its extra case as its own job (same
+    sbatch settings as one element), stopped when the last main radius ends and harvested into
+    `Outputs/extra_points.csv` as in bash mode. The extras are tracked in `cgyro_submission.json`, so a re-attaching
+    driver keeps them. In both modes the extra case now takes per-radius option lists (e.g. `RESTART_STEP`) at its own radius.
+
 ### Bug Fixes
+
+*   🐛 **A CGYRO radius that MITIM stopped on purpose no longer shows as FAILED in SLURM.** A run stopped and accepted
+    by the watchdog (`mitim_budget.tag`: `wall_budget`, `mitim_kill_cgyro`, cost guard, the stop of an extra case)
+    ended with status 143 (the SIGTERM sent to CGYRO), so `sacct` reported FAILED for a radius that counted as
+    finished. It now exits 0; a discarded extra case keeps its own status.
+
+*   🐛 **RAPIDS geometry and heating on the new design**: the toroidal flux (and so rho and B_unit) is now that of the
+    vacuum field on the rescaled surfaces (B_unit was ~30% low against MAESTRO), the RF power delivered equals the
+    requested one on the new geometry (it was ~36% short), and species missing from the radiation table are renamed to
+    the closest-Z ion as in MAESTRO's PORTALS beats (shared `TRANSFORMtools.enforce_impurity_radiation_existence`).
+    RAPIDS results change: older databases do not reproduce.
+
+*   🐛 **Reading standalone CGYRO runs works again and returns fluxes in physical units**: `mitim_plot_cgyro` (and any
+    `CGYRO()` built without radii) read nothing since the 2026-09-22 SIMtools refactor. Runs prepared by MITIM
+    (PROFILE_MODEL=1) gave `QeMWm2`, `QiMWm2`, `MtJm2` = 0: the gyroBohm units now come from the `input.gacode` /
+    `input.gacode_torun` next to the run, or from `read(input_gacode=...)`. `Ggb` is in 1E20/s/m^2. A run killed
+    while writing an output step (field files one time slice longer than `out.cgyro.time`) no longer crashes the read.
+
+*   🐛 **GK flux averaging: the autocorrelation lag is now the first 1/e crossing of the ACF**, not the lag closest
+    to 1/e anywhere in it. Error bars shrink where the old estimate had picked a late lag.
+
+*   🐛 **TRANSP no longer crashes with a floating-point error at the first NUBEAM call**: the limiter and vessel handed
+    to TRANSP were a placeholder circle of radius 2·R0, far enough from a small machine-initialization seed for the
+    psi(R,Z) extrapolation to overflow (seen on MAESTRO designs with a = 1.0 m, R/a = 4.0). They are now a rounded box
+    enclosing the plasma boundary of every time slice with a 0.3·a margin (`TRANSPhelpers.enclosing_wall`).
+*   🐛 **MAESTRO Lengyel beat no longer shifts fast-ion temperatures**: the new separatrix temperature is applied to
+    electrons and thermal ions only. Fast species were shifted by their own edge value (2/3 W/n where n -> 0, which a
+    TRANSP conversion can leave at thousands of keV), giving negative alpha temperatures and a total pressure
+    (`ptot`, beta_N) below the thermal one in chains without a pedestal top.
+*   🐛 **PORTALS-CGYRO auto-resubmit no longer cancels a queued element as "stalled"**: the per-radius SLURM-state
+    guard now falls back to `squeue` when `sacct` has no record yet (a job submitted seconds earlier), so a PENDING
+    element whose folder holds older files (interrupted run kept for the in-place rescue, requeue) is left alone
+    instead of being scancelled and its single rescue attempt spent.
+*   🐛 **A SLURM poll the scheduler does not answer is no longer read as "job finished"**: `squeue` printing nothing
+    (slurmctld timeout) made PORTALS-CGYRO drivers fetch arrays that were still running and die with "CGYRO returned
+    without finishing". "Not found" is now believed only when `squeue` answers (a table, a clean exit or "Invalid job
+    id"), and it is re-polled once 60 s later before the wait ends.
+
+*   🐛 **Batch runs survive SLURM step refusals instead of dying at a prompt**: inside an allocation, a dispatch whose
+    srun was refused ("Unable to create step ... Job/step already completing or completed", seen on Perlmutter for the
+    NEO call of PORTALS-CGYRO chain links) is re-run after 60/120/240 s, with `scontrol show job`/`squeue -s` logged to
+    `mitim_slurm_snapshot.txt` and the driver log; if outputs are still missing, a non-interactive run raises a clear
+    `MissingOutputsError` instead of the "Not all expected files received" prompt, and the outer repeat no longer re-sends
+    output-only folders (the cause of `FileNotFoundError: input.neo`).
+
+*   🐛 **C-Mod TRANSP/MAESTRO paths import again off the PSFC workstations**: `CMODtools` imported `eqtools` from a hardcoded workstation path at module load, so the C-Mod branches of `NMLtools` (namelist structures, ICRF antennas), `TRANSPbeat` and `TRANSPhelpers` failed with `ModuleNotFoundError` anywhere else. The workstation-only retrieval (MDSplus trees, IDL, scrunch2) and its scripts are removed; `getTRANSP_MDS` now reads TRANSP runs through `CMODConnection`.
 
 *   🐛 **PORTALS-CGYRO submission robustness fixes** (found by a code audit of the reattach / stall-rescue /
     in-place-rescue paths): batched CGYRO evaluations no longer raise `TypeError` on the shipped namelist
@@ -289,6 +390,9 @@ DESCRIPTION
     The stall rescue no longer cancels a preempted radius right after SLURM restarts it (its
     `out.cgyro.timing` still predated the preemption): a radius SLURM started less than the kill threshold
     ago is left alone, and the node is excluded only when the radius hung there past the threshold.
+    **A re-run evaluation no longer relaunches radii that already finished in the scratch folder (EXIT or
+    `mitim_budget.tag`): they are collected as they are and their nodes go to extras; before, each was
+    continued for ~1 a/cs, and a radius stopped by `mitim_kill_cgyro` was continued for its remaining time.**
 
 *   🐛 **PORTALS radiation target: a thermal species missing from `radiation_chebyshev.csv` (e.g. `B`, or a
     `LUMPED` ion) no longer removes its own bremsstrahlung from the total.** The line term was
@@ -494,6 +598,16 @@ DESCRIPTION
     the last-started task ends (seen on engaging), after which MITIM retrieved and deleted the scratch folder
     under the tasks still running. The execution script now waits until no task of the array is queued.
     Multi-rank GX also writes its parallel-HDF5 output without Open MPI's NFS locks, which stalled it.
+
+*   🐛 **PORTALS convergence is decided by the Ricci metric alone**: a run stopped by stagnating inputs
+    (`minimum_inputs_variation`) or by the residual target with Ricci above `ricci_value` was flagged converged
+    (`MITIM_BO.converged`, MAESTRO's `portals_converged.txt`). Such beats now count toward
+    `maestro.max_unconverged_portals_beats`, keep their CGYRO restarts under `prune_restarts_at_convergence`, and
+    need `--force` in `mitim_prune_portals`. Stopping itself is unchanged.
+
+*   🐛 **PORTALS-CGYRO start-up restarts stored once**: the simple-relax evaluations promoted into `Execution/`
+    now hard-link their CGYRO/GX restart files to the `Initialization/` originals instead of copying them
+    (about 13-15 GB saved per run); `mitim_prune_portals` keeps every name of the kept data and counts it once.
 
 ### Changes for developers (internal execution)
 

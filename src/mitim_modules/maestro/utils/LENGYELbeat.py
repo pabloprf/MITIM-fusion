@@ -508,15 +508,20 @@ def _modify_temperatures(p, Tesep, rhotop):
     
     print(f'\t\t* Setting electron and ion temperature at separatrix to {Tesep*1E3:.1f} eV')
     
+    # Only thermal ions follow the separatrix temperature. A fast species keeps its profile: its edge value is
+    # 2/3 W/n where n -> 0, not a boundary condition, and shifting by it moved the whole profile by keV's
+    thermal_ions = [ion for ion, sp in enumerate(p.Species) if sp["S"] == "therm"]
+
     if rhotop is None:
         print('\t\t\t- No rhotop available at this beat, shifting the entire profile by a constant offset to the new separatrix value')
         p.profiles['te(keV)'] += Tesep - p.profiles['te(keV)'][-1]
-        p.profiles['ti(keV)'] += Tesep - p.profiles['ti(keV)'][-1, :]
+        for ion in thermal_ions:
+            p.profiles['ti(keV)'][:,ion] += Tesep - p.profiles['ti(keV)'][-1,ion]
     else:
         print(f'\t\t\t- Using rhotop = {rhotop:.3f} to blend temperature profiles only from rhotop to the new separatrix value')
 
         _offset_quadratic(p, p.profiles['te(keV)'], rhotop, Tesep)
-        for ion in range(len(p.profiles['ti(keV)'][0, :])):
+        for ion in thermal_ions:
             _offset_quadratic(p, p.profiles['ti(keV)'][:,ion], rhotop, Tesep)
 
 

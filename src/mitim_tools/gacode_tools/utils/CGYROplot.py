@@ -795,12 +795,19 @@ def _iteration_colors(sorted_its):
     return (lambda it: sm.to_rgba(it)), sm
 
 
-def _target_for(targets_per_iter, it, var, r_idx):
-    '''Turbulence-only target (target - neoclassical, GB) of one iteration/channel/radius, or None.'''
+def _target_for(targets_per_iter, it, var, r_idx, rho=None):
+    '''
+    Turbulence-only target (target - neoclassical, GB) of one iteration/channel/radius, or None.
+    With `rho`, the radius is found by nearest value in the iteration's "rho" entry (the radii the
+    targets were evaluated at) instead of by position, for callers that plot a subset of the radii.
+    '''
     gb_key = _CHANNEL_TO_GB.get(var)
     if not targets_per_iter or gb_key is None:
         return None
     arr = (targets_per_iter.get(it) or {}).get(gb_key)
+    rhos_targets = (targets_per_iter.get(it) or {}).get("rho")
+    if rho is not None and rhos_targets is not None:
+        r_idx = int(np.argmin(np.abs(np.asarray(rhos_targets, dtype=float) - float(rho))))
     if arr is None or r_idx >= len(arr):
         return None
     val = float(arr[r_idx])
@@ -1203,7 +1210,7 @@ _LIVE_FILES = [
     "input.cgyro", "input.cgyro.gen", ".mitim_t0",
     "bin.cgyro.geo", "out.cgyro.egrid", "out.cgyro.equilibrium", "out.cgyro.grids", "out.cgyro.hosts",
     "out.cgyro.memory", "out.cgyro.mpi", "out.cgyro.prec", "out.cgyro.rotation", "out.cgyro.startups",
-    "out.cgyro.version", "out.cgyro.info", "out.cgyro.timing",
+    "out.cgyro.version", "out.cgyro.info", "out.cgyro.timing", "mitim_budget.tag", "mitim_discard.tag",
     "bin.cgyro.freq", "bin.cgyro.ky_cflux", "bin.cgyro.ky_flux", "out.cgyro.time",
 ]
 
@@ -1267,6 +1274,28 @@ def fetch_live_outputs(machine_settings, folder_execution, pairs, local_folder, 
                     info[rho]["mtime"] = mtime
     finally:
         job.close()
+    return info
+
+
+def link_finished_radii(run_folder, local_folder, live_rhos, files=None):
+    '''
+    Radii of the running evaluation that already ended and were retrieved into the run folder (a job
+    relaunched for the radii left only lists those): symlink their outputs into local_folder next to
+    the live ones, so the live tab shows the whole evaluation. Read-only on the run folder.
+    Returns {rho: {'mtime': last write of out.cgyro.time (epoch s), 'machine': 'run folder'}}.
+    '''
+    run_folder, local_folder = Path(run_folder), Path(local_folder)
+    live = {f"{rho:.4f}" for rho in live_rhos}
+    info = {}
+    for time_file in sorted(run_folder.glob("out.cgyro.time_*")):
+        tag = time_file.name.split("_")[-1]
+        if tag in live:
+            continue
+        for name in (files or _LIVE_FILES):
+            src = run_folder / f"{name}_{tag}"
+            if src.is_file():
+                (local_folder / src.name).symlink_to(src)
+        info[float(tag)] = {"machine": "run folder", "mtime": time_file.stat().st_mtime}
     return info
 
 
@@ -1343,6 +1372,11 @@ def _read_live_scalars(folder, rho):
         out["exit"] = next((l.strip() for l in (folder / f"out.cgyro.info_{rho:.4f}").read_text().splitlines() if "EXIT" in l), None)
     except OSError:
         pass
+    try:
+        # a watchdog / cost-guard / manual stop leaves no EXIT line but a tag, and the radius counts as finished
+        out["tag"] = (folder / f"mitim_budget.tag_{rho:.4f}").read_text().split()[0]
+    except (OSError, IndexError):
+        pass
     return out
 
 
@@ -1381,7 +1415,8 @@ def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live",
         has_t = out is not None and getattr(out, "t", None) is not None and len(out.t) > 0
 
         age = now - live["mtime"] if live.get("mtime") is not None else None
-        status = "exited" if live.get("exit") else (f"{_fmt_duration(age)} ago" if age is not None else "no output yet")
+        done = bool(live.get("exit") or live.get("tag"))
+        status = "exited" if live.get("exit") else (f"stopped, {live['tag']}" if live.get("tag") else (f"{_fmt_duration(age)} ago" if age is not None else "no output yet"))
         axs[0, r_idx].set_title(f"$\\rho={float(rho):.3f}$" + (f"  t={out.t[-1]:.1f} $a/c_s$" if has_t else "") + f"\n(last output {status})", fontsize=9)
 
         for row_idx, (var, ylabel) in enumerate(_CHANNELS):
@@ -1393,7 +1428,7 @@ def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live",
                     ax.hlines(float(m), float(tmin), float(out.t[-1]), colors="r", lw=1.6, zorder=6)
                     if sd is not None:
                         ax.fill_between([float(tmin), float(out.t[-1])], float(m) - float(sd), float(m) + float(sd), color="r", alpha=0.15, lw=0)
-            tval = _target_for(targets_per_iter, it, var, r_idx)
+            tval = _target_for(targets_per_iter, it, var, r_idx, rho=rho)
             if tval is not None:
                 ax.axhline(tval, color="k", ls="--", lw=1.0, alpha=0.8, zorder=7)
             if r_idx == 0:
@@ -1417,9 +1452,13 @@ def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live",
             ax.legend(loc="upper center", ncol=3, fontsize=7, framealpha=0.9, handlelength=1.2, columnspacing=0.8)
             eta = None
             if live.get("MAX_TIME") is not None:
-                eta = max(live.get("t0", 0.0) + live["MAX_TIME"] - out.t[-1], 0.0) * total[-1] / dt_out
-            etas[rho] = 0.0 if live.get("exit") else eta
-            state = "done" if live.get("exit") else _fmt_duration(eta)
+                # A rescued radius carries the REMAINING MAX_TIME in input.cgyro while .mitim_t0 still holds the
+                # previous launch's start until the new element runs: a negative span means "waiting for the
+                # rescue", not "done"; only an EXIT line or a tag ends a radius.
+                left = live.get("t0", 0.0) + live["MAX_TIME"] - out.t[-1]
+                eta = max(left, 0.0) * total[-1] / dt_out if left > 0 or done else None
+            etas[rho] = 0.0 if done else eta
+            state = "done" if done else ("rescue pending" if eta is None else _fmt_duration(eta))
             ax.set_title(f"{total[-1] / dt_out:.4g} wall s / 1 $a/c_s$  \u00b7  to MAX_TIME: {state}", fontsize=8)
         if r_idx == 0:
             ax.set_ylabel("wall s / 1 $a/c_s$")
@@ -1445,7 +1484,10 @@ def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live",
         slowest = max(known, key=known.get)
         left = known[slowest]
         text = "all radii done" if left == 0 else f"evaluation done in {_fmt_duration(left)} (slowest $\\rho$={slowest:.3f})"
-        missing = len(rhos) - len(known)
+        pending = sum(1 for e in etas.values() if e is None)
+        missing = len(rhos) - len(etas)
+        if pending:
+            text += f" + {pending} radius/radii waiting for a rescue"
         if missing:
             text += f" + {missing} radius/radii with no timing yet"
         fig.suptitle(f"{label}: {text}", fontsize=11)

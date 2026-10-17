@@ -3,6 +3,7 @@ Set of tools to farm out simulations to run in either remote clusters or locally
 """
 
 from tqdm import tqdm
+import os
 import shlex
 import shutil
 import string
@@ -20,7 +21,7 @@ from pathlib import Path
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from mitim_tools.misc_tools import IOtools, CONFIGread
+from mitim_tools.misc_tools import IOtools, CONFIGread, LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from IPython import embed
@@ -57,6 +58,52 @@ New handling of jobs in remote or local clusters. Example use:
     job.run()
 
 """
+
+# Inside a live allocation, SLURM can refuse new steps for a while ("Unable to create step for
+# job N: Job/step already completing or completed") although the job is RUNNING. When a dispatch
+# comes back without its outputs and its stderr shows this, full_process re-runs it after each of
+# these waits (seconds), on top of attempts_execution.
+SRUN_STEP_REFUSAL_WAITS = (60, 120, 240)
+SRUN_STEP_REFUSAL_PATTERNS = ("Unable to create step for job", "Job/step already completing or completed")
+
+
+def slurm_job_snapshot(folder, note):
+    '''
+    Inside a SLURM allocation (SLURM_JOB_ID set), append what the controller says about this job and
+    its steps to <folder>/mitim_slurm_snapshot.txt, so a step refusal can be traced (e.g. in a NERSC ticket).
+    '''
+    job_id = os.environ.get("SLURM_JOB_ID")
+    if not job_id:
+        return
+    texts = []
+    with open(Path(folder) / "mitim_slurm_snapshot.txt", "a") as f:
+        f.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} {note} =====\n")
+        for cmd in (["scontrol", "show", "job", job_id], ["squeue", "-s", "-j", job_id, "--Format=StepID:20,StepName:16,StepState:12,TimeUsed:12,Nodes:120"]):
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+                texts.append(res.stdout + res.stderr)
+            except (OSError, subprocess.TimeoutExpired) as e:
+                texts.append(f"[failed: {e}]\n")
+            f.write(f"$ {' '.join(cmd)}\n{texts[-1]}")
+    # The tmp folder holding the file is removed when a re-run succeeds, so the driver log gets the key fields too
+    keys = [tok for tok in texts[0].split() if tok.split("=")[0] in ("JobState", "Reason", "RunTime", "TimeLimit", "EndTime")]
+    steps = [" ".join(line.split()) for line in texts[1].splitlines()[1:] if line.strip()]
+    print(f"\t* SLURM snapshot ({note}): {' '.join(keys) or texts[0].strip()[:200]} | steps: {'; '.join(steps) or 'none'}", typeMsg="w")
+
+
+def srun_step_refusals(error):
+    '''Number of SLURM step-creation refusals in a dispatch's stderr (bytes, or None when nothing came back).'''
+    if not error:
+        return 0
+    return sum(any(p in line for p in SRUN_STEP_REFUSAL_PATTERNS)
+               for line in error.decode("utf-8", errors="ignore").splitlines())
+
+
+class MissingOutputsError(LOGtools.InteractiveTerminalError):
+    '''
+    A dispatch did not bring back its expected outputs in a session that cannot answer the retry
+    prompt. Subclass of InteractiveTerminalError so every existing batch handler treats it as before.
+    '''
 
 @dataclass
 class RetryPolicy:
@@ -275,6 +322,40 @@ class SqueueRecord:
         if self.nodelist is None or self.nodelist == "n/a" or self.nodelist.startswith("("):
             return None
         return self.nodelist
+
+
+@dataclass
+class SqueueAnswer:
+    """
+    What one status poll got back, as written to squeue_output.dat: the table squeue printed,
+    then the trailer `MITIM_SQUEUE_EXIT=<exit code> <stderr>` that the poll command appends.
+
+    A job that left the queue and a slurmctld that did not answer both print NO table, not
+    even the header; only stderr separates them ("Invalid job id specified" against a
+    timeout). `answered` is True when slurm gave a verdict, so that silence is never read as
+    a finished job.
+    """
+
+    TRAILER = "MITIM_SQUEUE_EXIT="
+    JOB_GONE = "invalid job id"  # slurm's text for a job id it no longer holds
+
+    records: list = field(default_factory=list)
+    table: str = ""
+    exit_code: str = None
+    error: str = ""
+
+    @classmethod
+    def parse(cls, text, error=None):
+        # `error`: stderr when the caller holds it apart instead of in the trailer
+        table, _, trailer = (text or "").partition(cls.TRAILER)
+        exit_code, _, trailer_error = trailer.strip().partition(" ")
+        return cls(records=SqueueRecord.parse(table), table=table, exit_code=exit_code or None,
+                   error=(trailer_error if error is None else error).strip())
+
+    @property
+    def answered(self):
+        # A table (the header alone means "no such job in the queue"), a clean exit, or slurm's own "gone"
+        return bool(self.table.strip()) or self.exit_code == "0" or self.JOB_GONE in self.error.lower()
 
 
 class mitim_job:
@@ -612,6 +693,13 @@ class mitim_job:
         else:
             self.jobid = None
 
+    def put_file(self, local_file, remote_path):
+        '''One file onto the machine (a plain copy when it is local), on the caller's live connection.'''
+        if self.ssh is None:
+            shutil.copy2(str(local_file), str(remote_path))
+        else:
+            self._sftp_transfer_with_retry('put', str(local_file), str(remote_path))
+
     def resubmit_single_task(self, code_call_str, label, exclude_node=None):
         '''
         Submit a fresh, single-task (non-array) sbatch that runs `code_call_str`
@@ -769,9 +857,11 @@ class mitim_job:
 
             # ~~~~~~ Execute
             execution_counter = 0
+            refusal_reruns, refusals_seen = 0, 0
             received, output, error = False, None, None
 
-            while execution_counter < attempts_execution:
+            # A re-run after a SLURM step refusal is not a spent attempt
+            while execution_counter < attempts_execution + refusal_reruns:
 
                 if execute_flag and self.scheduler is not None and self.ssh is None:
                     output, error = b"", b""
@@ -809,9 +899,18 @@ class mitim_job:
 
                 if received:
                     break
-                else:
-                    if execution_counter < attempts_execution:
-                        print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter}/{attempts_execution})")
+
+                refusals = srun_step_refusals(error)
+                refusals_seen += refusals
+                if refusals and refusal_reruns < len(SRUN_STEP_REFUSAL_WAITS):
+                    wait = SRUN_STEP_REFUSAL_WAITS[refusal_reruns]
+                    refusal_reruns += 1
+                    print(f"\t* SLURM refused {refusals} job step(s) ('{SRUN_STEP_REFUSAL_PATTERNS[0]}') and outputs are missing: "
+                          f"re-running the same dispatch in {wait}s (step-refusal re-run {refusal_reruns}/{len(SRUN_STEP_REFUSAL_WAITS)})", typeMsg="w")
+                    slurm_job_snapshot(self.folder_local, f"step refusal, before re-run {refusal_reruns}")
+                    time.sleep(wait)
+                elif execution_counter < attempts_execution + refusal_reruns:
+                    print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter - refusal_reruns}/{attempts_execution})")
 
             # ~~~~~~ Remove scratch folder
             if received:
@@ -826,7 +925,20 @@ class mitim_job:
                 if output is not None:
                     self._write_debugging_files(output, error)
 
-                cont = print(f"\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written in '{self.folder_local / 'mitim_farming.err'}')",typeMsg="q")
+                try:
+                    cont = print(f"\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written in '{self.folder_local / 'mitim_farming.err'}')",typeMsg="q")
+                except LOGtools.InteractiveTerminalError:
+                    # Non-interactive session (no tty, or stdout redirected to a log): say why instead of a bare prompt error
+                    if refusals_seen:
+                        slurm_job_snapshot(self.folder_local, "step refusal, giving up")
+                    refused = (f" SLURM refused {refusals_seen} job step(s) ('{SRUN_STEP_REFUSAL_PATTERNS[0]}') and "
+                               f"{refusal_reruns} re-run(s) after waits of {SRUN_STEP_REFUSAL_WAITS[:refusal_reruns]}s did not help."
+                               if refusals_seen else "")
+                    raise MissingOutputsError(
+                        f"[MITIM] Dispatch in {self.folderExecution} did not return its expected outputs after "
+                        f"{execution_counter} execution(s).{refused} Scratch folder kept; stdout/stderr in "
+                        f"{self.folder_local / 'mitim_farming.out'} / {self.folder_local / 'mitim_farming.err'}"
+                    ) from None
                 if not cont:
                     print("[MITIM] Stopped with embed(), you can look at output and error",typeMsg="w",)
                     embed()
@@ -834,10 +946,12 @@ class mitim_job:
         print(f"\t-------------- Finished process (took {IOtools.getTimeDifference(time_init)}) --------------\n")
 
     def _write_debugging_files(self, output, error, extra_name=""):
-            with open(self.folder_local / f"mitim_farming{extra_name}.out", "w") as f:
-                f.write(output.decode("utf-8"))
-            with open(self.folder_local / f"mitim_farming{extra_name}.err", "w") as f:
-                f.write(error.decode("utf-8"))
+            # Append, so a repeated dispatch does not overwrite the stderr of the attempt that first failed
+            stamp = f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n"
+            with open(self.folder_local / f"mitim_farming{extra_name}.out", "a") as f:
+                f.write(stamp + output.decode("utf-8"))
+            with open(self.folder_local / f"mitim_farming{extra_name}.err", "a") as f:
+                f.write(stamp + error.decode("utf-8"))
 
     @property
     def retry(self):
@@ -1022,9 +1136,17 @@ class mitim_job:
         print(f'\t* Creating{" remote" if self.ssh is not None else ""} folder:')
         print(f"\t\t{self.folderExecution}")
 
-        command = f"mkdir -p {self.folderExecution}"
+        # Success is read from a stdout marker, not from stderr (a bashrc may print there on every command).
+        # A failed mkdir (e.g. "Disk quota exceeded") otherwise only surfaces later as a bare sftp FileNotFoundError.
+        command = f"mkdir -p {self.folderExecution} && echo MITIM_MKDIR_OK"
 
         output, error = self.execute(command)
+
+        if output is None:
+            raise RuntimeError(f"[MITIM] No response while creating the{' remote' if self.ssh is not None else ''} scratch folder {self.folderExecution} (command timed out)")
+        if b"MITIM_MKDIR_OK" not in output:
+            stderr = (error or b"").decode(errors="replace").strip()
+            raise RuntimeError(f"[MITIM] Could not create the{' remote' if self.ssh is not None else ''} scratch folder {self.folderExecution}: {stderr or '<no stderr>'}")
 
         return output, error
 
@@ -1502,16 +1624,20 @@ class mitim_job:
 
         return output, error
 
-    def probe_interrupted_runs(self, rel_folders, required_files, checksum_file, progress_file=None, progress_line=None, checksum_ignore_prefix=None, report_files=None):
+    def probe_interrupted_runs(self, rel_folders, required_files, checksum_file, progress_file=None, progress_line=None, checksum_ignore_prefix=None, report_files=None, completion=None):
         '''
         Look inside the (possibly remote) scratch folder for sub-folders left by an
         interrupted execution. For each entry of `rel_folders` (relative to
-        folderExecution) returns {rel: (md5_of_checksum_file, progress_token, report)}
-        when every file in `required_files` exists there, and nothing otherwise.
-        `progress_token` is the first column of line `progress_line` (1-based; None =
-        last line) of `progress_file` (e.g. the time the code will resume from), or
-        None. `report` is a 'name=bytes ...' string with the sizes of `report_files`
-        (forensics for the log; missing files are skipped). Lines of `checksum_file`
+        folderExecution) returns {rel: (md5_of_checksum_file, progress_token, report, finished)}
+        when every file in `required_files` exists there or the run there already ended, and
+        nothing otherwise. `progress_token` is the first column of line `progress_line`
+        (1-based; None = last line) of `progress_file` (e.g. the time the code will resume
+        from), or None. `report` is a 'name=bytes ...' string with the sizes of `report_files`
+        (forensics for the log; missing files are skipped). `finished` is True when the
+        sub-folder satisfies `completion` = (marker_file, marker_text, alt_file): marker_file
+        contains marker_text, or alt_file exists (e.g. CGYRO's EXIT line in out.cgyro.info, or
+        mitim_budget.tag); such a run counts even without the required files (CGYRO can end
+        cleanly without a restart write at MAX_TIME). Lines of `checksum_file`
         starting with `checksum_ignore_prefix` (a prefix or a list of them, e.g.
         ['MAX_TIME', 'RESTART_STEP']) are excluded from the md5, so values the caller
         rewrites on rescue do not defeat the identity check. One shell round-trip in total.
@@ -1525,13 +1651,18 @@ class mitim_job:
         report = ' '.join(f'$([ -f "$d/{f}" ] && echo "{f}=$(wc -c < "$d/{f}" | tr -d " ")")' for f in (report_files or []))
         prefixes = [checksum_ignore_prefix] if isinstance(checksum_ignore_prefix, str) else list(checksum_ignore_prefix or [])
         filt = ''.join(f" | grep -v '^{p}'" for p in prefixes)
+        marker_file, marker_text, alt_file = completion or (None, None, None)
+        ended = [f'grep -qsF {shlex.quote(marker_text)} "$d/{marker_file}"'] if marker_file else []
+        ended += [f'[ -f "$d/{alt_file}" ]'] if alt_file else []
+        fin = f'$( {{ {" || ".join(ended)}; }} && echo 1 || echo 0 )' if ended else '0'
         lines = []
         for rel in rel_folders:
             d = f'{fe}/{rel}'
+            # The finished flag goes before the md5: the progress token may be empty and must stay last
             lines.append(
-                f'd={shlex.quote(d)}; if {checks}; then '
+                f'd={shlex.quote(d)}; f={fin}; if [ -f "$d/{checksum_file}" ] && {{ [ "$f" = 1 ] || {{ {checks}; }}; }}; then '
                 f'h=$( cat "$d/{checksum_file}"{filt} | (md5sum 2>/dev/null || md5 -q) | cut -d" " -f1 ); '
-                f'echo "MITIM_RESCUE {rel} $h {prog} | {report}"; fi'
+                f'echo "MITIM_RESCUE {rel} $f $h {prog} | {report}"; fi'
             )
         with self.session(log_file=self.folder_local / 'paramiko.log'):
             output, _ = self.execute('; '.join(lines))
@@ -1539,8 +1670,8 @@ class mitim_job:
         for line in (output or b'').decode('utf-8', errors='ignore').splitlines():
             head, _, report_str = line.partition('|')
             parts = head.split()
-            if len(parts) >= 3 and parts[0] == 'MITIM_RESCUE':
-                found[parts[1]] = (parts[2], parts[3] if len(parts) > 3 else None, report_str.strip())
+            if len(parts) >= 4 and parts[0] == 'MITIM_RESCUE':
+                found[parts[1]] = (parts[3], parts[4] if len(parts) > 4 else None, report_str.strip(), parts[2] == '1')
         return found
 
     def close(self, *args, **kwargs):
@@ -1580,7 +1711,11 @@ class mitim_job:
         # job; when it is gone (scratch deleted) nothing can ever be retrieved, and without this marker
         # the failed `cd` looked like an unretrieved poll, i.e. "pending" forever.
         folder = shlex.quote(str(self.folderExecution))
-        command = (f'if [ -d {folder} ]; then cd {folder} && squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat; '
+        # squeue's exit code and stderr follow its table in the same file (SqueueAnswer): an empty
+        # table alone cannot tell a job that left the queue from a slurmctld that did not answer
+        squeue = (f'_squeue_err=$(squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" 2>&1 > squeue_output.dat); '
+                  f'echo "{SqueueAnswer.TRAILER}$? $_squeue_err" >> squeue_output.dat')
+        command = (f'if [ -d {folder} ]; then cd {folder} && {{ {squeue}; }}; '
                    f'else echo {self.REMOTE_FOLDER_GONE}; fi')
 
         # Only squeue_output.dat is mandatory — it is what interpret_status() parses. The
@@ -1628,6 +1763,15 @@ class mitim_job:
         self.status = 2
         self.log_file = None
 
+    def _set_unknown(self, message):
+        '''Status 0 (keep polling): slurm said nothing about the job this poll, which is never "finished".'''
+        print(f"\t* {message}", typeMsg="w")
+        self.records = []
+        self.infoSLURM = {"STATE": SlurmState.UNKNOWN.value, "NAME": self._squeue_job_name(), "JOBID": None}
+        self.jobid_found = None
+        self.status = 0
+        self.log_file = None
+
     def interpret_status(self, file_output = "slurm_output.dat"):
         """
         Status of job:
@@ -1644,12 +1788,7 @@ class mitim_job:
         # the next beat/step with no output. The polling loop retries next cycle.
         # -----------------------------------------------
         if not (self.folder_local / "squeue_output.dat").exists():
-            print("\t* squeue output not retrieved this poll; assuming job still pending (will re-poll)", typeMsg="w")
-            self.records = []
-            self.infoSLURM = {"STATE": "UNKNOWN", "NAME": self._squeue_job_name(), "JOBID": None}
-            self.jobid_found = None
-            self.status = 0
-            self.log_file = None
+            self._set_unknown("squeue output not retrieved this poll; assuming job still pending (will re-poll)")
             return
 
         # -----------------------------------------------
@@ -1657,7 +1796,17 @@ class mitim_job:
         # -----------------------------------------------
 
         with open(self.folder_local / "squeue_output.dat", "r") as f:
-            self.records = SqueueRecord.parse(f.read())
+            answer = SqueueAnswer.parse(f.read())
+
+        # Guard: squeue printed nothing and did not say the job is gone (slurmctld timeout,
+        # engaging 2026-10-09: four drivers read one such poll as "finished" and died on
+        # arrays that were still running). Same degradation as above: keep polling.
+        if not answer.answered:
+            self._set_unknown(f"squeue gave no answer this poll (exit code {answer.exit_code}, stderr: {answer.error or 'none'}); "
+                              f"silence is not a finished job, assuming it is still in the queue (will re-poll)")
+            return
+
+        self.records = answer.records
 
         if not self.records:
             state = SlurmState.ABSENT
@@ -2019,6 +2168,7 @@ class SbatchScript:
         self.exclude         = self.allocation.setdefault("exclude", None)
         self.account         = self.allocation.setdefault("account", None)
         self.constraint      = self.allocation.setdefault("constraint", None)
+        self.gres            = self.allocation.setdefault("gres", None)   # e.g. "gpu:a100:4": typed GPU request, for partitions that reject the untyped --gpus-per-node
         memory_req_by_config = self.allocation.setdefault("mem", None)
         request_exclusive_node = self.allocation.setdefault("exclusive", False)
 
@@ -2083,7 +2233,9 @@ class SbatchScript:
             lines.append(f"#SBATCH --cpus-per-task {self.cpuspertask}")
         if self.gpuspertask is not None:
             lines.append(f"#SBATCH --gpus-per-task {self.gpuspertask}")
-        if self.gpuspernode is not None:
+        if self.gres is not None:
+            lines.append(f"#SBATCH --gres={self.gres}")   # sbatch refuses --gres=gpu together with --gpus-per-node
+        elif self.gpuspernode is not None:
             lines.append(f"#SBATCH --gpus-per-node={self.gpuspernode}")
         if self.exclude is not None:
             lines.append(f"#SBATCH --exclude={self.exclude}")

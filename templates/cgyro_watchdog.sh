@@ -1,4 +1,4 @@
-_lb_dir="@{rhodir}"; _lb_budget=@{budget_s}; _lb_min=@{min_time}; _lb_discard=@{discard}
+_lb_dir="@{rhodir}"; _lb_budget=@{budget_s}; _lb_min=@{min_time}; _lb_discard=@{discard}; _lb_guard=@{guard}; _lb_gt=0
 set -m 2>/dev/null
 # a stop request applies to this launch only (a leftover one would end it at the first restart write)
 rm -f "$_lb_dir/mitim_stop"
@@ -21,6 +21,21 @@ while kill -0 $_lb_pid 2>/dev/null; do
     kill -0 $_lb_pid 2>/dev/null || break
     # stop request: the wall budget (if any) is spent, or mitim_stop was dropped (scheduler, mitim_kill_cgyro)
     _lb_stop=0; [ -f "$_lb_dir/mitim_stop" ] && _lb_stop=1
+    # cost guard (run.cost_guard): mitim_guard.py judges cost per a/cs and flux vs target at most every
+    # 2 min. Its STOP ends the launch at once, not at the next restart write (hours away on a radius
+    # this slow): CGYRO writes bin.cgyro.restart to a .part file and renames it, so the blob on disk is
+    # whole, only older than the end of the flux trace. No python3 or no verdict means no stop.
+    if (( _lb_stop == 0 && _lb_guard == 1 )) && (( $(date +%s) - _lb_gt >= 120 )) && [ -f "$_lb_dir/mitim_guard.json" ]; then
+        _lb_gt=$(date +%s)
+        # bounded: this loop is also what honors mitim_stop, a read hung on the filesystem must not freeze it
+        _lb_v=$($(command -v timeout >/dev/null 2>&1 && echo "timeout 60") python3 "$_lb_dir/mitim_guard.py" "$_lb_dir" 2>/dev/null)
+        echo "$(date '+%Y-%m-%d %H:%M:%S') ${_lb_v:-WAIT no verdict (python3 missing?)}" > "$_lb_dir/mitim_guard.status"
+        if [ "${_lb_v%% *}" = "STOP" ]; then
+            echo "GUARD ${_lb_v#STOP } elapsed=$(( $(date +%s) - _lb_t0 ))s" > "$_lb_dir/mitim_budget.tag"
+            _lb_kill
+            break
+        fi
+    fi
     if (( _lb_stop == 0 )); then (( _lb_budget > 0 )) || continue; (( $(date +%s) - _lb_t0 < _lb_budget )) && continue; fi
     _lb_t=$(tail -n1 "$_lb_dir/out.cgyro.time" 2>/dev/null | awk '{print $1+0}')
     if ! awk -v t="${_lb_t:-0}" -v m="$_lb_min" 'BEGIN{exit !(t>=m)}'; then

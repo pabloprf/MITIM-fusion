@@ -676,4 +676,5 @@ class GXoutput(SIMtools.GACODEoutput):
                     label_print=iflag,
                     print_msg=True,
                     )
+        self.averaging.report_acf_issues()
 

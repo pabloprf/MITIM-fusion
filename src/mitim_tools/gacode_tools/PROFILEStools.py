@@ -227,20 +227,10 @@ class gacode_state(MITIMstate.mitim_state):
             if n > 2:
                 self.shape_sin.append(self.profiles[f"shape_sin{n}(-)"])
 
-    def derive_geometry(self, n_theta_geo=1001, shaping_psin=0.995, **kwargs):
+    def flux_surfaces(self):
 
         self._produce_shape_lists()
 
-        (
-            self.derived["volp_geo"],
-            self.derived["surf_geo"],
-            self.derived["gradr_geo"],
-            self.derived["bp2_geo"],
-            self.derived["bt2_geo"],
-            self.derived["bt_geo"],
-        ) = calculateGeometricFactors(self,n_theta=n_theta_geo)
-
-        # Calculate flux surfaces
         cn = np.array(self.shape_cos).T
         sn = copy.deepcopy(self.shape_sin)
         sn[0] = self.profiles["rmaj(m)"]*0.0
@@ -255,6 +245,39 @@ class gacode_state(MITIMstate.mitim_state):
             self.profiles["zmag(m)"],
             cn,
             sn)
+
+        return flux_surfaces
+
+    def vacuum_toroidal_flux(self):
+        """
+        Toroidal flux inside each flux surface [Wb/radian] for the vacuum field B_t = bcentr*rcentr/R (no poloidal
+        currents), from the surfaces that the shape profiles describe:
+            phi(r) = bcentr * rcentr * int_{A(r)} dA/R / (2*pi),     int_A dA/R = closed integral of ln(R) dZ
+        It carries the sign of torfluxa(Wb/radian).
+        """
+
+        flux_surfaces = self.flux_surfaces()
+        R, Z = np.c_[flux_surfaces.R, flux_surfaces.R[:, 0]], np.c_[flux_surfaces.Z, flux_surfaces.Z[:, 0]]
+
+        dA_over_R = np.abs(np.sum(0.5 * (np.log(R[:, 1:]) + np.log(R[:, :-1])) * np.diff(Z, axis=1), axis=1))
+
+        return np.sign(self.profiles["torfluxa(Wb/radian)"][0]) * np.abs(self.profiles["bcentr(T)"][0] * self.profiles["rcentr(m)"][0]) * dA_over_R / (2 * np.pi)
+
+    def derive_geometry(self, n_theta_geo=1001, shaping_psin=0.995, **kwargs):
+
+        self._produce_shape_lists()
+
+        (
+            self.derived["volp_geo"],
+            self.derived["surf_geo"],
+            self.derived["gradr_geo"],
+            self.derived["bp2_geo"],
+            self.derived["bt2_geo"],
+            self.derived["bt_geo"],
+        ) = calculateGeometricFactors(self,n_theta=n_theta_geo)
+
+        # Calculate flux surfaces
+        flux_surfaces = self.flux_surfaces()
         self.derived["R_surface"],self.derived["Z_surface"] = np.array([flux_surfaces.R]), np.array([flux_surfaces.Z])
         
         # R and Z have [toroidal, radius, point], to allow for non-axisymmetric cases

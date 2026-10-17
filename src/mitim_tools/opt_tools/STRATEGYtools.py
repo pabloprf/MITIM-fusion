@@ -182,6 +182,13 @@ class opt_evaluator:
         """
         pass
 
+    def after_evaluation(self, *args, **kwargs):
+        '''
+        Called once per iteration, after its points have been evaluated (iteration 0: the initial training) and before the surrogates are fitted
+        '''
+
+        pass
+
     def finalize_evaluation(self, *args, **kwargs):
         '''
         If the case has converged, do something
@@ -692,10 +699,9 @@ class MITIM_BO:
         self.currentIteration = -1
 
         # Has the problem reached convergence in the training?
-        converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
-        self.converged = bool(converged)
-        if converged:
-            print("- Optimization has converged in training!",typeMsg="i")
+        stop = self.check_stopping_criteria()
+        if stop:
+            print(f"- Optimization stopped in training ({'converged' if self.converged else 'NOT converged'})!",typeMsg="i")
             self.numIterations = 0
 
         # If no iterations are requested, just run the training step
@@ -773,6 +779,9 @@ class MITIM_BO:
                             f"\t[LocalOptima] Mining round failed: {_exc}",
                             typeMsg="w",
                         )
+
+            # Evaluations of this iteration are complete (iteration 0: the initial training); surrogates are fitted next
+            self.optimization_object.after_evaluation()
 
             # After evaluating metrics inside updateSet, I may have requested a hard finish
             if self.hard_finish:
@@ -875,7 +884,7 @@ class MITIM_BO:
         self.save()
         
         # Finalize the evaluation
-        self.optimization_object.finalize_evaluation()
+        self.optimization_object.finalize_evaluation(converged=self.converged)
 
         print(f"- Complete MITIM workflow took {IOtools.getTimeDifference(timeBeginning)} ~~")
         print("\n **********************************************************************************************************************")
@@ -941,6 +950,17 @@ class MITIM_BO:
             copyClass.steps[i].defineFunctions(copyClass.scalarized_objective)
 
         return copyClass
+
+    def check_stopping_criteria(self):
+        '''
+        Returns whether to stop, and sets self.converged (read by MAESTRO to count unconverged PORTALS beats).
+        Stopping is not converging: a criteria function may set self.convergence_verdict (PORTALS: Ricci only),
+        so a run stopped by stagnating inputs is not written as converged. Without a verdict, stop == converged.
+        '''
+        self.convergence_verdict = None
+        stop, _ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
+        self.converged = bool(stop if self.convergence_verdict is None else self.convergence_verdict)
+        return bool(stop)
 
     def save(self, name="optimization_object.pkl", lean=False):
         print("* Proceeding to save new MITIM state pickle file" + (" (lean: no surrogate steps)" if lean else ""))
@@ -1292,13 +1312,11 @@ class MITIM_BO:
         # Stopping criteria
         # ~~~~~~~~~~~~~~~~~~
 
-        converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
+        stop = self.check_stopping_criteria()
 
-        self.converged = bool(converged)   # last verdict; read by MAESTRO to count unconverged PORTALS beats
-
-        if converged:
+        if stop:
             self.hard_finish = self.hard_finish or True
-            print("- * Optimization considered converged *", typeMsg="i")
+            print(f"- * Optimization stopped, {'converged' if self.converged else 'NOT converged'} *", typeMsg="i")
 
         return y_next, ystd_next
 

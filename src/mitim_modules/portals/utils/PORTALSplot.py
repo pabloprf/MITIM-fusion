@@ -2490,6 +2490,10 @@ def _load_turb_targets_for_iterations(iter_folders, predicted_channels):
             if key in targets and key in neoc:
                 d[key] = np.asarray(targets[key], dtype=float) - np.asarray(neoc[key], dtype=float)
         if d:
+            # Radii the targets belong to, for plots that show only some of them (CGYRO live tab)
+            rho = (payload.get("additional_info", {}) or {}).get("rho")
+            if rho is not None:
+                d["rho"] = np.asarray(rho, dtype=float)
             out[it] = d
     return out
 
@@ -2740,6 +2744,8 @@ def plot_cgyro_live_status(root_folder, fn, fn_color, finished_cache=None):
         except Exception as e:
             print(f"\t- Could not fetch the live CGYRO outputs ({type(e).__name__}: {e}); skipping the live-status tab", typeMsg='w')
             return False
+        # Radii of this evaluation already retrieved (the job in flight may carry only the ones left)
+        info.update(CGYROplot.link_finished_radii(dict(iter_folders)[it] / base_subfolder, base, list(info)))
         rhos = sorted(info)
         tool = CGYROplot.load_tool_for_iteration(Path(tmp), rhos, read_kwargs=run["read_kwargs"], base_subfolder=base_subfolder)
         targets = _load_turb_targets_for_iterations([(it, dict(iter_folders)[it])], (run["params"].get("solution") or {}).get("predicted_channels") or [])

@@ -19,15 +19,21 @@ except ModuleNotFoundError:
 from IPython import embed
 
 
-def _resolve_rho_star_norm_from_input_gacode(folder, roa, max_parents=3):
+def _resolve_gb_units_from_input_gacode(folder, roa, max_parents=3, input_gacode=None):
     """
-    PROFILE_MODEL=1 CGYRO runs (the MITIM default) write rho_star_norm=0.0 to
-    out.cgyro.info because the dimensional anchor (T_e[keV], B_unit[T], a[m])
-    isn't supplied. If a dimensional input.gacode is sitting alongside the run
-    (or in any of its parent folders up to `max_parents`), interpolate
-    derived["rho_sa"] from it at the simulation's r/a (= cgyrodata.rmin) and
-    return that value -- mathematically identical to what CGYRO would have
-    computed under PROFILE_MODEL=2 with the same dimensional inputs.
+    PROFILE_MODEL=1 CGYRO runs (the MITIM default) write rho_star_norm, q_gb_norm,
+    gamma_gb_norm and pi_gb_norm = 0.0 to out.cgyro.equilibrium because the
+    dimensional anchor (T_e[keV], n_e, B_unit[T], a[m]) isn't supplied. If a
+    dimensional input.gacode is sitting alongside the run (or in any of its parent
+    folders up to `max_parents`; `input.gacode_torun`, the state a standalone MITIM
+    run was prepared from, counts too), interpolate the gyroBohm units of that state
+    at the simulation's r/a (= cgyrodata.rmin) and return them -- the same
+    quantities CGYRO would have computed under PROFILE_MODEL=2 with the same
+    dimensional inputs (cgyro_make_profiles.F90: deuterium reference mass, B_unit, a):
+        rho_sa  rho_s/a              [-]
+        q_gb    n_e T_e c_s rho_sa^2 [MW/m^2]
+        g_gb    n_e c_s rho_sa^2     [1E20/s/m^2]  (CGYRO's gamma_gb_norm is in 1E19/s/m^2)
+        pi_gb   n_e T_e a rho_sa^2   [J/m^2]
 
     Caveat the caller is expected to surface to the user: the dimensionless
     inputs in input.cgyro (T_e/T_norm, n_e/n_norm, gradients, nu, ...) are not
@@ -35,23 +41,26 @@ def _resolve_rho_star_norm_from_input_gacode(folder, roa, max_parents=3):
     For PORTALS that consistency holds by construction; for ad-hoc
     `mitim_plot_cgyro <folder>` use it's the user's responsibility.
 
-    Returns: (rho_star_norm, source_path) or (None, None) if no readable
+    `input_gacode` (a file given explicitly, e.g. `read(input_gacode=...)`) is used before
+    searching next to the run.
+
+    Returns: (dict of the four units, source_path) or (None, None) if no readable
     input.gacode is found.
     """
     folder = Path(folder)
     candidates = [folder] + list(folder.parents)[:max_parents]
-    for d in candidates:
-        f = d / "input.gacode"
+    files = ([Path(input_gacode)] if input_gacode is not None else []) + [d / name for d in candidates for name in ("input.gacode", "input.gacode_torun")]
+    for f in files:
         if not f.exists():
             continue
         try:
             from mitim_tools.gacode_tools import PROFILEStools
             profiles = PROFILEStools.gacode_state(str(f))
             roa_grid = profiles.profiles["rmin(m)"] / profiles.profiles["rmin(m)"][-1]
-            rho_sa = float(np.interp(roa, roa_grid, profiles.derived["rho_sa"]))
-            return rho_sa, f
+            units = {k: float(np.interp(roa, roa_grid, np.abs(profiles.derived[k]))) for k in ("rho_sa", "q_gb", "g_gb", "pi_gb")}
+            return units, f
         except Exception as e:
-            print(f"\t- Found {f} but could not derive rho_s/a from it ({type(e).__name__}: {e}); skipping", typeMsg='w')
+            print(f"\t- Found {f} but could not derive the gyroBohm units from it ({type(e).__name__}: {e}); skipping", typeMsg='w')
             continue
     return None, None
 
@@ -64,6 +73,8 @@ def compute_box_and_nradial(
     L_x=90.0,
     N_radial=256,
     min_box_size=100,
+    fft_friendly=False,
+    fft_tol=0.06,
 ):
     """
     Pick CGYRO BOX_SIZE and N_RADIAL from local equilibrium quantities.
@@ -76,6 +87,10 @@ def compute_box_and_nradial(
     rmin is r/a (i.e., the CGYRO RMIN parameter), ky_min is the CGYRO KY
     parameter (k_theta * rho_s at the surface). Returns (BOX_SIZE, N_RADIAL)
     as Python ints.
+
+    fft_friendly (default False: the plain recipe above): move the pair to the nearest
+    one whose radial FFT length is fast (see fft_friendly_grid); fft_tol is the largest
+    relative change allowed in box length and in kx_max.
     """
 
     # Only the magnitude of the magnetic shear sets the box-length scale:
@@ -115,7 +130,77 @@ def compute_box_and_nradial(
         r_test += 1
     n_radial_out = int(r_test * box_size)
 
+    if fft_friendly:
+        box_size, n_radial_out = fft_friendly_grid(box_size, n_radial_out, tol=fft_tol)
+
     return int(box_size), n_radial_out
+
+
+def _is_smooth(n, max_prime=7):
+    for p in (2, 3, 5, 7):
+        if p > max_prime:
+            break
+        while n % p == 0:
+            n //= p
+    return n == 1
+
+
+def fft_friendly_grid(box_size, n_radial, tol=0.06, max_prime=7):
+    """
+    Nearest (BOX_SIZE, N_RADIAL) to the given pair whose nonlinear radial FFT length is fast.
+
+    CGYRO's radial FFT has 3*N_RADIAL/2 points and CGYRO flags any prime factor above 7
+    ("WARNING: large prime factor" in out.cgyro.info). Such lengths cost ~20% more per radius on
+    GPUs (cuFFT). Because N_RADIAL is a multiple of BOX_SIZE, a BOX_SIZE with a large prime
+    (31, 38=2*19, ...) can only be fixed by moving BOX_SIZE itself.
+
+    Candidates keep N_RADIAL even and a multiple of BOX_SIZE, and change the box length
+    (L_x/rho_s = BOX_SIZE/(KY*|s|), so proportional to BOX_SIZE) and kx_max (proportional to
+    (N_RADIAL/2-1)/BOX_SIZE) by at most `tol` each. The pair with the smallest worst-case change
+    wins; ties go to the smaller N_RADIAL, then to more factors of 2. A pair that is already fast,
+    or has no candidate within `tol`, is returned unchanged.
+    """
+    box_size, n_radial = int(box_size), int(n_radial)
+    if n_radial % 2 == 0 and _is_smooth(3 * n_radial // 2, max_prime):
+        return box_size, n_radial
+
+    kx0 = (n_radial / 2 - 1) / box_size
+    best = None
+    for b in range(max(1, math.floor(box_size * (1 - tol))), math.ceil(box_size * (1 + tol)) + 1):
+        for n in range(b, 2 * n_radial + 1, b):
+            if n % 2 or not _is_smooth(3 * n // 2, max_prime):
+                continue
+            dev = round(max(abs(b / box_size - 1), abs(((n / 2 - 1) / b) / kx0 - 1)), 9)
+            if dev > tol:
+                continue
+            key = (dev, n, -(n & -n))
+            if best is None or key < best[0]:
+                best = (key, b, n)
+
+    if best is None:
+        print(f"\t\t* BOX_SIZE={box_size} N_RADIAL={n_radial}: radial FFT length {3 * n_radial // 2} has a prime "
+              f"factor > {max_prime} and no fast grid lies within {tol:.0%} in box length and kx_max; kept", typeMsg="w")
+        return box_size, n_radial
+
+    _, b, n = best
+    print(f"\t\t* FFT-friendly grid: BOX_SIZE {box_size} -> {b}, N_RADIAL {n_radial} -> {n} "
+          f"(radial FFT {3 * n_radial // 2} -> {3 * n // 2}; box length {b / box_size - 1:+.1%}, "
+          f"kx_max {((n / 2 - 1) / b) / kx0 - 1:+.1%})", typeMsg="i")
+    return b, n
+
+
+def self_connected_modes(box_size, n_radial, n_toroidal):
+    """
+    Toroidal mode indices n in 1..N_TOROIDAL-1 (ky = n*KY) that connect to themselves after one poloidal turn.
+
+    At the ends of the field line CGYRO connects radial index ir to ir +- n*BOX_SIZE modulo N_RADIAL
+    (cgyro_rhs.F90: itorbox = itor*box_size*sign_qs, modulo(ir +- itorbox - 1, n_radial)). Mode n therefore
+    visits N_RADIAL / gcd(N_RADIAL, n*BOX_SIZE) radial indices, one per poloidal turn; when that count is 1
+    its parallel domain is a single turn that closes on itself. With N_RADIAL = r*BOX_SIZE the count is
+    r / gcd(r, n), so no simulated mode closes on itself once r >= N_TOROIDAL.
+    """
+    box_size, n_radial = int(box_size), int(n_radial)
+    return [n for n in range(1, int(n_toroidal)) if n_radial // math.gcd(n_radial, n * box_size) == 1]
 
 
 class CGYROlinear_scan:
@@ -171,8 +256,11 @@ class CGYROlinear_scan:
         
 
 class CGYROoutput(SIMtools.GACODEoutput):
-    def __init__(self, folder, suffix = None, tmin=0.0, tmin_is_rel=True, minimal=False, last_tmin_for_linear=True, averaging=None, **kwargs):
+    def __init__(self, folder, suffix = None, tmin=0.0, tmin_is_rel=True, minimal=False, last_tmin_for_linear=True, averaging=None, state_for_units=None, **kwargs):
         '''
+        state_for_units: input.gacode file to take the gyroBohm units from when CGYRO did not write them
+          (PROFILE_MODEL=1), before searching next to the run. CGYRO.read(input_gacode=...) sets it.
+
         tmin sets the left edge of the window used for signal analysis (averaging method "fixed").
           tmin >= 0                    : absolute time (a/cs).
           tmin <  0, tmin_is_rel=True  : fraction of the total simulation time
@@ -278,50 +366,52 @@ class CGYROoutput(SIMtools.GACODEoutput):
         else:
             self.theta_stored = np.array([-1+2.0*i/self.cgyrodata.theta_plot for i in range(self.cgyrodata.theta_plot)])
         
+        # GyroBohm units as CGYRO wrote them: Qgb [MW/m^2], Ggb [1E20/s/m^2] (CGYRO's
+        # gamma_gb_norm is in 1E19/s/m^2; converted to the MITIM convention), Pgb [J/m^2]
         self.Qgb = self.cgyrodata.q_gb_norm
-        self.Ggb = self.cgyrodata.gamma_gb_norm
+        self.Ggb = self.cgyrodata.gamma_gb_norm * 1e-1
         self.Pgb = self.cgyrodata.pi_gb_norm
-        
-        # PROFILE_MODEL=1 (MITIM default) leaves rho_star_norm=0 in
-        # out.cgyro.info, which would zero out every fluctuation amplitude at
-        # _process_fluctuations(). If an input.gacode is available alongside
-        # the run, recover rho_star_norm from it at r/a=self.roa. When
-        # PROFILE_MODEL=2 (rho_star_norm already populated) we still cross-
-        # check against input.gacode if present, but always trust CGYRO's own
-        # value as the effective one.
+
+        # PROFILE_MODEL=1 (MITIM default) leaves rho_star_norm and the gyroBohm
+        # units = 0 in out.cgyro.equilibrium, which would zero out every fluctuation
+        # amplitude at _process_fluctuations() and every flux in physical units at
+        # _process_fluxes(). If an input.gacode is available alongside the run,
+        # recover them from it at r/a=self.roa. When PROFILE_MODEL=2 (already
+        # populated) we still cross-check rho_star_norm against input.gacode if
+        # present, but always trust CGYRO's own values as the effective ones.
         rho_star_norm_effective = self.cgyrodata.rho_star_norm
         self._rho_star_norm_source = ('out.cgyro.info', None)
+        gb_units, source = _resolve_gb_units_from_input_gacode(self.folder, float(self.roa), input_gacode=state_for_units)
         if rho_star_norm_effective <= 0.0:
-            rho_sa, source = _resolve_rho_star_norm_from_input_gacode(self.folder, float(self.roa))
-            if rho_sa is not None:
+            if gb_units is not None:
                 print(
-                    f"\t* CGYRO ran with PROFILE_MODEL=1 (rho_star_norm=0 in out.cgyro.info); "
-                    f"computed rho_star_norm={rho_sa:.4e} from {source} at r/a={self.roa:.4f}. "
-                    f"Fluctuation amplitudes use this *computed* rho_star_norm, not a value the simulation itself used "
+                    f"\t* CGYRO ran with PROFILE_MODEL=1 (rho_star_norm=0 and gyroBohm units=0 in its output); "
+                    f"computed rho_star_norm={gb_units['rho_sa']:.4e}, Qgb={gb_units['q_gb']:.4e} MW/m^2 from {source} at r/a={self.roa:.4f}. "
+                    f"Fluctuation amplitudes and fluxes in physical units use these *computed* values, not ones the simulation itself used "
                     f"(input.cgyro dimensionless inputs are assumed consistent with this input.gacode at this radius).",
                     typeMsg='w',
                 )
-                rho_star_norm_effective = rho_sa
+                rho_star_norm_effective = gb_units['rho_sa']
+                self.Qgb, self.Ggb, self.Pgb = gb_units['q_gb'], gb_units['g_gb'], gb_units['pi_gb']
                 self._rho_star_norm_source = ('input.gacode', source)
             else:
                 print(
-                    f"\t* CGYRO ran with PROFILE_MODEL=1 (rho_star_norm=0 in out.cgyro.info) and no input.gacode was found "
-                    f"in {self.folder} or its first 3 parents; fluctuation amplitudes will be zero. "
-                    f"Drop an input.gacode next to the run to recover physical amplitudes.",
+                    f"\t* CGYRO ran with PROFILE_MODEL=1 (rho_star_norm=0 and gyroBohm units=0 in its output) and no input.gacode was found "
+                    f"in {self.folder} or its first 3 parents; fluctuation amplitudes and fluxes in physical units (MW/m^2, J/m^2) will be zero. "
+                    f"Drop an input.gacode next to the run to recover them.",
                     typeMsg='w',
                 )
                 self._rho_star_norm_source = ('zero', None)
-        else:
-            rho_sa, source = _resolve_rho_star_norm_from_input_gacode(self.folder, float(self.roa))
-            if rho_sa is not None:
-                rel_diff = abs(rho_sa - rho_star_norm_effective) / rho_star_norm_effective
-                print(
-                    f"\t* rho_star_norm cross-check at r/a={self.roa:.4f}: "
-                    f"CGYRO (out.cgyro.info)={rho_star_norm_effective:.4e}, "
-                    f"input.gacode ({source})={rho_sa:.4e}, "
-                    f"relative diff={rel_diff*100:.2f}% -- using the CGYRO value.",
-                    typeMsg='i',
-                )
+        elif gb_units is not None:
+            rho_sa = gb_units['rho_sa']
+            rel_diff = abs(rho_sa - rho_star_norm_effective) / rho_star_norm_effective
+            print(
+                f"\t* rho_star_norm cross-check at r/a={self.roa:.4f}: "
+                f"CGYRO (out.cgyro.info)={rho_star_norm_effective:.4e}, "
+                f"input.gacode ({source})={rho_sa:.4e}, "
+                f"relative diff={rel_diff*100:.2f}% -- using the CGYRO value.",
+                typeMsg='i',
+            )
 
         self.artificial_rhos_factor = rho_star_norm_effective / self.cgyrodata.rhonorm
 
@@ -336,7 +426,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self._build_averager()
 
         if (not minimal): # and (self.linear == False):
-            self.cgyrodata.getbigfield()
+            self._read_big_fields()
 
             if 'kxky_phi' in self.cgyrodata.__dict__:
                 try:
@@ -351,6 +441,10 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self._saturate_signals()
         
         self.remove_symlinks()
+
+    def unnormalize(self, *args, **kwargs):
+        # Physical units are resolved at construction (CGYRO's own, or an input.gacode: see __init__)
+        pass
 
     # ---- harvest interface (SIMtools.GACODEoutput): inputs are the input.cgyro the trace ran with, fluxes are time averages by self.averaging
     def harvest_inputs(self):
@@ -595,6 +689,37 @@ class CGYROoutput(SIMtools.GACODEoutput):
             self.bpar_ballooning = self.cgyrodata.bparb     # (ball, time)
             self.theta_ballooning = self.cgyrodata.thetab   # (ball, time)
 
+    def _read_big_fields(self):
+        '''
+        pygacode's getbigfield, tolerant to a run stopped in the middle of an output step.
+        CGYRO writes the moments (n, e, v) and the fields (phi, apar, bpar) before out.cgyro.time,
+        so a job killed while writing may leave some of those files with more time slices than
+        the time vector. Slices beyond out.cgyro.time are dropped (as pygacode's getflux does).
+        '''
+
+        c = self.cgyrodata
+        extract = c.extract
+        moments = ['.cgyro.kxky_n', '.cgyro.kxky_e', '.cgyro.kxky_v']
+        dropped = {}
+
+        def extract_up_to_time_vector(f, cmplx=False):
+            t, fmt, data = extract(f, cmplx=cmplx)
+            size_time_slice = c.n_radial * c.theta_plot * c.n_n * (c.n_species if f in moments else 1)
+            n_written = len(data) // size_time_slice
+            if fmt == 'bin' and n_written > c.n_time:
+                dropped[f'bin{f}'] = n_written - c.n_time
+                data = data[:size_time_slice * c.n_time]
+            return t, fmt, data
+
+        c.extract = extract_up_to_time_vector
+        try:
+            c.getbigfield()
+        finally:
+            del c.extract   # back to pygacode's own method (a local function would not pickle)
+
+        if len(dropped) > 0:
+            print(f'\t- Run stopped while writing an output step: dropped time slices beyond out.cgyro.time ({c.n_time} entries) in {dropped}', typeMsg='w')
+
     def _process_fluctuations(self):
         # Fluctuations (complex numbers)
         
@@ -708,7 +833,9 @@ class CGYROoutput(SIMtools.GACODEoutput):
 
         # Correlation length
         phi = (abs(self.phi[:,self.ky>0,:])).sum(axis=1) # Sum over toroidal modes n>0
-        phim, _ = apply_ac(self.t,phi,tmin=self.tmin)
+        issues = {}
+        phim, _ = apply_ac(self.t,phi,tmin=self.tmin, issues=issues)
+        self.averaging.note_acf_issues('phi (correlation length)', issues)
         phim = np.append(0, phim)  # Add n=0 mode
         if np.isinf(phim).any() or np.isnan(phim).any():
             print(f"\t- Warning: Correlation length calculation failed due to infinite/nan values. Setting l_corr to NaN.", typeMsg='w')
@@ -1026,8 +1153,10 @@ class CGYROoutput(SIMtools.GACODEoutput):
                         self.__dict__[iflag],
                         tmax=self.tmax_fluct,
                         label_print=iflag,
-                        )     
-            
+                        )
+
+        self.averaging.report_acf_issues()
+
 
 def harvest_averaging_fields(obj, names):
     '''
@@ -1053,7 +1182,7 @@ def harvest_averaging_fields(obj, names):
             continue
         if av.uncertainty == 'acf':
             try:
-                n_corr, icor = _grab_ncorrelation(np.asarray(S, dtype=float)[it0:])
+                n_corr, icor = _grab_ncorrelation(np.asarray(S, dtype=float)[it0:], issues={})   # already reported by the averager
                 out[f'{k}_ncorr'], out[f'{k}_icor'] = float(n_corr), float(icor)
             except Exception:
                 pass
@@ -1080,6 +1209,7 @@ def harvest_run_fields(obj):
       reached_max_time     1: CGYRO wrote its EXIT line after the last launch (nonlinear: all steps done),
                            0: truncated (killed, preempted, crashed, or stopped by the wall-budget watchdog)
       budget_stop          1: stopped on purpose by MITIM's wall-budget watchdog (mitim_budget.tag present)
+      guard_stop           1: that stop came from the cost guard (run.cost_guard; the tag starts with GUARD)
       cost_s_per_acs       [s per a/cs] wall clock: median TOTAL of the out.cgyro.timing rows (one per
                            output) divided by the output spacing of t
       wall_s               [s] wall clock of the trace: setup + every TOTAL row of out.cgyro.timing
@@ -1088,7 +1218,7 @@ def harvest_run_fields(obj):
       gpu                  1: GPU build (platform tag of out.cgyro.version or 'GPU-aware' in out.cgyro.info)
     '''
     out = {k: np.nan for k in ('restart_warm', 'restart_source_iter', 'restart_t_inherited', 'max_time', 't_start',
-                               'reached_max_time', 'budget_stop', 'cost_s_per_acs', 'wall_s', 'n_mpi', 'n_omp', 'n_nodes', 'gpu')}
+                               'reached_max_time', 'budget_stop', 'guard_stop', 'cost_s_per_acs', 'wall_s', 'n_mpi', 'n_omp', 'n_nodes', 'gpu')}
     folder, suffix = getattr(obj, 'folder', None), getattr(obj, 'suffix_read', None) or ''
     read = lambda name: _read_run_file(folder, suffix, name)
 
@@ -1126,6 +1256,7 @@ def harvest_run_fields(obj):
             out['reached_max_time'] = int(i_exit > i_launch)
         if info or read('mitim_budget.tag') is not None:
             out['budget_stop'] = int(read('mitim_budget.tag') is not None)
+            out['guard_stop'] = int((read('mitim_budget.tag') or '').startswith('GUARD'))
         if i_launch >= 0 and i_launch + 1 < len(lines):
             vals = dict(zip([s.strip() for s in lines[i_launch].split('|')], lines[i_launch + 1].split()))
             out['n_mpi'], out['n_omp'] = float(vals.get('n_MPI', np.nan)), float(vals.get('n_OMP', np.nan))

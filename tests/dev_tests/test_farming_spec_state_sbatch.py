@@ -353,6 +353,66 @@ def test_interpret_status_mapping():
     print("PASS test_interpret_status_mapping")
 
 
+TIMEOUT_ERROR = "slurm_load_jobs error: Socket timed out on send/recv operation"
+GONE_ERROR = "slurm_load_jobs error: Invalid job id specified"
+
+
+def test_interpret_status_needs_an_answer_from_squeue():
+    '''A job that left the queue and a slurmctld that did not answer both print no table at all; only
+    stderr separates them (engaging 2026-10-09: 0-byte squeue_output.dat on four running arrays).'''
+    folder = Path(tempfile.mkdtemp())
+    try:
+        trailer = FARMINGtools.SqueueAnswer.TRAILER
+        header = SQUEUE_ARRAY.splitlines()[0]
+
+        for text in ["", f"{trailer}1 {TIMEOUT_ERROR}\n", f"{trailer}1 \n"]:
+            job = _interpret(folder, text)
+            assert job.status == 0 and job.infoSLURM["STATE"] == "UNKNOWN", (text, job.status, job.infoSLURM)
+
+        for text in [f"{trailer}1 {GONE_ERROR}\n", f"{header}\n{trailer}0 \n"]:
+            job = _interpret(folder, text)
+            assert job.status == 2 and job.infoSLURM["STATE"] == "NOT FOUND", (text, job.status, job.infoSLURM)
+
+        # the trailer is not a row
+        job = _interpret(folder, SQUEUE_ARRAY + f"{trailer}0 \n")
+        assert job.status == 0 and len(job.records) == 3, (job.status, job.records)
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    print("PASS test_interpret_status_needs_an_answer_from_squeue")
+
+
+def test_check_command_keeps_exit_code_and_stderr():
+    '''Runs the real poll command in bash against a fake squeue, for the three answers slurm can give.'''
+    folder = Path(tempfile.mkdtemp())
+    try:
+        job = _job_with_full_spec(folder)
+        job.machineSettings = {"machine": "local", "modules": None, "slurm": {}, "folderWork": str(folder)}
+        job.folderExecution = str(folder)
+        job.jobid = "12345678"
+        job.slurm_settings = {"job-name": "cgyro_test"}
+        job.retrieve = lambda **kwargs: True
+
+        header, row = SQUEUE_ARRAY.splitlines()[0], SQUEUE_ARRAY.splitlines()[2]
+        fakes = {
+            "running": (f"squeue() {{ echo '{header}'; echo '{row}'; }}", 1, "RUNNING"),
+            "gone": (f"squeue() {{ echo '{GONE_ERROR}' >&2; return 1; }}", 2, "NOT FOUND"),
+            "timeout": (f"squeue() {{ echo '{TIMEOUT_ERROR}' >&2; return 1; }}", 0, "UNKNOWN"),
+        }
+        for label, (fake_squeue, status, state) in fakes.items():
+            def fake_execute(command, **kwargs):
+                subprocess.run(["bash", "-c", fake_squeue + "\n" + command], check=True)
+                return b"", b""
+            job.execute = fake_execute
+            with _quiet() as log:
+                job.check()
+            assert (job.status, job.infoSLURM["STATE"]) == (status, state), (label, job.status, job.infoSLURM, log.getvalue())
+            if label == "timeout":
+                assert "Socket timed out" in log.getvalue() and "exit code 1" in log.getvalue(), log.getvalue()
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    print("PASS test_check_command_keeps_exit_code_and_stderr")
+
+
 def test_node_of_an_array_element():
     folder = Path(tempfile.mkdtemp())
     try:
@@ -498,6 +558,8 @@ if __name__ == "__main__":
     test_squeue_parse_reads_every_row()
     test_state_tokens()
     test_interpret_status_mapping()
+    test_interpret_status_needs_an_answer_from_squeue()
+    test_check_command_keeps_exit_code_and_stderr()
     test_node_of_an_array_element()
     test_sbatch_text_is_byte_identical_to_the_reference_commit()
     test_builder_does_not_write_into_the_caller_dicts()
