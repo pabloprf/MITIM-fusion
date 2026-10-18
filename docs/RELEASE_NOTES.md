@@ -304,6 +304,11 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **A remote session no longer blocks a driver when the server stops answering.** Every paramiko call that waits
+    on the server is bounded (`FARMINGtools.SSH_CONNECT_TIMEOUT`, `SSH_BANNER_TIMEOUT`, `SSH_AUTH_TIMEOUT`,
+    `SSH_CHANNEL_OPEN_TIMEOUT`, `SFTP_IDLE_TIMEOUT`); a timeout is a transient error, so the session is rebuilt and
+    retried. A laptop driver had sat 10-15 min in `open_sftp` (paramiko's channel-open default is 1 h) and stopped polling.
+
 *   🐛 **A code launched through SLURM on a machine whose `slurm` block names no partition (Perlmutter: qos, account,
     constraint) is no longer capped to the driver's own allocation.** `cores_per_node` was cut to the CPUs of the
     driver job, which refused multi-node CPU launches (64 nodes). Any non-empty `slurm` block now counts as a SLURM launch.

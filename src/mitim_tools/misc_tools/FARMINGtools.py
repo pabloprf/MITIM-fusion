@@ -66,6 +66,17 @@ New handling of jobs in remote or local clusters. Example use:
 SRUN_STEP_REFUSAL_WAITS = (60, 120, 240)
 SRUN_STEP_REFUSAL_PATTERNS = ("Unable to create step for job", "Job/step already completing or completed")
 
+# Bounds on every paramiko call that can wait on the server [s]. Without them a link that stays up but stops
+# answering (seen from a laptop driver to Perlmutter, 2026-10-14) blocked open_sftp for 10-15 min, inside
+# paramiko's 1 h channel-open default, and the driver stopped polling. A timeout raises SSHException or
+# socket.timeout, both in RetryPolicy.TRANSIENT, so the connection is rebuilt and the call retried.
+SSH_CONNECT_TIMEOUT = 60        # TCP connect to the host (or the jump host)
+SSH_BANNER_TIMEOUT = 60         # server's SSH banner after the TCP connect
+SSH_AUTH_TIMEOUT = 120          # key / agent authentication
+SSH_CHANNEL_OPEN_TIMEOUT = 120  # opening a channel: the sftp session, the jump tunnel
+SFTP_IDLE_TIMEOUT = 600         # an sftp request or transfer with no byte from the server for this long
+_SSH_CONNECT_TIMEOUTS = dict(timeout=SSH_CONNECT_TIMEOUT, banner_timeout=SSH_BANNER_TIMEOUT, auth_timeout=SSH_AUTH_TIMEOUT)
+
 
 def slurm_job_snapshot(folder, note):
     '''
@@ -1065,6 +1076,7 @@ class mitim_job:
                 port=self.port,
                 sock=self.sock,
                 allow_agent=True,
+                **_SSH_CONNECT_TIMEOUTS,
             )
         except paramiko.ssh_exception.NoValidConnectionsError:
             print("\t> Paramiko's connection failed! trying again in 5 seconds to avoid random drops", typeMsg="w")
@@ -1077,12 +1089,24 @@ class mitim_job:
                 port=self.port,
                 sock=self.sock,
                 allow_agent=True,
+                **_SSH_CONNECT_TIMEOUTS,
             )
 
         try:
-            self.sftp = self.ssh.open_sftp()
+            self.sftp = self._open_sftp()
         except paramiko.sftp.SFTPError:
             raise Exception("[MITIM] SFTPError: Your bashrc on the server likely contains print statements")
+
+    def _open_sftp(self):
+        '''
+        SSHClient.open_sftp() with bounds: it opens its session with paramiko's 1 h default and then
+        waits on the channel with no timeout. A server that stops answering raises SSHException
+        ("Timeout opening channel") or socket.timeout here, which the retry policy handles.
+        '''
+        channel = self.ssh.get_transport().open_session(timeout=SSH_CHANNEL_OPEN_TIMEOUT)
+        channel.settimeout(SFTP_IDLE_TIMEOUT)
+        channel.invoke_subsystem("sftp")
+        return paramiko.SFTPClient(channel)
 
     def define_jump(self):
         if self.jump_host is not None:
@@ -1114,6 +1138,7 @@ class mitim_job:
                 ),
                 key_filename=key_jump,
                 allow_agent=True,
+                **_SSH_CONNECT_TIMEOUTS,
             )
 
             # Use the existing transport of self.jump_client for tunneling
@@ -1125,6 +1150,7 @@ class mitim_job:
                 "direct-tcpip",
                 (self.target_host, create_port_in_tunnel),
                 (self.target_host, 0),
+                timeout=SSH_CHANNEL_OPEN_TIMEOUT,
             )
 
             # to pass to self.ssh
