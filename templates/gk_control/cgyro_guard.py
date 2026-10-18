@@ -5,7 +5,7 @@ templates/gk_control/cgyro_watchdog.sh runs it on the compute node as `python3 m
 next to the mitim_guard.json that CGYROtools.CostGuard staged (thresholds + turbulent targets of this
 radius). Standard library only, Python >= 3.6. It prints ONE line and never raises:
 
-    STOP t=.. cost=.. ratio=.. remaining=..    the radius is not worth its wall time
+    STOP t=.. cost=.. remaining=.. ratio=.. late/early=..    the radius is not worth its wall time
     WAIT ...                                   anything else, including "cannot tell"
 
 With `--abort` (run once, after CGYRO ended on the Cash-Karp abort) it judges whether that abort
@@ -181,7 +181,8 @@ def verdict(folder):
         return "WAIT " + status
 
     # Only a flux ABOVE its target counts: far below it at early times may just not have saturated
-    fluxes = heat_fluxes(folder, len(t), flux_outputs(t, g["floor_time"]))
+    nflux = flux_outputs(t, g["floor_time"])
+    fluxes = heat_fluxes(folder, len(t), nflux)
     ratios = {k: fluxes[k] / target for k, target in g["targets_GB"].items() if k in fluxes and target > 0.0}
     if not ratios:
         return "WAIT " + status + " no positive heat-flux target"
@@ -192,7 +193,26 @@ def verdict(folder):
     stop = (ratios[channel] >= g["flux_ratio"]
             and t_now >= g["floor_time"]
             and (t_now >= g["min_time"] or waived))
+    if stop:
+        growth = late_over_early(folder, len(t), nflux, channel, fluxes[channel])
+        status += " late/early={}".format("NA" if growth is None else "{:.2f}".format(growth))
+        stop = growth is not None and growth <= 1.0 + g.get("rising_tolerance", 0.1)
     return ("STOP " if stop else "WAIT ") + status
+
+
+def late_over_early(folder, nt, nflux, channel, mean_all):
+    '''
+    Saturation test of the triggering flux: mean of the 2nd half of the flux_outputs stretch over the
+    mean of its 1st half (None when the stretch is too short to split or the 1st half is not
+    positive). A ratio stop waits while the flux is still rising: it may not have saturated, and the
+    ratio would only grow. The 1st-half mean is recovered from the whole-stretch mean.
+    '''
+    nlate = nflux // 2
+    if nlate < 1:
+        return None
+    late = heat_fluxes(folder, nt, nlate)[channel]
+    early = (nflux * mean_all - nlate * late) / (nflux - nlate)
+    return late / early if early > 0.0 else None
 
 
 def abort_verdict(folder):

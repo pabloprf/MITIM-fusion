@@ -183,7 +183,7 @@ def scheduler_call_script(script, hosts):
 
 
 def cost_guard_stage():
-    guard = CGYROtools.CostGuard({**GUARD, "flux_ratio": 6, "std_floor": 0.25})
+    guard = CGYROtools.CostGuard({**GUARD, "flux_ratio": 6, "std_floor": 0.25, "seconds_per_acs": 100})
     with tempfile.TemporaryDirectory() as tmp:
         files = guard.stage(tmp, {0.55: [("/x/bin.cgyro.restart", "bin.cgyro.restart")]})
         listing = {f"{rho:.4f}": [(str(src).replace(tmp, "<TMP>"), dst) for src, dst in entries]

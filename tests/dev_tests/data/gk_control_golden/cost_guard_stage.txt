@@ -3,8 +3,8 @@
  "SCRIPT": "mitim_guard.py",
  "TAG_TOKEN": "GUARD",
  "contents": {
-  "mitim_guard_0.5500.json": "{\n  \"seconds_per_acs\": 100.0,\n  \"flux_ratio\": 6.0,\n  \"min_time\": 250.0,\n  \"waive_min_time_hours\": 12.0,\n  \"floor_time\": 50.0,\n  \"window\": 20.0,\n  \"accept_abort\": true,\n  \"abort_flux_ratio\": 6.0,\n  \"targets_GB\": {\n    \"QeGB\": 3.0,\n    \"QiGB\": 4.0\n  }\n}",
-  "mitim_guard_0.6712.json": "{\n  \"seconds_per_acs\": 100.0,\n  \"flux_ratio\": 6.0,\n  \"min_time\": 250.0,\n  \"waive_min_time_hours\": 12.0,\n  \"floor_time\": 50.0,\n  \"window\": 20.0,\n  \"accept_abort\": true,\n  \"abort_flux_ratio\": 6.0,\n  \"targets_GB\": {\n    \"QeGB\": 27.3,\n    \"QiGB\": 14.4\n  }\n}"
+  "mitim_guard_0.5500.json": "{\n  \"seconds_per_acs\": 100.0,\n  \"flux_ratio\": 6.0,\n  \"min_time\": 250.0,\n  \"waive_min_time_hours\": 12.0,\n  \"floor_time\": 150.0,\n  \"window\": 20.0,\n  \"rising_tolerance\": 0.1,\n  \"accept_abort\": true,\n  \"abort_flux_ratio\": 6.0,\n  \"targets_GB\": {\n    \"QeGB\": 3.0,\n    \"QiGB\": 4.0\n  }\n}",
+  "mitim_guard_0.6712.json": "{\n  \"seconds_per_acs\": 100.0,\n  \"flux_ratio\": 6.0,\n  \"min_time\": 250.0,\n  \"waive_min_time_hours\": 12.0,\n  \"floor_time\": 150.0,\n  \"window\": 20.0,\n  \"rising_tolerance\": 0.1,\n  \"accept_abort\": true,\n  \"abort_flux_ratio\": 6.0,\n  \"targets_GB\": {\n    \"QeGB\": 27.3,\n    \"QiGB\": 14.4\n  }\n}"
  },
  "files": {
   "0.5500": [
@@ -36,9 +36,10 @@
  "thresholds": {
   "abort_flux_ratio": 6.0,
   "accept_abort": true,
-  "floor_time": 50.0,
+  "floor_time": 150.0,
   "flux_ratio": 6.0,
   "min_time": 250.0,
+  "rising_tolerance": 0.1,
   "seconds_per_acs": 100.0,
   "waive_min_time_hours": 12.0,
   "window": 20.0

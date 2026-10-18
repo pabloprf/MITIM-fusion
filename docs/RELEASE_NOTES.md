@@ -41,7 +41,9 @@ DESCRIPTION
     `transport.options.cgyro.run.cost_guard` (off by default): the watchdog stops a radius whose wall cost
     per a/cs is high while its heat flux (Qe or Qi) is far above the turbulent target, at once, and the
     radius counts as finished (`mitim_budget.tag` starting with `GUARD`, harvest `guard_stop`). The flux
-    ratio is averaged over `[max(floor_time, t/2), t]`, so a single burst cannot trigger a stop. A radius
+    ratio is averaged over `[max(floor_time, t/2), t]`, so a single burst cannot trigger a stop, and a flux
+    still rising over that stretch is left to run (`rising_tolerance`); `seconds_per_acs` can be given per
+    machine class (`{gpu: 100, cpu: 1000}`, the default). A radius
     that dies on CGYRO's Cash-Karp abort while over-driven is accepted the same way (`accept_abort`), and
     every guard-stopped radius gets a flux std of at least `std_floor` x |flux| so the surrogates use it for
     its direction only. Thresholds and time gates are documented in `templates/namelist.portals.yaml`;

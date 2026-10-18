@@ -25,14 +25,15 @@ class CostGuard:
     transport layer (transport_cgyro._gk_cost_guard). Without targets there is nothing to judge.
     '''
 
-    DEFAULTS = {"seconds_per_acs": 100.0, "flux_ratio": 5.0, "min_time": 250.0,
-                "waive_min_time_hours": 12.0, "floor_time": 50.0, "window": 20.0}
+    DEFAULTS = {"seconds_per_acs": {"gpu": 100.0, "cpu": 1000.0}, "flux_ratio": 5.0, "min_time": 250.0,
+                "waive_min_time_hours": 12.0, "floor_time": 150.0, "window": 20.0, "rising_tolerance": 0.1}
     FILE, SCRIPT = markers.GUARD_JSON, markers.GUARD_SCRIPT
     TAG_TOKEN = markers.GUARD_TOKEN
 
     def __init__(self, options=None):
         options = options or {}
         self.enabled = bool(options.get("enabled", False))
+        options = {**options, "seconds_per_acs": self.machine_cost(options.get("seconds_per_acs", self.DEFAULTS["seconds_per_acs"]))}
         self.thresholds = {k: float(options.get(k, v)) for k, v in self.DEFAULTS.items()}
         # Cash-Karp abort accepted as a guard stop (cgyro_guard.abort_verdict); null ratio = flux_ratio
         self.thresholds["accept_abort"] = bool(options.get("accept_abort", True))
@@ -54,6 +55,18 @@ class CostGuard:
             guard_file.write_text(json.dumps({**self.thresholds, "targets_GB": targets}, indent=2))
             files.setdefault(rho, []).extend([(guard_file, self.FILE), (TEMPLATES / "cgyro_guard.py", self.SCRIPT)])
         return files
+
+    @staticmethod
+    def machine_cost(seconds_per_acs):
+        '''
+        seconds_per_acs as one number, or per machine class {"gpu": .., "cpu": ..}: the class of the
+        machine CGYRO runs on (config_user.json, gpus_per_node 0 -> "cpu") picks the number.
+        '''
+        if not isinstance(seconds_per_acs, dict):
+            return seconds_per_acs
+        from mitim_tools.misc_tools import CONFIGread
+        machine_class = "gpu" if int(CONFIGread.machineSettings(code="cgyro").get("gpus_per_node") or 0) > 0 else "cpu"
+        return seconds_per_acs[machine_class]
 
     @classmethod
     def stopped(cls, tag_text):

@@ -61,7 +61,8 @@ def _fake_radius(d, nt=300, cost=600.0, qe=80.0, qi=30.0, t_end=450.0, cost_rece
     A radius folder as a running CGYRO leaves it, one output per a/cs up to t = nt: every output
     took `cost` wall seconds (the last 5 `cost_recent`), and the heat fluxes are constant at qe, qi
     (GB), spread over fields and ky. The other moments hold 999 so a wrong index shows.
-    The guard files are staged by CostGuard itself.
+    The guard files are staged by CostGuard itself, at 100 s per a/cs and floor_time 50 unless
+    `options` says otherwise (the tests do not depend on the machine of config_user.json).
     '''
     d.mkdir(parents=True, exist_ok=True)
     (d / "out.cgyro.time").write_text("".join(f" {t:.4E}  1.0E-03  1.0E-08  1.0E-02\n" for t in range(1, nt + 1)))
@@ -81,7 +82,8 @@ def _fake_radius(d, nt=300, cost=600.0, qe=80.0, qi=30.0, t_end=450.0, cost_rece
     data = array.array(precision, list(record.flatten(order="F")) * nt)
     (d / "bin.cgyro.ky_flux").write_bytes(data.tobytes())
 
-    cost_guard = CGYROtools.CostGuard({"enabled": True, "targets_GB": {RHO: TARGETS}, **(options or {})})
+    options = {"seconds_per_acs": 100.0, "floor_time": 50.0, **(options or {})}
+    cost_guard = CGYROtools.CostGuard({"enabled": True, "targets_GB": {RHO: TARGETS}, **options})
     for src, dst in cost_guard.stage(d, None)[RHO]:
         shutil.copy(src, d / dst)
     return d
@@ -99,6 +101,12 @@ def _burst(d, nt, n_last, qi):
                 for i_species in range(N_SPECIES - 1):
                     data[base + i_species] = qi / ((N_SPECIES - 1) * N_FIELD * N_N)
     (d / "bin.cgyro.ky_flux").write_bytes(data.tobytes())
+
+
+def _ramp(d, nt, n_last, qi_start, qi_end):
+    '''Qi of the last n_last outputs of a _fake_radius rising linearly from qi_start to qi_end.'''
+    for n in range(n_last, 0, -1):
+        _burst(d, nt, n, qi_start + (qi_end - qi_start) * (n_last - n) / (n_last - 1))
 
 
 def test_flux_reader():
@@ -150,6 +158,21 @@ def test_stop_rule():
         v = guard.verdict(str(d))
         assert v.startswith("WAIT") and "x_QiGB" in v and "ratio=3." in v, v
         print(f"\t(burst in the window, trace at 3x: {v})")
+
+        # saturation test: over [max(floor_time, t/2), t] = [150, 300] a Qi still rising 30 -> 90
+        # (late/early ~1.7) is left running; a slow drift 50 -> 56 (~1.06) is within the 10% tolerance
+        d = _fake_radius(root / "rising", nt=300, qe=10.0, qi=30.0)
+        _ramp(d, nt=300, n_last=150, qi_start=30.0, qi_end=90.0)
+        v = guard.verdict(str(d))
+        assert v.startswith("WAIT") and "x_QiGB" in v and "late/early=1.6" in v, v
+        print(f"\t(still rising: {v})")
+        d = _fake_radius(root / "drifting", nt=300, qe=10.0, qi=30.0)
+        _ramp(d, nt=300, n_last=150, qi_start=50.0, qi_end=56.0)
+        v = guard.verdict(str(d))
+        assert v.startswith("STOP") and "late/early=1.06" in v, v
+        d = _fake_radius(root / "rising_tolerant", nt=300, qe=10.0, qi=30.0, options={"rising_tolerance": 1.0})
+        _ramp(d, nt=300, n_last=150, qi_start=30.0, qi_end=90.0)
+        assert guard.verdict(str(d)).startswith("STOP")
 
         # the cost is per a/cs, not per output: the same rows with outputs 0.5 a/cs apart cost double
         d = _fake_radius(root / "spacing", nt=300, cost=60.0)
@@ -237,7 +260,7 @@ def test_staging():
     (restart blobs), and stays off when disabled or without targets.'''
     d = Path(tempfile.mkdtemp())
     try:
-        cg = CGYROtools.CostGuard({"enabled": True, "flux_ratio": 8, "targets_GB": {RHO: TARGETS, 0.5: {"QeGB": 1.0}}})
+        cg = CGYROtools.CostGuard({"enabled": True, "flux_ratio": 8, "seconds_per_acs": 100, "targets_GB": {RHO: TARGETS, 0.5: {"QeGB": 1.0}}})
         files = cg.stage(d, {RHO: [("blob", "bin.cgyro.restart")]})
         assert files[RHO][0] == ("blob", "bin.cgyro.restart") and [dst for _, dst in files[RHO][1:]] == ["mitim_guard.json", "mitim_guard.py"]
         assert [dst for _, dst in files[0.5]] == ["mitim_guard.json", "mitim_guard.py"]
@@ -253,6 +276,23 @@ def test_staging():
     finally:
         shutil.rmtree(d, ignore_errors=True)
     print("PASS test_staging")
+
+
+def test_seconds_per_acs_per_machine():
+    '''seconds_per_acs {gpu, cpu} takes the number of the class of the CGYRO machine in
+    config_user.json (gpus_per_node 0 -> cpu); a plain number is used as is.'''
+    from mitim_tools.misc_tools import CONFIGread
+    original = CONFIGread.machineSettings
+    try:
+        for gpus, expected in ((4, 100.0), (0, 1000.0)):
+            CONFIGread.machineSettings = lambda code=None, gpus=gpus, **kw: {"gpus_per_node": gpus}
+            cg = CGYROtools.CostGuard({"enabled": True, "seconds_per_acs": {"gpu": 100, "cpu": 1000}, "targets_GB": {RHO: TARGETS}})
+            assert cg.thresholds["seconds_per_acs"] == expected, (gpus, cg.thresholds)
+            assert CGYROtools.CostGuard({"enabled": True, "targets_GB": {RHO: TARGETS}}).thresholds["seconds_per_acs"] == expected
+        assert CGYROtools.CostGuard({"enabled": True, "seconds_per_acs": 250, "targets_GB": {RHO: TARGETS}}).thresholds["seconds_per_acs"] == 250.0
+    finally:
+        CONFIGread.machineSettings = original
+    print("PASS test_seconds_per_acs_per_machine")
 
 
 def test_targets_from_transport_layer():
@@ -374,6 +414,7 @@ if __name__ == "__main__":
     test_flux_reader()
     test_stop_rule()
     test_staging()
+    test_seconds_per_acs_per_machine()
     test_targets_from_transport_layer()
     test_abort_rule()
     test_std_floor()

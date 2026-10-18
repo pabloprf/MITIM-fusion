@@ -629,12 +629,16 @@ transport:
         #   - cost >= seconds_per_acs  [wall seconds per a/cs: TOTAL of out.cgyro.timing over the
         #     output spacing of out.cgyro.time]. The last quarter of the window must be that slow
         #     too, so a radius whose cost is coming back down is left alone.
-        #     The cost is measured over the last `window` a/cs.
+        #     The cost is measured over the last `window` a/cs. seconds_per_acs is one number or one
+        #     per machine class, {gpu: 100, cpu: 1000}; the class is the one of the machine CGYRO runs
+        #     on (config_user.json, gpus_per_node 0 -> cpu).
         #   - Qe or Qi (turbulent, GB units, all fields), averaged over [max(floor_time, t/2), t] so
         #     that one turbulent burst cannot set it, >= flux_ratio x its turbulent target (total
         #     target minus neoclassical, as in restart_from_cases "best"). Only ABOVE the target: a
         #     flux far below it at early times may just not have saturated. Particle flux is not
         #     used (its target is near zero).
+        #   - that flux is no longer rising: its mean over the 2nd half of [max(floor_time, t/2), t]
+        #     is <= (1 + rising_tolerance) x its mean over the 1st half.
         #   - t >= min_time [a/cs]; waived when the wall time still needed to reach the end of the
         #     run at the current cost is >= waive_min_time_hours.
         #   - t >= floor_time [a/cs], which is never waived (keeps the linear overshoot out).
@@ -657,12 +661,13 @@ transport:
         #   0 or null keeps the standard error of the mean over the short trace.
         cost_guard:
           enabled: false
-          seconds_per_acs: 100
+          seconds_per_acs: {gpu: 100, cpu: 1000}
           flux_ratio: 5
           min_time: 250
           waive_min_time_hours: 12
-          floor_time: 50
+          floor_time: 150
           window: 20
+          rising_tolerance: 0.1
           accept_abort: true
           abort_flux_ratio: null
           std_floor: 0.5
