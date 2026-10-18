@@ -84,6 +84,33 @@ def _averaging_records(outputs):
     return [o.averaging.to_dict() for o in outputs] if all(hasattr(o, 'averaging') for o in outputs) else None
 
 
+def _cost_records(outputs):
+    '''
+    Per-rho wall cost of the read CGYRO traces, for the fluxes JSON (CGYROutils.harvest_run_fields; None
+    for outputs without out.cgyro.timing, e.g. GX). NaN fields are written as null.
+      cost_s_per_acs      [s per a/cs] median TOTAL of out.cgyro.timing over the output spacing
+      wall_s              [s] setup + every TOTAL row of the trace
+      n_nodes             distinct hosts of the ranks (out.cgyro.hosts); a shared node counts whole
+      node_h              [node-h] wall_s x n_nodes / 3600
+      node_h_per_900acs   [node-h] cost_s_per_acs x 900 x n_nodes / 3600
+      t_last              [a/cs] last time of the trace
+    plus guard_stop, budget_stop and reached_max_time as in harvest_run_fields.
+    '''
+    from mitim_tools.gacode_tools.utils.CGYROutils import harvest_run_fields
+
+    def record(o):
+        f = harvest_run_fields(o)
+        t = getattr(o, 't', None)
+        rec = {'cost_s_per_acs': f['cost_s_per_acs'], 'wall_s': f['wall_s'], 'n_nodes': f['n_nodes'],
+               'node_h': f['wall_s'] * f['n_nodes'] / 3600.0,
+               'node_h_per_900acs': f['cost_s_per_acs'] * 900.0 * f['n_nodes'] / 3600.0,
+               't_last': float(t[-1]) if t is not None and len(t) else np.nan,
+               'guard_stop': f['guard_stop'], 'budget_stop': f['budget_stop'], 'reached_max_time': f['reached_max_time']}
+        return {k: (None if np.isnan(v) else float(v)) for k, v in rec.items()}
+
+    return [record(o) for o in outputs] if all(hasattr(o, 'timing_total') for o in outputs) else None
+
+
 def _flux_arrays(outputs_per_plasma, mean_attr, std_attr, per_species, impurity_position):
     '''(N, nrho) mean and std arrays for one entry of _FLUX_SPEC.'''
     def value(o, attr):
@@ -415,6 +442,8 @@ class gyrokinetic_model:
 
         averaging = [_averaging_records(outputs) for outputs in outputs_per_plasma]
         self.averaging_info_turb = averaging if ctx.batched else averaging[0]
+        cost = [_cost_records(outputs) for outputs in outputs_per_plasma]
+        self.cost_info_turb = cost if ctx.batched else cost[0]
 
     # ------------------------------------------------------------------------------------------
     # Pieces of a stage
