@@ -158,7 +158,7 @@ assert (b1 / "beat_results" / "input.gacode").exists(), "minuet beat produced no
 print("\nPART A OK: MINUET built the initial equilibrium and the chain completed, no FREEGS involved")
 
 # ================================================================================================
-# PART B: initialization_type = "separatrix" -- MINUET preferred, FREEGS fallback
+# PART B: initialization_type = "separatrix" -- MINUET when requested, FREEGS fallback
 # ================================================================================================
 
 print("\n" + "="*100)
@@ -193,13 +193,13 @@ kwargs_sep = dict(
     BetaN = 1.0, internal_flux_file = None, rz_boundary_file = None,
     )
 
-# ---- B.1: minuet available -> MINUET must do the correction -----------------------------------
+# ---- B.1: minuet requested (separatrix.internal_equilibrium_solver) -> MINUET must do the correction
 
 folder_B_minuet = folder_B / "with_minuet"
 folder_B_minuet.mkdir(parents=True, exist_ok=True)
 
 ini_minuet = MAESTRObeat.initializer_from_separatrix(_StubBeat(folder_B_minuet))
-ini_minuet(**kwargs_sep)
+ini_minuet(**kwargs_sep, internal_equilibrium_solver = "minuet")
 
 assert (ini_minuet.folder / "minuet.geqdsk.helper").exists(), "separatrix correction did not go through MINUET"
 assert not (ini_minuet.folder / "freegs.geqdsk.helper").exists(), "FREEGS ran even though MINUET succeeded"

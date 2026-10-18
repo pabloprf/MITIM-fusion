@@ -388,12 +388,16 @@ class minuet_beat(beat):
         (MINUET's own verification routes; uses the SAVED V_loop, so it is independent of eta), averaged over
         the saved frames of the last `last_fraction` of the run so that a crash-instant V_loop transient does
         not set it. Returns x (MINUET CD cells), p [MW/m^3], and its volume integral [MW].
+        Time-weighted, skipping the zero-duration first frame of each stitched segment: minuet re-applies its Ip
+        buffer at every segment restart, which leaves a one-frame negative edge current sheet (tens of MW at the cold edge).
         '''
         res, g = m.result, m.geom_last
         x = res.x_c
         F, g1R2, B2, Vp = (g.interp(k, x) for k in ('F', 'g_1R2', 'B2_avg', 'Vprime'))
         k0 = int((1.0 - last_fraction) * (res.t.size - 1))
-        p = np.mean([res.v_loop[k] / (2 * np.pi) * F * g1R2 * res.jb[k] / B2 for k in range(k0, res.t.size)], axis=0) * 1E-6
+        ks = [k for k in range(k0, res.t.size) if k == 0 or res.t[k] > res.t[k - 1]]
+        p_k = [res.v_loop[k] / (2 * np.pi) * F * g1R2 * res.jb[k] / B2 for k in ks]
+        p = np.trapezoid(p_k, res.t[ks], axis=0) / (res.t[ks][-1] - res.t[ks][0]) * 1E-6
         P = float(np.trapezoid(p * Vp, x))
         return x, p, P
 
