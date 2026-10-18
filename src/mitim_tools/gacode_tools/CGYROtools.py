@@ -44,6 +44,11 @@ from mitim_tools.simulation_tools.gk_control.shell import (
 from mitim_tools.simulation_tools.gk_control.watchdog import Watchdog
 from mitim_tools.simulation_tools.gk_control import watchdog as _watchdog
 from mitim_tools.simulation_tools.gk_control.cost_guard import CostGuard
+from mitim_tools.misc_tools import FARMINGtools as _FARMINGtools
+
+# Before retrieve() drops bin.cgyro.restart.old next to a bin.cgyro.restart, repair the pair as a launch would
+# (cgyro_restart_validate.sh): after a failed restart write the .old is the only intact checkpoint
+_FARMINGtools.REMOTE_PAIR_REPAIRS["bin.cgyro.restart"] = functools.partial(_watchdog.restart_validate, apply=True)
 
 
 class CgyroLaunchBody:

@@ -188,6 +188,12 @@ class RetryPolicy:
                         )
 
 
+# Remote repair run in a folder right before its primary/fallback pair is resolved (_resolve_fallbacks_on_remote),
+# keyed by primary basename: {primary: fn(folder) -> bash}. CGYROtools registers the restart check
+# (gk_control/watchdog.restart_validate), so a bin.cgyro.restart with a broken header never deletes its intact .old.
+REMOTE_PAIR_REPAIRS = {}
+
+
 @dataclass
 class RetrievalSpec:
     """
@@ -1661,6 +1667,7 @@ class mitim_job:
           primary present    -> remove fallback (dedup + free remote disk)
           fallback only      -> rename fallback to primary
           neither present    -> no-op
+        A repair registered for the primary (REMOTE_PAIR_REPAIRS) runs first in that folder.
         Idempotent and safe if the folders don't exist yet.
         '''
         if not spec.fallbacks:
@@ -1674,8 +1681,10 @@ class mitim_job:
                     continue
                 p = f"{self.folderExecution}/{folder}/{primary}"
                 f = f"{self.folderExecution}/{folder}/{fallback}"
+                repair = REMOTE_PAIR_REPAIRS.get(primary)
                 fallback_lines.append(
-                    f'if [ -f "{p}" ]; then rm -f "{f}"; '
+                    (f'(\n{repair(f"{self.folderExecution}/{folder}")}\n); ' if repair is not None else '')
+                    + f'if [ -f "{p}" ]; then rm -f "{f}"; '
                     f'elif [ -f "{f}" ]; then mv "{f}" "{p}"; fi'
                 )
         if fallback_lines:

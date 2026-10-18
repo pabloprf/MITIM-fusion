@@ -221,6 +221,29 @@ def test_report_mode_and_probe():
     print("PASS test_report_mode_and_probe")
 
 
+def test_retrieval_keeps_the_intact_old():
+    '''retrieve() drops bin.cgyro.restart.old next to a bin.cgyro.restart before tarring. After an outage the
+    primary is the broken one: the registered repair (CGYROtools) runs first, so .old comes back in place
+    with its tag and is never deleted; a valid pair is deduplicated as before.'''
+    from mitim_tools.gacode_tools import CGYROtools  # registers the repair
+    assert "bin.cgyro.restart" in FARMINGtools.REMOTE_PAIR_REPAIRS
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        broken = fake_radius(root / "rho_0.5", rows=310, tag="", restart=False, old=True, last=200, prev=100)
+        valid = fake_radius(root / "rho_0.7", rows=300, tag=300, old=True)
+        job = types.SimpleNamespace(folderExecution=str(root),
+                                    execute=lambda cmd: subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=60))
+        spec = FARMINGtools.RetrievalSpec(selective={"rho_0.5": ["bin.cgyro.restart"], "rho_0.7": ["bin.cgyro.restart"]},
+                                          fallbacks={"bin.cgyro.restart": "bin.cgyro.restart.old"})
+        with contextlib.redirect_stdout(None):
+            FARMINGtools.mitim_job._resolve_fallbacks_on_remote(job, spec)
+        assert is_valid_blob(broken / "bin.cgyro.restart") and tag_of(broken) == (200, 100.0)
+        assert (broken / markers.RESTART_BAD).exists() and not (broken / "bin.cgyro.restart.old").exists()
+        assert is_valid_blob(valid / "bin.cgyro.restart") and tag_of(valid) == (300, 150.0)
+        assert not (valid / "bin.cgyro.restart.old").exists(), "a valid pair is still deduplicated"
+    print("PASS test_retrieval_keeps_the_intact_old")
+
+
 def test_watchdog_tag_history():
     '''Fake CGYRO: tag 100, tag 200, then a tag write that the filesystem dropped (empty file).'''
     with tempfile.TemporaryDirectory() as tmp:
@@ -243,4 +266,5 @@ if __name__ == "__main__":
     test_empty_tag_valid_blob()
     test_nothing_recoverable()
     test_report_mode_and_probe()
+    test_retrieval_keeps_the_intact_old()
     test_watchdog_tag_history()
