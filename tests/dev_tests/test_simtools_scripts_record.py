@@ -251,6 +251,10 @@ def test_submission_record_compat(old):
 
         old_json = json.loads((old_folder / "base_cgyro" / "cgyro_submission.json").read_text())
         new_json = json.loads((new_folder / "base_cgyro" / "cgyro_submission.json").read_text())
+        # Intended additions since the reference commit (9d87c230, array-mode extra_points): the extra-case plan
+        # and ledger. Checked here, then left out of the key-for-key comparison
+        assert new_json["kwargs_organize"].pop("extra_points") is None, new_json["kwargs_organize"]
+        assert new_json.pop("extra_ledger") == {}, new_json
         # Folder paths differ by design (two temp trees); compare everything else
         old_norm = json.dumps(_strip_volatile(old_json)).replace(str(old_folder), "ROOT")
         new_norm = json.dumps(_strip_volatile(new_json)).replace(str(new_folder), "ROOT")
