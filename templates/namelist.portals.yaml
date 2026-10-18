@@ -663,7 +663,7 @@ transport:
         #     flux far below it at early times may just not have saturated. Particle flux is not
         #     used (its target is near zero).
         #   - that flux is no longer rising: its mean over the 2nd half of [max(floor_time, t/2), t]
-        #     is <= (1 + rising_tolerance) x its mean over the 1st half.
+        #     is <= (1 + rising_tolerance) x its mean over the 1st half (null: no saturation test).
         #   - t >= min_time [a/cs]; waived when the wall time still needed to reach the end of the
         #     run at the current cost is >= waive_min_time_hours.
         #   - t >= floor_time [a/cs], which is never waived (keeps the linear overshoot out).

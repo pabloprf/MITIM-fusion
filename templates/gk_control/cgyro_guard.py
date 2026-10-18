@@ -193,7 +193,7 @@ def verdict(folder):
     stop = (ratios[channel] >= g["flux_ratio"]
             and t_now >= g["floor_time"]
             and (t_now >= g["min_time"] or waived))
-    if stop:
+    if stop and g.get("rising_tolerance", 0.1) is not None:
         growth = late_over_early(folder, len(t), nflux, channel, fluxes[channel])
         status += " late/early={}".format("NA" if growth is None else "{:.2f}".format(growth))
         stop = growth is not None and growth <= 1.0 + g.get("rising_tolerance", 0.1)

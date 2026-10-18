@@ -26,7 +26,7 @@ class CostGuard:
     '''
 
     DEFAULTS = {"seconds_per_acs": {"gpu": 100.0, "cpu": 1000.0}, "flux_ratio": 5.0, "min_time": 250.0,
-                "waive_min_time_hours": 12.0, "floor_time": 150.0, "window": 20.0, "rising_tolerance": 0.1}
+                "waive_min_time_hours": 12.0, "floor_time": 150.0, "window": 20.0}
     FILE, SCRIPT = markers.GUARD_JSON, markers.GUARD_SCRIPT
     TAG_TOKEN = markers.GUARD_TOKEN
 
@@ -35,6 +35,9 @@ class CostGuard:
         self.enabled = bool(options.get("enabled", False))
         options = {**options, "seconds_per_acs": self.machine_cost(options.get("seconds_per_acs", self.DEFAULTS["seconds_per_acs"]))}
         self.thresholds = {k: float(options.get(k, v)) for k, v in self.DEFAULTS.items()}
+        # saturation test of a ratio stop (cgyro_guard.late_over_early); null switches it off
+        rising = options.get("rising_tolerance", 0.1)
+        self.thresholds["rising_tolerance"] = None if rising is None else float(rising)
         # Cash-Karp abort accepted as a guard stop (cgyro_guard.abort_verdict); null ratio = flux_ratio
         self.thresholds["accept_abort"] = bool(options.get("accept_abort", True))
         self.thresholds["abort_flux_ratio"] = float(options.get("abort_flux_ratio") or self.thresholds["flux_ratio"])

@@ -173,6 +173,10 @@ def test_stop_rule():
         d = _fake_radius(root / "rising_tolerant", nt=300, qe=10.0, qi=30.0, options={"rising_tolerance": 1.0})
         _ramp(d, nt=300, n_last=150, qi_start=30.0, qi_end=90.0)
         assert guard.verdict(str(d)).startswith("STOP")
+        d = _fake_radius(root / "rising_off", nt=300, qe=10.0, qi=30.0, options={"rising_tolerance": None})
+        _ramp(d, nt=300, n_last=150, qi_start=30.0, qi_end=90.0)
+        v = guard.verdict(str(d))
+        assert v.startswith("STOP") and "late/early" not in v, v
 
         # the cost is per a/cs, not per output: the same rows with outputs 0.5 a/cs apart cost double
         d = _fake_radius(root / "spacing", nt=300, cost=60.0)
