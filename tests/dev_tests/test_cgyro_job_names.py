@@ -47,6 +47,11 @@ def test_job_name_carries_the_run():
     assert gk_job_name_suffix(_eval_folder("/runs/V4C/E_pt03"), 12).endswith("_ev12")
     # MAESTRO: every PORTALS run folder is run_portals
     assert gk_job_name_suffix(_eval_folder("/scan/case_007/Beats/Beat_3/run_portals"), 1) == "_case_007_Beat_3_ev1"
+    # simple-relax seeds: <run>/Initialization/initialization_simple_relax/portals_sr_ev_N/transport_simulation_folder
+    sr = Path("/runs/V4C/E_pt03/Initialization/initialization_simple_relax/portals_sr_ev_2/transport_simulation_folder")
+    assert gk_job_name_suffix(sr, 2) == "_E_pt03_ev2"
+    sr = Path("/scan/case_007/Beats/Beat_3/run_portals/Initialization/initialization_simple_relax/portals_sr_ev_0/transport_simulation_folder")
+    assert gk_job_name_suffix(sr, 0) == "_case_007_Beat_3_ev0"
     # Not a PORTALS evaluation folder: the folder itself names the job
     assert gk_job_name_suffix(Path("/somewhere/my_cgyro_test"), 0) == "_my_cgyro_test_ev0"
     assert transport_cgyro.gk_job_name_suffix is gk_job_name_suffix

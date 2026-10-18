@@ -30,12 +30,18 @@ def gk_job_name_suffix(folder, evaluation_number):
     '''
     Slurm --job-name suffix of a GK submission, "_<run>_ev<N>" (code name prepended by SIMtools):
     a bare "_ev<N>" is shared by every PORTALS run, so a name lookup could latch onto another run's job.
-    <run> is the PORTALS run folder of <run>/Execution/Evaluation.N/transport_simulation_folder;
+    <run> is the PORTALS run folder of <run>/Execution/Evaluation.N/transport_simulation_folder and of the
+    simple-relax seeds, <run>/Initialization/initialization_simple_relax/portals_sr_ev_N/transport_simulation_folder;
     MAESTRO names every one "run_portals", so there it is "<maestro folder>_<Beat_n>".
     (Written by mitim_7 on development_cgyro_job_names.)
     '''
     folder = Path(folder)
-    run = folder.parents[2] if folder.name == "transport_simulation_folder" and folder.parent.parent.name == "Execution" else folder
+    run = folder
+    if folder.name == "transport_simulation_folder":
+        if folder.parent.parent.name == "Execution":
+            run = folder.parents[2]
+        elif folder.parent.parent.name == "initialization_simple_relax":
+            run = folder.parents[3]
     tag = f"{run.parents[2].name}_{run.parent.name}" if run.name == "run_portals" else run.name
     tag = re.sub(r"[^A-Za-z0-9_.-]", "_", tag)
     if len(tag) > _JOB_TAG_MAX_LENGTH:
