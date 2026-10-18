@@ -304,6 +304,10 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **A code launched through SLURM on a machine whose `slurm` block names no partition (Perlmutter: qos, account,
+    constraint) is no longer capped to the driver's own allocation.** `cores_per_node` was cut to the CPUs of the
+    driver job, which refused multi-node CPU launches (64 nodes). Any non-empty `slurm` block now counts as a SLURM launch.
+
 *   🐛 **PORTALS-CGYRO chains no longer die after an in-place continuation or a failed read in a batch job.** A radius
     continued in its own folder (rescue or SLURM requeue) now has its per-output binaries cut to the restart output
     before CGYRO starts, so a continuation that ends before the old trace no longer leaves stale records that crashed

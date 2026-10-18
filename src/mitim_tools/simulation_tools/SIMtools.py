@@ -1111,8 +1111,11 @@ class mitim_simulation:
         '''
         machineSettings = FARMINGtools.mitim_job.grab_machine_settings(settings.code)
 
+        # Launched through SLURM, the code gets its own allocation, so the driver's limits do not
+        # apply. Any non-empty slurm block counts (same rule as SLURMtools.resolve): Perlmutter
+        # selects nodes with qos/constraint and names no partition.
         if (machineSettings["machine"] != "local") or \
-            (settings.launch_slurm and ("partition" in self.simulation_job.machineSettings["slurm"])):
+            (settings.launch_slurm and bool(self.simulation_job.machineSettings.get("slurm"))):
             return machineSettings
 
         ntasks = os.environ.get('SLURM_NTASKS')
