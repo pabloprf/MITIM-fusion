@@ -153,6 +153,15 @@ def test_plan_defaults_yield():
 # ---------------------------------------------------------------------------
 
 
+def test_main_job_name_pattern():
+    from mitim_tools.simulation_tools.gk_control.extra_points import ArrayExtraPoints
+    match = ArrayExtraPoints.MAIN_JOB_NAME.match
+    assert match("cgyro_E_pt03_ev3") and match("cgyro_E_pt03_ev3_resubmit_rho_0.5500_a1")
+    assert match("cgyro_E_pt03_ev3_continue_rho_0.5500_c2"), "an in-link continuation is a main radius"
+    assert not match("cgyro_E_pt03_ev3_extra_rho_0.5500")
+    print("PASS test_main_job_name_pattern")
+
+
 def test_pending_main_of_another_run_holds_the_extra():
     with scratch_with_finished_radius() as d:
         sim = yield_sim(d)
@@ -285,6 +294,7 @@ def test_qos_cap_is_persisted_for_a_reattach():
 if __name__ == "__main__":
     test_extras_carry_nice_rescues_do_not()
     test_plan_defaults_yield()
+    test_main_job_name_pattern()
     test_pending_main_of_another_run_holds_the_extra()
     test_own_pending_rescue_holds_the_extra()
     test_unreadable_squeue_holds_the_extra()

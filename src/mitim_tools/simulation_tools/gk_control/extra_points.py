@@ -240,8 +240,9 @@ class ArrayExtraPoints:
     IN_FLIGHT = (RUNNING, STOPPING)
     MAIN_OVER = (TaskState.FINISHED.value, TaskState.TIMED_OUT.value, TaskState.ERROR.value)
     # Main element of a GK submission (<code>_<run>_ev<N>, gk_job_name_suffix) or its stall rescue
-    # (StallRescuer label _resubmit_<rho>_a<k>); extras end in _extra_<rho> and never match
-    MAIN_JOB_NAME = re.compile(r"^(cgyro|gx)_.+_ev\d+(_resubmit_rho_[0-9.]+_a\d+)?$")
+    # (StallRescuer label _resubmit_<rho>_a<k>) or in-link continuation (_continue_<rho>_c<k>); extras end in
+    # _extra_<rho> and never match
+    MAIN_JOB_NAME = re.compile(r"^(cgyro|gx)_.+_ev\d+(_resubmit_rho_[0-9.]+_a\d+|_continue_rho_[0-9.]+_c\d+)?$")
 
     def __init__(self, sim, session=None):
         self.sim = sim
