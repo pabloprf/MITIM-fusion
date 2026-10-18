@@ -110,7 +110,10 @@ class GKRunControl:
             rel_extra = ArrayExtraPoints.extra_folder(folder)
             commands[folder] = script._call(rel_extra, watchdog="stop", additional_command=script._redirect(rel_extra))
         print("\t- load_balance 'extra_points': a radius that finishes early gets one extra case as its own job, while the slowest radius leaves time for it", typeMsg="i")
+        ep = lb.get("extra_points") or {}
         return {"commands": commands, "min_time": float(lb.get("min_time", 0.0)), "stop_grace_seconds": 1800,
+                "nice": ep.get("nice", 100), "yield_to_pending_mains": bool(ep.get("yield_to_pending_mains", True)),
+                "rescues_first": bool(ep.get("rescues_first", True)),
                 "hand_over": bool(getattr(self, "_rescue_interrupted", False) and getattr(self, "_reattach_enabled", False))}
 
     def _extra_points_handed_over(self):

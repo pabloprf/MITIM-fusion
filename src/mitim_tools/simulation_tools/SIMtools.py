@@ -235,6 +235,31 @@ def jobids_in_queue(job, job_ids):
     return states, answer
 
 
+# Pending reasons of a job that is not waiting for nodes: it would not take a freed one anyway
+_PENDING_NOT_FOR_NODES = ("JobArrayTaskLimit", "Dependency", "DependencyNeverSatisfied", "BeginTime", "JobHeldUser", "JobHeldAdmin")
+
+
+def pending_jobs_of_user(job):
+    '''
+    {jobid: name} of the user's jobs waiting for nodes (PENDING, minus the reasons in _PENDING_NOT_FOR_NODES), from
+    any run, asked on the job's live connection. None when slurm gave no verdict. A pending array prints one row.
+    '''
+    cmd = f'squeue -h -u "$USER" -t PENDING -o "%i|%j|%r"; echo "{FARMINGtools.SqueueAnswer.TRAILER}$?"'
+    out, err = job.execute(cmd, printYN=False)
+    out, err = (x.decode(errors='replace') if isinstance(x, bytes) else (x or "") for x in (out, err))
+
+    answer = FARMINGtools.SqueueAnswer.parse(out, error=err)
+    if not answer.answered:
+        return None
+    pending = {}
+    for line in answer.table.strip().splitlines():
+        jobid, _, rest = line.strip().partition("|")
+        name, _, reason = rest.partition("|")
+        if jobid and reason.strip() not in _PENDING_NOT_FOR_NODES:
+            pending[jobid] = name.strip()
+    return pending
+
+
 class JobScript:
     '''
     The shell text that launches every call of one submission, plus the per-folder pieces
@@ -435,6 +460,7 @@ class SubmissionRecord:
                 "output_file_fallbacks": getattr(job, "output_file_fallbacks", {}),
                 "log_simulation_file": str(job.log_simulation_file) if job.log_simulation_file else None,
                 "run_in_place": bool(getattr(job, "run_in_place", False)),
+                "qos_cap": getattr(job, "qos_cap", None),
             },
         )
 
@@ -510,6 +536,7 @@ class SubmissionRecord:
         job.output_folders_selective = self.job["output_folders_selective"]
         job.output_file_fallbacks = self.job.get("output_file_fallbacks", {})
         job.run_in_place = self.job.get("run_in_place", False)
+        job.qos_cap = self.job.get("qos_cap")
 
         # On the original submit path `_run` creates this folder; on re-attach the process is
         # fresh and it may not exist, while `retrieve()` writes its tarball here
@@ -1217,6 +1244,9 @@ class mitim_simulation:
         )
         self.simulation_job.scheduler = getattr(self, "_scheduler_to_attach", None)
         self._scheduler_to_attach = None
+        # allocation qos_cap / fallback_qos: every sbatch of this submission (array, rescues, extras) checks the cap
+        if settings.allocation.get("qos_cap") is not None:
+            self.simulation_job.qos_cap = {"cap": int(settings.allocation["qos_cap"]), "fallback": settings.allocation["fallback_qos"]}
 
         # `files_we_must_check` is what check_all_received flags as missing (triggers the
         # retry). The tarball additionally carries the optional files, so they come down if

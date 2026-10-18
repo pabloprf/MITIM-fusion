@@ -15,6 +15,7 @@ caller can retrieve them.
 ArrayExtraPoints is the slurm-array counterpart, driven from the driver's poll.
 """
 import os
+import re
 import time
 import signal
 import subprocess
@@ -210,6 +211,11 @@ class ArrayExtraPoints:
         launch   one extra per finished radius, once every main radius has started and the slowest one
                  still needs longer than the extra needs to reach min_time (seconds_remaining against
                  seconds_to_accept); never while a main element is still waiting for a node.
+        yield    extras are submitted with --nice (plan "nice"), and none is submitted while one squeue
+                 of the user shows a main or rescue GK element of ANY run waiting for nodes
+                 ("yield_to_pending_mains": on shared GPU nodes one chain's extras starved another's
+                 mains) or a rescue of THIS submission still pending ("rescues_first": a rescue after a
+                 wall hit queued behind the chain's own extras). No squeue answer: no launch.
         stop     when the last main radius ends: mitim_stop in the extra's folder (its STOP watchdog ends
                  it after a restart write past min_time, or discards it below), scancel after
                  stop_grace_seconds; an extra still pending in the queue is cancelled at once.
@@ -233,6 +239,9 @@ class ArrayExtraPoints:
     HANDED_OVER = "HANDED_OVER"
     IN_FLIGHT = (RUNNING, STOPPING)
     MAIN_OVER = (TaskState.FINISHED.value, TaskState.TIMED_OUT.value, TaskState.ERROR.value)
+    # Main element of a GK submission (<code>_<run>_ev<N>, gk_job_name_suffix) or its stall rescue
+    # (StallRescuer label _resubmit_<rho>_a<k>); extras end in _extra_<rho> and never match
+    MAIN_JOB_NAME = re.compile(r"^(cgyro|gx)_.+_ev\d+(_resubmit_rho_[0-9.]+_a\d+)?$")
 
     def __init__(self, sim, session=None):
         self.sim = sim
@@ -243,6 +252,10 @@ class ArrayExtraPoints:
         self.min_time = float(plan.get("min_time", 0.0))
         self.stop_grace_s = float(plan.get("stop_grace_seconds", 1800))
         self.hand_over = bool(plan.get("hand_over", False))
+        # Absent in plans written before these knobs: launch as those submissions did
+        self.nice = plan.get("nice")
+        self.yield_to_mains = bool(plan.get("yield_to_pending_mains", False))
+        self.rescues_first = bool(plan.get("rescues_first", False))
         self.dirty = False
 
     @property
@@ -396,6 +409,8 @@ class ArrayExtraPoints:
             return
         window = max(remaining)
         limit = (getattr(self.job, "slurm_settings", None) or {}).get("array_limit")
+        if self._held_by_queue():
+            return
 
         for row in candidates:
             rel = row["folder"]
@@ -406,6 +421,30 @@ class ArrayExtraPoints:
                 self._skip(rel, f"idle window ~{window/60:.0f} min < {needed/60:.0f} min needed for an acceptable extra")
                 continue
             self._launch(rel, window)
+
+    def _held_by_queue(self):
+        '''
+        True when the user's queue says to wait (see the class docstring, yield), from one squeue per poll.
+        The reason is printed when it changes, so a hold that lasts many polls is logged once.
+        '''
+        if not (self.yield_to_mains or self.rescues_first):
+            return False
+        pending = SIMtools.pending_jobs_of_user(self.job)
+        if pending is None:
+            reason = "squeue of the user's pending jobs gave no answer; no extra case until it does"
+        else:
+            own = {j for e in (getattr(self.sim, "_resubmit_ledger", None) or {}).values() for j in e.get("child_jobids", [])}
+            rescues = sorted(own & set(pending)) if self.rescues_first else []
+            mains = sorted(j for j, name in pending.items() if self.MAIN_JOB_NAME.match(name)) if self.yield_to_mains else []
+            reason = (f"rescue job(s) {', '.join(rescues)} of this evaluation pending" if rescues else
+                      f"main GK job(s) {', '.join(mains)} of the user pending" if mains else None)
+            if reason is not None:
+                reason += "; extra cases wait for them to start"
+        if reason != getattr(self.sim, "_extra_hold_reason", None):
+            self.sim._extra_hold_reason = reason
+            if reason is not None:
+                print(f"\t- [extra point] {reason}", typeMsg="i")
+        return reason is not None
 
     def _skip(self, rel, why):
         self.ledger[rel] = {"folder": self.extra_folder(rel), "jobid": None, "status": self.SKIPPED, "reason": why}
@@ -453,7 +492,8 @@ class ArrayExtraPoints:
         src, dst = f"{self.exec_folder}/{rel}", f"{self.exec_folder}/{rel_extra}"
         self.job.execute(f'mkdir -p "{dst}" && if [ -f "{src}/bin.cgyro.restart" ]; then cp "{src}/bin.cgyro.restart" "{dst}/"; fi', printYN=False)
         self.job.put_file(input_cgyro, f"{dst}/input.cgyro")
-        return self.job.resubmit_single_task(self.commands[rel], f"_extra_{Path(rel_extra).name}")
+        return self.job.resubmit_single_task(self.commands[rel], f"_extra_{Path(rel_extra).name}",
+                                             extra_directives=[f"--nice={int(self.nice)}"] if self.nice else None)
 
     # ------------------------------------------------------------------
     # Stop

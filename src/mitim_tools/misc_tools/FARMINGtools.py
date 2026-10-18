@@ -402,6 +402,9 @@ class mitim_job:
         # mitim_bash.src, and its accepted extra folders are added to the retrieval.
         self.scheduler = None
         self.scheduler_result = None
+        # Optional {"cap": int, "fallback": str} (allocation qos_cap / fallback_qos): every sbatch of this job
+        # goes to the fallback qos when the user's jobs in the configured one would pass the cap (qos_for_submission)
+        self.qos_cap = None
 
     # The five historical attribute names are views on the spec: external code
     # (SIMtools.load_submission_state, fetch_cgyro_intermediate) assigns them directly,
@@ -726,6 +729,32 @@ class mitim_job:
             lines += [l.strip() for l in text.splitlines() if any(p in l for p in self.SBATCH_REFUSAL_PATTERNS)]
         return "\n".join(dict.fromkeys(lines)) or None
 
+    def qos_for_submission(self, n_new):
+        '''
+        The qos an sbatch of `n_new` jobs must use instead of the configured one, or None to keep it.
+        With qos_cap set: the fallback qos when the user's jobs in the configured qos (array elements
+        counted one by one) plus n_new would pass the cap, a per-user limit that sbatch only reveals by
+        refusing. Asked on the caller's live connection; a squeue without answer keeps the configured qos.
+        '''
+        if not self.qos_cap:
+            return None
+        qos = (self.machineSettings.get("slurm") or {}).get("qos")
+        if qos is None:
+            print("\t- [qos cap] qos_cap is set but the machine config has no slurm.qos; submitting as configured", typeMsg="w")
+            return None
+        out, err = self.execute(f'squeue -h -r -u "$USER" -q {shlex.quote(qos)} -o "%i"; echo "{SqueueAnswer.TRAILER}$?"', printYN=False)
+        out, err = (x.decode(errors="replace") if isinstance(x, bytes) else (x or "") for x in (out, err))
+        answer = SqueueAnswer.parse(out, error=err)
+        if not answer.answered:
+            print(f"\t- [qos cap] squeue gave no count of the jobs in qos {qos} ({answer.error or 'no answer'}); submitting in {qos}", typeMsg="w")
+            return None
+        count, cap = len([l for l in answer.table.splitlines() if l.strip()]), int(self.qos_cap["cap"])
+        if count + n_new <= cap:
+            return None
+        fallback = self.qos_cap["fallback"]
+        print(f"\t- [qos cap] {count} job(s) of the user in qos {qos} + {n_new} new > cap {cap}: submitting with --qos={fallback}", typeMsg="i")
+        return fallback
+
     def put_file(self, local_file, remote_path):
         '''One file onto the machine (a plain copy when it is local), on the caller's live connection.'''
         if self.ssh is None:
@@ -733,7 +762,7 @@ class mitim_job:
         else:
             self._sftp_transfer_with_retry('put', str(local_file), str(remote_path))
 
-    def resubmit_single_task(self, code_call_str, label, exclude_node=None):
+    def resubmit_single_task(self, code_call_str, label, exclude_node=None, extra_directives=None):
         '''
         Submit a fresh, single-task (non-array) sbatch that runs `code_call_str`
         verbatim, reusing this job's machineSettings and live SSH session.
@@ -755,6 +784,10 @@ class mitim_job:
         `exclude_node` (optional): if provided, added as the SBATCH --exclude
         list on the resubmit so a known-bad node doesn't get re-tried. Falls
         back gracefully on None / empty string.
+
+        `extra_directives` (optional): sbatch flags written after the standard
+        directives, e.g. ["--nice=100"] for the extra cases of load_balance
+        'extra_points'. With `qos_cap` set, sbatch may get --qos=<fallback>.
         '''
         if not self.launchSlurm:
             raise RuntimeError("resubmit_single_task requires launchSlurm=True")
@@ -798,6 +831,7 @@ class mitim_job:
             launchSlurm=True,
             slurm_settings=slurm_settings,
             if_array_relabel=False,
+            extra_directives=extra_directives,
         )
 
         # Ship just the sbatch file (the shell-executor wrapper isn't used —
@@ -815,7 +849,9 @@ class mitim_job:
 
         # `--parsable` makes sbatch print just <jobid>[;<cluster>] on stdout —
         # easy to parse, no log-file scraping like the run() path needs.
-        submit_cmd = f"cd {shlex.quote(str(self.folderExecution))} && chmod +x {sbatch_basename} && sbatch --parsable {sbatch_basename}"
+        qos = self.qos_for_submission(1)
+        submit_cmd = (f"cd {shlex.quote(str(self.folderExecution))} && chmod +x {sbatch_basename} && "
+                      f"sbatch --parsable{f' --qos={qos}' if qos else ''} {sbatch_basename}")
         out, err = self.execute(submit_cmd, printYN=True)
         if isinstance(out, bytes):
             out = out.decode(errors='replace')
@@ -887,6 +923,11 @@ class mitim_job:
                 self.send()
             else:
                 print("\t* In-place local execution: skipping scratch setup and file staging")
+
+            # sbatch reads SBATCH_QOS over the script's #SBATCH --qos
+            if execute_flag and self.qos_cap and self.launchSlurm and self.scheduler is None:
+                qos = self.qos_for_submission(len(str(self.slurm_settings.get("array") or "0").split(",")))
+                comm = f"export SBATCH_QOS={qos} && {comm}" if qos else comm
 
             # ~~~~~~ Execute
             execution_counter = 0
@@ -2276,7 +2317,7 @@ class SbatchScript:
         # (one whole node per job).
         self.exclusive = request_exclusive_node or job_exclusive
 
-    def directives(self, folderExecution, label_log_files="", if_array_relabel=False, append_mode=False):
+    def directives(self, folderExecution, label_log_files="", if_array_relabel=False, append_mode=False, extra_directives=None):
         lines = ["#!/usr/bin/env bash"]
 
         lines.append(f"#SBATCH --job-name {self.name}")
@@ -2327,6 +2368,8 @@ class SbatchScript:
             lines.append("#SBATCH --open-mode=append")
 
         lines.append("#SBATCH --profile=all")
+        # Caller-specific flags after the standard ones (e.g. --nice on the extra cases of load_balance 'extra_points')
+        lines.extend(f"#SBATCH {d}" for d in (extra_directives or []))
 
         return lines
 
@@ -2378,7 +2421,8 @@ def create_slurm_execution_files(
     if_array_relabel = False,
     lock_file=None,
     lock_file_timeout_hours=12,
-    append_mode = False
+    append_mode = False,
+    extra_directives=None,
 ):
 
     fileSBATCH = folder_local / f"mitim_bash{label_log_files}.src"
@@ -2402,6 +2446,7 @@ def create_slurm_execution_files(
         label_log_files=label_log_files,
         if_array_relabel=if_array_relabel,
         append_mode=append_mode,
+        extra_directives=extra_directives,
     )
     commandSBATCH.extend(script.preamble())
 

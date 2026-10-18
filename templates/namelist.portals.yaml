@@ -583,6 +583,12 @@ transport:
         #                        (sbatch --array=...%N); the rest queue behind them.
         #   exclusive          : force sbatch --exclusive. Omit/null to defer to
         #                        the machine config's slurm.exclusive.
+        #   qos_cap, fallback_qos : (optional, both or neither) per-user job cap of the machine
+        #                        config's slurm.qos (e.g. 5 on Perlmutter premium), which sbatch only
+        #                        reveals by refusing. Before every sbatch of the evaluation (array,
+        #                        rescues, extra cases) MITIM counts the user's jobs in that qos
+        #                        (squeue -r: array elements one by one) and, if count + new jobs >
+        #                        qos_cap, submits with --qos=<fallback_qos>. Unset: no check.
 
         # Radii finish at different times (bash mode: the driver waits for the slowest one while
         # the other nodes of the allocation idle; slurm_array: a finished element gives its node
@@ -623,6 +629,13 @@ transport:
         #                               and stops them only when that radius really ends.
         #                               Not available with run_type "normal" on a slurm array (the
         #                               driver does not poll) nor in a standard slurm job.
+        #                               Array mode yields to the mains (extra_points sub-keys):
+        #                                 nice: extras get sbatch --nice=<nice> (null: none);
+        #                                 yield_to_pending_mains: no extra is submitted while
+        #                                   squeue shows a main or rescue CGYRO job of ANY of the
+        #                                   user's runs waiting for nodes;
+        #                                 rescues_first: nor while a rescue of this evaluation
+        #                                   is pending. No squeue answer: no extra.
         #   min_time is the shared physics floor: the shortest saturated run you accept.
         load_balance:
           strategy: null
@@ -630,6 +643,9 @@ transport:
           min_time: 300
           extra_points:
             perturbation: 0.15
+            nice: 100
+            yield_to_pending_mains: true
+            rescues_first: true
 
         # Stop a radius that is burning wall time far from its target, as a user watching the run
         # would: its flux already says which way the next step goes, and its magnitude would not be
