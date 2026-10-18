@@ -302,7 +302,16 @@ DESCRIPTION
     `Outputs/extra_points.csv` as in bash mode. The extras are tracked in `cgyro_submission.json`, so a re-attaching
     driver keeps them. In both modes the extra case now takes per-radius option lists (e.g. `RESTART_STEP`) at its own radius.
     A main radius that hits its element wall and is continued in place by the next driver link keeps its extras running;
-    that link takes them over and stops them only when the main radius really ends.
+    that link takes them over and stops them only when the main radius really ends. Extras are submitted with `--nice`
+    and wait while any of the user's main CGYRO jobs, or this chain's own rescue, is pending (`extra_points.nice`,
+    `yield_to_pending_mains`, `rescues_first`).
+
+*   💥 **PORTALS-CGYRO array runs continue a wall-hit radius within the same driver link.** With `rescue_interrupted`,
+    an element that ends TIMEOUT/PREEMPTED/NODE_FAIL after a restart write is resubmitted in place to its original end
+    time by the polling driver (`max_continuations_per_rho`, default 2) instead of failing the link. A driver about to
+    hit its own SLURM wall with radii unfinished writes `Outputs/MITIM_DRIVER_WALL_UNFINISHED.json` for its launcher to
+    resubmit it. Optional `allocation.qos_cap`/`fallback_qos` move submissions above a per-user QOS cap (e.g. Perlmutter
+    premium, 5 jobs) to a fallback QOS.
 
 ### Bug Fixes
 
@@ -319,7 +328,9 @@ DESCRIPTION
     continued in its own folder (rescue or SLURM requeue) now has its per-output binaries cut to the restart output
     before CGYRO starts, so a continuation that ends before the old trace no longer leaves stale records that crashed
     every later read. Without a terminal, a failed CGYRO read raises its own error instead of asking whether to run
-    `cgyro -t` (which raised `InteractiveTerminalError` and killed every chained driver link).
+    `cgyro -t` (which raised `InteractiveTerminalError` and killed every chained driver link). A restart write broken by a
+    filesystem outage (empty `out.cgyro.tag`, zeroed `bin.cgyro.restart` header) is repaired before the next launch from
+    `bin.cgyro.restart.old` and the tag history, instead of crashing CGYRO and restarting the radius from scratch.
 
 *   🐛 **A driver without a recorded jobid no longer follows or cancels another run's job of the same name.** Every
     PORTALS CGYRO array is named `cgyro_ev<N>`; the status poll fell back to `squeue -n <name>` and `delete()` ran
