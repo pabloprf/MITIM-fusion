@@ -29,6 +29,7 @@ import io
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -168,6 +169,8 @@ def test_requeue_trims_max_time():
         run_dir = d / "rho_0.6673"
         run_dir.mkdir()
         (run_dir / "input.cgyro").write_text(INPUT.replace("RESTART_STEP            = 450", "RESTART_STEP            = 25"))
+        # a continuation needs a blob with a valid header next to its tag (cgyro_restart_validate.sh)
+        (run_dir / "bin.cgyro.restart").write_bytes(struct.pack("<ii", 140974129, 3) + bytes(2040))
         # first launch (warm start, no tag): nothing trimmed, end time t=450 recorded for job 111
         mt, _ = _launch(run_dir, 111)
         assert mt == 450.0 and (run_dir / ".mitim_t_end").read_text().split() == ["111_2", "450"], mt

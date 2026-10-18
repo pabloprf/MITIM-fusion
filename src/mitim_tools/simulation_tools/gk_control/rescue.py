@@ -574,6 +574,10 @@ def rescue_interrupted_runs(sim, kwargs_run, folders, folders_red, input_file):
         {"required": [files that must exist, e.g. restart blob + tag],
          "progress_file": file holding the time the code will resume from,
          "progress_line": its 1-based line number (None = last line); first token is read,
+         "progress_cmd": optional callable (folder) -> shell printing that token instead
+            (CGYRO: the restart validation in report mode, which gives the time a radius with
+            a tag broken by a failed restart write resumes from once its launch repairs it,
+            and nothing when it would cold-start, so only that one is discarded),
          "time_key": input-file key holding the run length (e.g. "MAX_TIME"),
          "checksum_ignore": input-file key prefixes excluded from the identity md5
             (optional, defaults to [time_key]; list every key `after_trim` rewrites,
@@ -624,6 +628,7 @@ def rescue_interrupted_runs(sim, kwargs_run, folders, folders_red, input_file):
         progress_file=spec.get("progress_file"), progress_line=spec.get("progress_line"),
         checksum_ignore_prefix=ignore_prefixes, report_files=spec.get("report_files"),
         completion=None if completion is None else (completion.marker_file, completion.marker_text, completion.alt_file),
+        progress_cmd=spec["progress_cmd"]("$d") if spec.get("progress_cmd") else None,
     )
     if not found:
         return []

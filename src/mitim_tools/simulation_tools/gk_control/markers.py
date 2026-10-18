@@ -21,6 +21,11 @@ RUN_STARTED = ".mitim_run_started"       # baseline for "did this launch write a
 T0 = ".mitim_t0"                         # simulated time this launch starts from [a/cs]
 T_END = ".mitim_t_end"                   # "<job> <t_end>": time this submission must reach (requeue trim)
 
+# Restart validation (templates/gk_control/cgyro_restart_validate.sh)
+TAG_LAST = ".mitim_tag_last"             # newest valid out.cgyro.tag the watchdog saw
+TAG_PREV = ".mitim_tag_prev"             # the one before it
+RESTART_BAD = "bin.cgyro.restart.bad"    # a blob set aside by the validation
+
 # CGYRO's own signals
 CGYRO_COMPLETION = ("out.cgyro.info", "EXIT")         # written only on an orderly finish
 CGYRO_EXIT_PATTERN = "^EXIT: (CGYRO)"                 # the same line, as a grep pattern

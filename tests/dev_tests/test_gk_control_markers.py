@@ -27,9 +27,10 @@ from mitim_tools.simulation_tools.gk_control import markers, shell
 USES = {
     "cgyro_watchdog.sh": [markers.BUDGET_TAG, markers.DISCARD_TAG, markers.STOP_REQUEST, markers.GUARD_JSON,
                           markers.GUARD_SCRIPT, markers.GUARD_STATUS, f'"{markers.GUARD_TOKEN} ',
-                          markers.CASH_KARP_ABORT, markers.CGYRO_COMPLETION[0]],
+                          markers.CASH_KARP_ABORT, markers.CGYRO_COMPLETION[0], markers.TAG_LAST, markers.TAG_PREV],
     "cgyro_probe.sh": [markers.BUDGET_TAG, markers.T0],
     "cgyro_requeue_trim.sh": [markers.T_END],
+    "cgyro_restart_validate.sh": [markers.TAG_LAST, markers.TAG_PREV, markers.T0, markers.RESTART_BAD],
     "cgyro_guard.py": [markers.GUARD_JSON, markers.T_END],
 }
 

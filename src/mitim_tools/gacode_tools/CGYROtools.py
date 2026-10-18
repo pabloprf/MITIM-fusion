@@ -3,6 +3,7 @@ import json
 import shutil
 import tempfile
 import datetime
+import functools
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -326,7 +327,10 @@ class CGYRO(GKRunControl, SIMtools.mitim_simulation, SIMplot.GKplotting):
                             'checksum_ignore': ['MAX_TIME', 'RESTART_STEP'],
                             'report_files': ['out.cgyro.time', 'bin.cgyro.ky_flux', 'bin.cgyro.restart', 'out.cgyro.tag'],
                             # a radius continued in place is guarded like a fresh one
-                            'keep_staged': [CostGuard.FILE, CostGuard.SCRIPT]},
+                            'keep_staged': [CostGuard.FILE, CostGuard.SCRIPT],
+                            # a tag or blob broken by a failed restart write is repaired at launch
+                            # (cgyro_restart_validate.sh): read the time that repair resumes from
+                            'progress_cmd': functools.partial(_watchdog.restart_validate, apply=False)},
             # A radius is only 'done' if CGYRO wrote its EXIT line (files exist from step 1 on)...
             'completion_marker': markers.CGYRO_COMPLETION,
             # ...or the watchdog stopped it past min_time. Optional, never mandatory: a run that ends

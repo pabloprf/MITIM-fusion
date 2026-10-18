@@ -3,7 +3,7 @@ The supervisor around one radial CGYRO launch (templates/gk_control/cgyro_watchd
 runs right before and after it: launch markers, requeue trim, exit verdict.
 """
 from mitim_tools.simulation_tools.gk_control import markers
-from mitim_tools.simulation_tools.gk_control.shell import _ShellTemplate, _WATCHDOG_BASH, _REQUEUE_TRIM_BASH, _INPLACE_TRUNCATE_BASH
+from mitim_tools.simulation_tools.gk_control.shell import _ShellTemplate, _WATCHDOG_BASH, _REQUEUE_TRIM_BASH, _INPLACE_TRUNCATE_BASH, _RESTART_VALIDATE_BASH
 
 
 class Watchdog:
@@ -69,6 +69,10 @@ def launch_markers(run_dir):
     comparison would delete every legitimately fresh restart. No-op when either file is absent.
     The if-block keeps the slurm_array additional_command's trailing newline from breaking chaining.
 
+    Before the markers, templates/gk_control/cgyro_restart_validate.sh checks out.cgyro.tag and the header of
+    bin.cgyro.restart, which a filesystem outage during a restart write can leave empty / zeroed, and
+    falls back to bin.cgyro.restart.old, the watchdog's tag history or a tag rebuilt from out.cgyro.time,
+    so everything below reads a tag that matches the blob CGYRO resumes from.
     After the markers, templates/gk_control/cgyro_requeue_trim.sh trims MAX_TIME when SLURM requeues the same
     job (CGYRO would otherwise add the full MAX_TIME on top of the checkpoint it resumes from), and
     templates/gk_control/cgyro_inplace_truncate.sh cuts the per-output binaries of a continuation in place to the
@@ -76,7 +80,8 @@ def launch_markers(run_dir):
     '''
     restart_path = f"{run_dir}/bin.cgyro.restart"
     marker_path = f"{run_dir}/{markers.RUN_STARTED}"
-    marker_cmd = (f'touch "{marker_path}"; _t0=$(sed -n 2p "{run_dir}/out.cgyro.tag" 2>/dev/null '
+    marker_cmd = (restart_validate(run_dir).rstrip("\n") + "\n"
+                  + f'touch "{marker_path}"; _t0=$(sed -n 2p "{run_dir}/out.cgyro.tag" 2>/dev/null '
                   f'| awk \'{{print $1+0}}\'); echo "${{_t0:-0}}" > "{run_dir}/{markers.T0}"\n'
                   + _ShellTemplate(_REQUEUE_TRIM_BASH).substitute(run_dir=run_dir).rstrip("\n") + "\n"
                   + _ShellTemplate(_INPLACE_TRUNCATE_BASH).substitute(run_dir=run_dir).rstrip("\n"))
@@ -86,6 +91,15 @@ def launch_markers(run_dir):
         f'rm -f "{restart_path}"; fi; rm -f "{marker_path}"'
     )
     return marker_cmd, cleanup_cmd
+
+
+def restart_validate(run_dir, apply=True):
+    '''
+    templates/gk_control/cgyro_restart_validate.sh for `run_dir`. apply=False changes nothing and prints the
+    time the launch would resume from (empty when it would cold-start): the interrupted-run probe reads it
+    (CGYRO rescue_spec "progress_cmd") so a radius with a broken tag but a usable blob is not discarded.
+    '''
+    return _ShellTemplate(_RESTART_VALIDATE_BASH).substitute(run_dir=run_dir, apply="1" if apply else "0")
 
 
 def exit_verdict(run_dir):

@@ -6,6 +6,9 @@ rm -f "$_lb_dir/mitim_stop"
 @{cgyro_cmd}
 ) & _lb_pid=$!
 _lb_t0=$(date +%s)
+# tag history for cgyro_restart_validate.sh: the last two valid out.cgyro.tag contents, newest first. A
+# restart write the filesystem dropped leaves a broken tag and the tag of bin.cgyro.restart.old in .mitim_tag_last
+_lb_tagl=$(cat "$_lb_dir/.mitim_tag_last" 2>/dev/null)
 _lb_mt() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
 _lb_tree() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do echo "$c"; _lb_tree "$c"; done; }
 # TERM the launch and wait until its whole process tree is gone: mpirun/prterun puts every rank in
@@ -18,6 +21,13 @@ _lb_kill() {
 }
 while kill -0 $_lb_pid 2>/dev/null; do
     for _lb_i in $(seq 1 20); do kill -0 $_lb_pid 2>/dev/null || break; sleep 1; done
+    if [ -f "$_lb_dir/out.cgyro.tag" ]; then
+        _lb_tag=$(<"$_lb_dir/out.cgyro.tag")
+        if [ "$_lb_tag" != "$_lb_tagl" ] && printf '%s\n' "$_lb_tag" | awk 'NR==1 {i = ($1 ~ /^[0-9]+$/ && $1+0 > 0)} NR==2 {t = ($1 ~ /^[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?$/)} END {exit !(i && t)}'; then
+            [ -f "$_lb_dir/.mitim_tag_last" ] && mv -f "$_lb_dir/.mitim_tag_last" "$_lb_dir/.mitim_tag_prev"
+            printf '%s\n' "$_lb_tag" > "$_lb_dir/.mitim_tag_last"; _lb_tagl=$_lb_tag
+        fi
+    fi
     kill -0 $_lb_pid 2>/dev/null || break
     # stop request: the wall budget (if any) is spent, or mitim_stop was dropped (scheduler, mitim_kill_cgyro)
     _lb_stop=0; [ -f "$_lb_dir/mitim_stop" ] && _lb_stop=1

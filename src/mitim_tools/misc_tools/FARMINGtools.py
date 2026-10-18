@@ -1716,7 +1716,7 @@ class mitim_job:
 
         return output, error
 
-    def probe_interrupted_runs(self, rel_folders, required_files, checksum_file, progress_file=None, progress_line=None, checksum_ignore_prefix=None, report_files=None, completion=None):
+    def probe_interrupted_runs(self, rel_folders, required_files, checksum_file, progress_file=None, progress_line=None, checksum_ignore_prefix=None, report_files=None, completion=None, progress_cmd=None):
         '''
         Look inside the (possibly remote) scratch folder for sub-folders left by an
         interrupted execution. For each entry of `rel_folders` (relative to
@@ -1724,7 +1724,10 @@ class mitim_job:
         when every file in `required_files` exists there or the run there already ended, and
         nothing otherwise. `progress_token` is the first column of line `progress_line`
         (1-based; None = last line) of `progress_file` (e.g. the time the code will resume
-        from), or None. `report` is a 'name=bytes ...' string with the sizes of `report_files`
+        from), or None. `progress_cmd`, when given, replaces that read: shell run with the
+        sub-folder in $d whose output is the token (CGYRO: the time its restart validation
+        would resume from, so a broken tag next to a usable restart still gives one).
+        `report` is a 'name=bytes ...' string with the sizes of `report_files`
         (forensics for the log; missing files are skipped). `finished` is True when the
         sub-folder satisfies `completion` = (marker_file, marker_text, alt_file): marker_file
         contains marker_text, or alt_file exists (e.g. CGYRO's EXIT line in out.cgyro.info, or
@@ -1740,6 +1743,9 @@ class mitim_job:
         checks = ' && '.join(f'[ -f "$d/{f}" ]' for f in list(required_files) + [checksum_file])
         pick = f'sed -n "{int(progress_line)}p"' if progress_line else 'tail -n 1'
         prog = f'$({pick} "$d/{progress_file}" 2>/dev/null | awk \'{{print $1}}\')' if progress_file else 'none'
+        prefix = ''
+        if progress_cmd:
+            prefix, prog = f'_mitim_progress() {{\n{progress_cmd.rstrip()}\n}}\n', '$(_mitim_progress)'
         report = ' '.join(f'$([ -f "$d/{f}" ] && echo "{f}=$(wc -c < "$d/{f}" | tr -d " ")")' for f in (report_files or []))
         prefixes = [checksum_ignore_prefix] if isinstance(checksum_ignore_prefix, str) else list(checksum_ignore_prefix or [])
         filt = ''.join(f" | grep -v '^{p}'" for p in prefixes)
@@ -1757,7 +1763,7 @@ class mitim_job:
                 f'echo "MITIM_RESCUE {rel} $f $h {prog} | {report}"; fi'
             )
         with self.session(log_file=self.folder_local / 'paramiko.log'):
-            output, _ = self.execute('; '.join(lines))
+            output, _ = self.execute(prefix + '; '.join(lines))
         found = {}
         for line in (output or b'').decode('utf-8', errors='ignore').splitlines():
             head, _, report_str = line.partition('|')

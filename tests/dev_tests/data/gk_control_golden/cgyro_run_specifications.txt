@@ -24,6 +24,7 @@
    "mitim_guard.json",
    "mitim_guard.py"
   ],
+  "progress_cmd": "<callable>",
   "progress_file": "out.cgyro.tag",
   "progress_line": 2,
   "report_files": [

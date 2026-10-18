@@ -22,6 +22,7 @@ Run as:
 
 from __future__ import annotations
 
+import struct
 import subprocess
 import sys
 import tempfile
@@ -49,7 +50,8 @@ def fake_radius(d, n_records, n_rows, tag=500, grids=True):
     for name, rec in RECORD.items():
         (d / name).write_bytes(b"\1" * rec * n_records)
     for name, size in STATIC.items():
-        (d / name).write_bytes(b"\2" * size)
+        # bin.cgyro.restart opens with CGYRO's restart magic, or cgyro_restart_validate.sh sets it aside
+        (d / name).write_bytes(struct.pack("<ii", 140974129, 3) + b"\2" * (size - 8))
     (d / "out.cgyro.time").write_text("".join(f" {0.1 * i:.4E}  1.0E-03  1.0E-08  1.0E-02\n" for i in range(1, n_rows + 1)))
     if grids:
         (d / "out.cgyro.grids").write_text(f"{N_N}\n{N_SPECIES}\n{N_FIELD}\n184\n16\n")
