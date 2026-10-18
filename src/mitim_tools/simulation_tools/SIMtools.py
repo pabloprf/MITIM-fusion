@@ -1335,19 +1335,22 @@ class mitim_simulation:
             self._base_subfolder = settings.base_subfolder
             self._write_submission_metadata(self._base_subfolder)
 
-    def _child_jobids(self):
+    def _child_jobids(self, include_handed_over=False):
         '''
         Deduplicated jobids this submission spawned next to its own job (insertion order): the
         rescue jobs of the auto-resubmit ledger, then the extra cases still in flight (load_balance
         'extra_points' in array mode). Empty until a radius was resubmitted or given an extra.
+        include_handed_over: also the extra cases left running for the next submission (HANDED_OVER);
+        the poll never waits on those, but delete() cancels them.
         '''
+        live = ("RUNNING", "STOPPING") + (("HANDED_OVER",) if include_handed_over else ())
         seen = []
         for entry in (getattr(self, "_resubmit_ledger", None) or {}).values():
             for jid in entry.get("child_jobids", []):
                 if jid not in seen:
                     seen.append(jid)
         for entry in (getattr(self, "_extra_ledger", None) or {}).values():
-            if entry.get("status") in ("RUNNING", "STOPPING") and entry.get("jobid") not in seen:
+            if entry.get("status") in live and entry.get("jobid") not in seen:
                 seen.append(entry["jobid"])
         return seen
 
@@ -1534,7 +1537,7 @@ class mitim_simulation:
         try:
             # never by name alone: another run's job of the same name (cgyro_ev<N>) would be cancelled too.
             # The rescue / extra-case jobs this submission spawned go with it (from mitim_7's job-names work)
-            children = "".join(f" {jid}" for jid in self._child_jobids())
+            children = "".join(f" {jid}" for jid in self._child_jobids(include_handed_over=True))
             jobid = job.jobid or getattr(job, "jobid_found", None)
             command = (f"scancel {jobid}{children}" if jobid is not None
                        else f'{job._jobs_by_folder_bash()}; _c="$([ "$_lk_rc" = 0 ] && echo "${{_ids//,/ }}"){children}"; '

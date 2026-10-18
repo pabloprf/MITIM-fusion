@@ -9,7 +9,8 @@ Checks:
      submission record is written.
   3. An sbatch that went through but whose jobid was not read back is not an error: the record is
      written and check() finds the job by name AND submit folder (test_job_identity_by_folder).
-  4. delete() cancels by jobid, the parent and the rescue / extra-case children, never `scancel -n`.
+  4. delete() cancels by jobid, the parent and the rescue / extra-case children (handed-over extras
+     included), never `scancel -n`.
 
 Naming and the delete children are mitim_7's (development_cgyro_job_names).
 
@@ -149,23 +150,26 @@ def _delete_sim(jobid):
     sim = types.SimpleNamespace(
         simulation_job=FakeDeleteJob(jobid),
         _resubmit_ledger={"base_cgyro/rho_0.5500": {"child_jobids": ["201"]}},
-        _extra_ledger={"x": {"status": "RUNNING", "jobid": "301"}, "y": {"status": "DONE", "jobid": "302"}},
+        _extra_ledger={"x": {"status": "RUNNING", "jobid": "301"}, "y": {"status": "DONE", "jobid": "302"},
+                       "z": {"status": "HANDED_OVER", "jobid": "303"}},
     )
-    sim._child_jobids = lambda: SIMtools.mitim_simulation._child_jobids(sim)
+    sim._child_jobids = lambda **kw: SIMtools.mitim_simulation._child_jobids(sim, **kw)
     return sim
 
 
 def test_delete_by_jobid():
     sim = _delete_sim("100")
     _quiet(SIMtools.mitim_simulation.delete, sim)
-    assert sim.simulation_job.commands == ["scancel 100 201 301"], sim.simulation_job.commands
+    # a handed-over extra (left running for the next submission) goes too; the poll never waits on it
+    assert sim.simulation_job.commands == ["scancel 100 201 301 303"], sim.simulation_job.commands
+    assert SIMtools.mitim_simulation._child_jobids(sim) == ["201", "301"]
     assert sim.simulation_job.launchSlurm is True
 
     sim = _delete_sim(None)
     sim.simulation_job._jobs_by_folder_bash = lambda: "LOOKUP"
     _quiet(SIMtools.mitim_simulation.delete, sim)
     (command,) = sim.simulation_job.commands
-    assert command.startswith("LOOKUP;") and "scancel -n" not in command and " 201 301" in command, command
+    assert command.startswith("LOOKUP;") and "scancel -n" not in command and " 201 301 303" in command, command
     print("PASS test_delete_by_jobid")
 
 
