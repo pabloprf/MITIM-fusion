@@ -186,7 +186,7 @@ def test_delete_never_cancels_by_name():
             if jobid is not None:
                 assert sent["command"] == "scancel 12345678", sent["command"]
             else:
-                assert "%Z" in sent["command"] and 'scancel ${_ids//,/ }' in sent["command"], sent["command"]
+                assert "%Z" in sent["command"] and 'scancel $_c' in sent["command"] and 'scancel -n' not in sent["command"], sent["command"]
             assert job.launchSlurm is True
     finally:
         shutil.rmtree(folder, ignore_errors=True)

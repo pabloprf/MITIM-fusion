@@ -8,7 +8,7 @@ from mitim_tools.simulation_tools.gk_control import markers
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.powertorch.physics_models.utils.cgyro_extra_points import ExtraPointHarvester
 from mitim_modules.powertorch.physics_models.utils.cgyro_restart import RestartChain, RestartPlan
-from mitim_tools.simulation_tools.gk_control.submission import GKSubmission
+from mitim_tools.simulation_tools.gk_control.submission import GKSubmission, gk_job_name_suffix
 from mitim_modules.powertorch.physics_models.utils.per_iter_overrides import PerIterOverrides
 
 
@@ -424,7 +424,7 @@ class gyrokinetic_model:
         return ExtraPointHarvester(self, ctx.code, ctx.rho_locations, ctx.run_kwargs, ctx.read_options)
 
     def _gk_submit(self, ctx, gk):
-        job_name_suffix = f"_ev{ctx.evaluation_number}"
+        job_name_suffix = gk_job_name_suffix(self.folder, ctx.evaluation_number)
         if ctx.batched:
             gk.prep(ctx.list_of_states[0], self.folder, cold_start=ctx.cold_start)
             ctx.plasma_labels = gk.run_over_plasmas(

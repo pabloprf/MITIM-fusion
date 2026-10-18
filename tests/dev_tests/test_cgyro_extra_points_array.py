@@ -59,7 +59,7 @@ class FakeJob:
         self.launchSlurm = True
         self.ssh = None
         self.infoSLURM = {"STATE": "RUNNING"}
-        self.slurm_settings = {"job-name": "cgyro_ev0"}
+        self.slurm_settings = {"job-name": "cgyro_E_pt03_ev0"}
         self.output_folders = [FAST, SLOW]
         self.output_folders_selective = {FAST: ["out.cgyro.info"], SLOW: ["out.cgyro.info"]}
         self.scheduler_result = None

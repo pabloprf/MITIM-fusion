@@ -316,7 +316,7 @@ class ArraySlurmScript(JobScript):
     _INDEXED_FOLDER = "${FOLDERS[$SLURM_ARRAY_TASK_ID]}"
 
     # An array has ONE --job-name, so each element appends its own folder name when it starts
-    # (cgyro_ev0 -> cgyro_ev0_rho_0.5500); a pending element still shows the array name. The
+    # (cgyro_myrun_ev0 -> cgyro_myrun_ev0_rho_0.5500); a pending element still shows the array name. The
     # suffix strip keeps a requeued element from stacking it, and a refused rename never stops the run.
     # JobId is <array>_<index> on purpose: one element's $SLURM_JOB_ID can equal the array id, which
     # scontrol reads as the whole array.
@@ -746,7 +746,7 @@ class mitim_simulation:
         run_type = 'normal', # 'normal': send, submit and wait; 'submit': send and submit and do not wait; 'send': send and do not submit; 'prep': do not submit
         additional_files_to_send = None, # Dict (rho keys) of files to send along with the run (e.g. for restart). Each list entry is either a path or a (src_path, dst_basename) tuple — tuples let the file be renamed on stage-in (e.g. CGYRO restart per-rho blobs -> out.cgyro.restart).
         helper_lostconnection=False, # If True, it means that the connection to the remote machine was lost, but the files are there, so I just want to retrieve them not execute the commands
-        job_name_suffix='_sim', # Suffix appended to the code name for the slurm --job-name (e.g. "cgyro" + "_sim" -> "cgyro_sim"). PORTALS overrides with "_ev{evaluation_number}" to tag submissions by iteration.
+        job_name_suffix='_sim', # Suffix appended to the code name for the slurm --job-name (e.g. "cgyro" + "_sim" -> "cgyro_sim"). PORTALS overrides with "_<run folder>_ev{evaluation_number}" to tag submissions by run and iteration.
         rescue_interrupted=False, # If True, radii whose previous execution was interrupted in the scratch folder (restart + tag files present, identical input) are continued in place instead of wiped and re-run (codes that declare `rescue_spec`, e.g. CGYRO)
     ):
 
@@ -1038,7 +1038,7 @@ class mitim_simulation:
             input_file=self.run_specifications.get('input_file', 'input.tglf'),
             code_call=self.run_specifications.get('code_call', None),
             name=f"{code}_{self.nameRunid}{kwargs_run.get('extra_name', '')}",
-            # Slurm --job-name suffix ('_sim' by default, '_ev{N}' for PORTALS)
+            # Slurm --job-name suffix ('_sim' by default, '_<run folder>_ev{N}' for PORTALS)
             job_name_suffix=kwargs_run.get('job_name_suffix', '_sim'),
             launch_slurm=kwargs_run.get("launchSlurm", True),
             allocation=allocation,
@@ -1296,6 +1296,16 @@ class mitim_simulation:
             removeScratchFolders_goingIn=settings.cold_start,
         )
 
+        # A refused sbatch (allocation cost check, bad QOS) is an error now, with sbatch's own words; no
+        # record is written, so the next process submits fresh. An sbatch that went through but whose
+        # jobid was not read back keeps a jobid-less record: check() finds it by name AND submit folder.
+        refusal = getattr(self.simulation_job, "sbatch_refusal", None)
+        if self.simulation_job.jobid is None and refusal:
+            raise RuntimeError(
+                f"[MITIM] sbatch refused the {settings.code.upper()} submission (job name "
+                f"{self.simulation_job._squeue_job_name()}):\n\t{refusal}"
+            )
+
         self.kwargs_organize = {
             "code_executor": code_executor,
             "tmpFolder": settings.tmpFolder,
@@ -1512,9 +1522,9 @@ class mitim_simulation:
 
     def delete(self):
         '''
-        Cancel the submitted job. The scratch folder is left alone: it holds the only record
-        of what the job did, and it is still the running job's working directory until the
-        scancel lands.
+        Cancel the submitted job and the rescue / extra-case jobs it spawned. The scratch folder is
+        left alone: it holds the only record of what the job did, and it is still the running job's
+        working directory until the scancel lands.
         '''
         print("\n\n\t- Deleting job")
 
@@ -1522,10 +1532,13 @@ class mitim_simulation:
         launch_slurm = job.launchSlurm
         job.launchSlurm = False   # the scancel is a plain shell command, not a job to queue
         try:
-            # never by name alone: another run's job of the same name (cgyro_ev<N>) would be cancelled too
+            # never by name alone: another run's job of the same name (cgyro_ev<N>) would be cancelled too.
+            # The rescue / extra-case jobs this submission spawned go with it (from mitim_7's job-names work)
+            children = "".join(f" {jid}" for jid in self._child_jobids())
             jobid = job.jobid or getattr(job, "jobid_found", None)
-            command = (f"scancel {jobid}" if jobid is not None
-                       else f'{job._jobs_by_folder_bash()}; [ "$_lk_rc" = 0 ] && [ -n "$_ids" ] && scancel ${{_ids//,/ }} || true')
+            command = (f"scancel {jobid}{children}" if jobid is not None
+                       else f'{job._jobs_by_folder_bash()}; _c="$([ "$_lk_rc" = 0 ] && echo "${{_ids//,/ }}"){children}"; '
+                            f'[ -n "${{_c// /}}" ] && scancel $_c || true')
             job.prep(
                 command,
                 label_log_files="_finish",

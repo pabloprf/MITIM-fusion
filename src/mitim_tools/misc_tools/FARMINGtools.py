@@ -692,6 +692,28 @@ class mitim_job:
                 self.jobid = None
         else:
             self.jobid = None
+        self.sbatch_refusal = self._sbatch_refusal() if (self.launchSlurm and self.jobid is None) else None
+
+    # What sbatch prints when it refuses a submission (cost check, bad QOS, invalid account, ...). The
+    # executor runs `./mitim_shell_executor.sh > mitim.out`, so these lines arrive on the dispatch's stderr
+    SBATCH_REFUSAL_PATTERNS = ("sbatch: error", "Batch job submission failed")
+
+    def _sbatch_refusal(self):
+        '''
+        sbatch's own error lines from the last dispatch (stderr, then mitim.out), or None when sbatch
+        printed none: then it went through and only its jobid could not be read back. The exit status
+        of sbatch is not kept by the executor, so its message is the signal.
+        '''
+        texts = [getattr(self, "last_dispatch_error", None)]
+        try:
+            texts.append((self.folder_local / "mitim.out").read_text(errors="replace"))
+        except OSError:
+            pass
+        lines = []
+        for text in texts:
+            text = text.decode(errors="replace") if isinstance(text, bytes) else (text or "")
+            lines += [l.strip() for l in text.splitlines() if any(p in l for p in self.SBATCH_REFUSAL_PATTERNS)]
+        return "\n".join(dict.fromkeys(lines)) or None
 
     def put_file(self, local_file, remote_path):
         '''One file onto the machine (a plain copy when it is local), on the caller's live connection.'''
@@ -911,6 +933,9 @@ class mitim_job:
                     time.sleep(wait)
                 elif execution_counter < attempts_execution + refusal_reruns:
                     print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter - refusal_reruns}/{attempts_execution})")
+
+            # what the last execution printed: run() reads a refused sbatch from it
+            self.last_dispatch_output, self.last_dispatch_error = output, error
 
             # ~~~~~~ Remove scratch folder
             if received:

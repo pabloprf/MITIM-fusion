@@ -190,13 +190,13 @@ def test_array_element_rename():
 
     # Run the script head with a fake scontrol: first start, then a requeue that already carries the suffix
     head = array.command.split(SIMtools.ArraySlurmScript._RENAME_ELEMENT)[0] + SIMtools.ArraySlurmScript._RENAME_ELEMENT
-    for name_at_start in ("cgyro_ev0", "cgyro_ev0_rho_0.6712"):
+    for name_at_start in ("cgyro_E_pt03_ev0", "cgyro_E_pt03_ev0_rho_0.6712"):
         out = subprocess.run(
             ["bash", "-c", 'scontrol() { echo "$@"; }\n' + head],
             env={"SLURM_ARRAY_TASK_ID": "1", "SLURM_ARRAY_JOB_ID": "100", "SLURM_JOB_NAME": name_at_start, "PATH": "/usr/bin:/bin"},
             capture_output=True, text=True, check=True).stdout.strip()
-        assert out == "update JobId=100_1 JobName=cgyro_ev0_rho_0.6712", out
-    print("PASS: array element 1 renames itself to cgyro_ev0_rho_0.6712, also after a requeue")
+        assert out == "update JobId=100_1 JobName=cgyro_E_pt03_ev0_rho_0.6712", out
+    print("PASS: array element 1 renames itself to cgyro_E_pt03_ev0_rho_0.6712, also after a requeue")
 
 
 # ---------------------------------------------------------------------------

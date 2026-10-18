@@ -1,13 +1,16 @@
 '''
 The detached-submission lifecycle of a gyrokinetic run: re-attach to a job a previous process
 submitted, poll it, fetch it, and drop its metadata once the results are in (GKSubmission), plus
-the per-poll status of every CGYRO radius (cgyro_per_task_status).
+the per-poll status of every CGYRO radius (cgyro_per_task_status) and the job name that identifies
+a submission in the queue (gk_job_name_suffix).
 
 Backend-agnostic: the metadata file name comes from the simulation object
 (`_submission_metadata_filename`: cgyro_submission.json, gx_submission.json), so a backend that
 writes none simply never re-attaches.
 '''
 
+import hashlib
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +20,27 @@ from mitim_tools.simulation_tools.gk_control.status import _SLURM_JOB_GONE_STATE
 from mitim_tools.simulation_tools.gk_control.rescue import _cgyro_handle_stalled_tasks
 from mitim_tools.simulation_tools.gk_control.extra_points import ArrayExtraPoints
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+
+
+# Longest run-folder part of a GK job name; a longer one is cut and tagged with a hash of the full path
+_JOB_TAG_MAX_LENGTH = 40
+
+
+def gk_job_name_suffix(folder, evaluation_number):
+    '''
+    Slurm --job-name suffix of a GK submission, "_<run>_ev<N>" (code name prepended by SIMtools):
+    a bare "_ev<N>" is shared by every PORTALS run, so a name lookup could latch onto another run's job.
+    <run> is the PORTALS run folder of <run>/Execution/Evaluation.N/transport_simulation_folder;
+    MAESTRO names every one "run_portals", so there it is "<maestro folder>_<Beat_n>".
+    (Written by mitim_7 on development_cgyro_job_names.)
+    '''
+    folder = Path(folder)
+    run = folder.parents[2] if folder.name == "transport_simulation_folder" and folder.parent.parent.name == "Execution" else folder
+    tag = f"{run.parents[2].name}_{run.parent.name}" if run.name == "run_portals" else run.name
+    tag = re.sub(r"[^A-Za-z0-9_.-]", "_", tag)
+    if len(tag) > _JOB_TAG_MAX_LENGTH:
+        tag = f"{tag[:_JOB_TAG_MAX_LENGTH - 7]}_{hashlib.md5(str(run).encode()).hexdigest()[:6]}"
+    return f"_{tag}_ev{evaluation_number}"
 
 
 @dataclass

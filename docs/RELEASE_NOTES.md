@@ -317,6 +317,8 @@ DESCRIPTION
 *   🐛 **A driver without a recorded jobid no longer follows or cancels another run's job of the same name.** Every
     PORTALS CGYRO array is named `cgyro_ev<N>`; the status poll fell back to `squeue -n <name>` and `delete()` ran
     `scancel -n <name>`. Both now take only the jobs of that name submitted from this job's folder (squeue `%Z`).
+    GK jobs are also named after their run (`cgyro_<run folder>_ev<N>`; MAESTRO `<case>_<Beat_n>`), `delete()`
+    cancels the rescue and extra-case jobs with the parent, and a refused sbatch raises at once with sbatch's message.
 
 *   🐛 **A CGYRO radius that MITIM stopped on purpose no longer shows as FAILED in SLURM.** A run stopped and accepted
     by the watchdog (`mitim_budget.tag`: `wall_budget`, `mitim_kill_cgyro`, cost guard, the stop of an extra case)
