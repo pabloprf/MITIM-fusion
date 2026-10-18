@@ -523,6 +523,12 @@ transport:
         # instead of starting over; radii that already finished there are just collected.
         # Needs the scratch folder to survive between launches.
         rescue_interrupted: True
+        # With rescue_interrupted, an array element that ends TIMEOUT/PREEMPTED/NODE_FAIL after
+        # writing a restart is also continued in place within the same submission: as soon as its
+        # radius goes stale (or the array is gone), the poll trims its input.cgyro so the run ends
+        # at its original t_end and resubmits it alone (out.cgyro.tag kept: t continues). At most
+        # this many per rho and evaluation, counted apart from max_resubmits_per_rho.
+        max_continuations_per_rho: 2
 
         # Auto stall-detect-and-resubmit. The custom checker classifies each
         # rho on every poll; when a rho has been STALLED (no out.cgyro.timing

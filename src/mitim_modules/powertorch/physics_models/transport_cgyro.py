@@ -219,6 +219,8 @@ class gyrokinetic_model:
             "stall_init_kill_seconds":    run_options.get("stall_init_kill_seconds", 1800),
             "stall_running_kill_seconds": run_options.get("stall_running_kill_seconds", 1800),
             "max_resubmits_per_rho":      run_options.get("max_resubmits_per_rho", 1),
+            # In-link continuation of wall-hit radii (StallRescuer): only with rescue_interrupted
+            "max_continuations_per_rho":  run_options.get("max_continuations_per_rho", 2) if run_options.get("rescue_interrupted", False) else 0,
         }
 
         forwardable = _forwardable_kwargs(

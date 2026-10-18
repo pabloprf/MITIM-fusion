@@ -40,3 +40,6 @@ SCHEDULER_CALL = "mitim_call_{}.sh"      # in-allocation scheduler, one per call
 
 # Interrupted-run probe output token
 RESCUE_TOKEN = "MITIM_RESCUE"
+
+# Separator of the remote read behind an in-link continuation (StallRescuer._continuation_input)
+CONTINUE_SPLIT = "MITIM_CONTINUE_SPLIT"

@@ -1,12 +1,16 @@
 """
 Rescue of radii that stop progressing: a stalled radius of a SLURM submission is cancelled, cleaned
-and resubmitted on its own (StallRescuer, with its ledger in cgyro_submission.json), and a radius a
-previous execution left unfinished in scratch is continued in place (rescue_interrupted_runs).
+and resubmitted on its own (StallRescuer, with its ledger in cgyro_submission.json), a radius whose
+element hit its wall clock is continued in place by a job of its own within the same submission
+(StallRescuer, max_continuations_per_rho), and a radius a previous execution left unfinished in
+scratch is continued in place (rescue_interrupted_runs).
 """
 import datetime
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from mitim_tools.misc_tools.FARMINGtools import SlurmState
+from mitim_tools.simulation_tools.gk_control import markers
 from mitim_tools.simulation_tools.gk_control.completion import CompletionSpec
 from mitim_tools.simulation_tools.gk_control.status import TaskState
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -71,6 +75,7 @@ class LedgerEntry:
     child_jobids: list = field(default_factory=list)
     last_action_at: str = None
     status: str = "active"
+    continuation_jobids: list = field(default_factory=list)   # in-place continuations, also in child_jobids
 
     @classmethod
     def from_json(cls, entry):
@@ -80,15 +85,23 @@ class LedgerEntry:
             child_jobids=list(entry.get("child_jobids", []) or []),
             last_action_at=entry.get("last_action_at"),
             status=str(entry.get("status", "active")),
+            continuation_jobids=list(entry.get("continuation_jobids", []) or []),
         )
 
     def to_json(self):
-        return {
+        entry = {
             "n_attempts": self.n_attempts,
             "child_jobids": self.child_jobids,
             "last_action_at": self.last_action_at,
             "status": self.status,
         }
+        if self.continuation_jobids:
+            entry["continuation_jobids"] = self.continuation_jobids
+        return entry
+
+    @property
+    def n_continuations(self):
+        return len(self.continuation_jobids)
 
     @property
     def terminal_no_rescue(self):
@@ -111,9 +124,19 @@ class StallRescuer:
     alone: fetch notes the missing per-rho outputs and downstream PORTALS handles the gap (e.g. the TGLF
     fallback in transport_cgyro). The ledger is persisted into the submission metadata after every action
     so a re-attached PORTALS picks up the child jobids.
+
+    A radius whose element sacct reports ended by the wall clock, a preemption or a node failure, with a
+    restart written (first token of out.cgyro.tag a positive output index), is instead continued in place
+    as soon as its row goes stale or its element leaves the queue: nothing is deleted, the remote input's
+    run length is trimmed so the continuation ends at the original t_end (.mitim_t_end) and it is
+    resubmitted alone (restart_flag 1, t continues). Capped at `max_continuations_per_rho`, counted apart
+    from the stall retries; 0 (no rescue_interrupted) turns it off.
     '''
 
     CLEANUP_FILES = ["out.cgyro.timing", "out.cgyro.tag", "out.cgyro.info", "slurm_output.dat", "slurm_error.dat"]
+
+    # sacct end states that leave the run intact on disk, ready to be continued from its last restart
+    CONTINUE_STATES = (SlurmState.TIMEOUT, SlurmState.PREEMPTED, SlurmState.NODE_FAIL)
 
     def __init__(self, sim, settings, session=None):
         self.sim = sim
@@ -122,10 +145,13 @@ class StallRescuer:
         self.init_kill_s = int(settings.get("stall_init_kill_seconds", 1800))
         self.run_kill_s = int(settings.get("stall_running_kill_seconds", 1800))
         self.cap = int(settings.get("max_resubmits_per_rho", 1))
+        self.stall_enabled = bool(settings.get("enabled", False))
+        self.continuation_cap = int(settings.get("max_continuations_per_rho", 0))
         organize = getattr(sim, "kwargs_organize", None) or {}
         self.array_index_by_folder = organize.get("array_index_by_folder", {})
         self.per_folder_commands = organize.get("per_folder_commands", {})
         self.metadata_dirty = False
+        self._slurm_states = {}
 
     @property
     def ledger(self):
@@ -138,12 +164,14 @@ class StallRescuer:
             return   # not a slurm_array submission — single-task rescue does not apply
 
         candidates = self._candidates(rows)
-        if not candidates:
+        continuations = self._continuation_candidates(rows)
+        if not (candidates or continuations):
             return
-        print(f"\t- [auto-resubmit] {len(candidates)} stalled task(s) past the kill threshold; attempting rescue", typeMsg='w')
+        if candidates:
+            print(f"\t- [auto-resubmit] {len(candidates)} stalled task(s) past the kill threshold; attempting rescue", typeMsg='w')
 
         if self.session is not None:
-            self._rescue_all(candidates)
+            self._act(candidates, continuations)
         else:
             try:
                 self.job.connect()
@@ -151,7 +179,7 @@ class StallRescuer:
                 print(f"\t- [auto-resubmit] could not open SSH connection ({type(e).__name__}: {e}); skipping rescue this poll", typeMsg='w')
                 return
             try:
-                self._rescue_all(candidates)
+                self._act(candidates, continuations)
             finally:
                 try:
                     self.job.close()
@@ -164,9 +192,16 @@ class StallRescuer:
             except Exception as e:
                 print(f"\t- [auto-resubmit] metadata write failed ({type(e).__name__}: {e}); ledger held in-memory only", typeMsg='w')
 
+    def _act(self, candidates, continuations):
+        '''Continue the wall-hit radii first; a continued radius is no stall to rescue.'''
+        continued = self._continue_all(continuations)
+        self._rescue_all([(row, threshold) for row, threshold in candidates if row["folder"] not in continued])
+
     def _candidates(self, rows):
         '''(row, threshold) for every row stalled longer than its own kill threshold.'''
         candidates = []
+        if not self.stall_enabled:
+            return candidates
         for row in rows:
             state, since = row["effective"], row["since_update_i"]
             if state == TaskState.STALLED and since > self.run_kill_s:
@@ -209,7 +244,7 @@ class StallRescuer:
         target, rescuing_child = self._resolve_target(folder, entry)
         if target is None:
             return
-        slurm_state, running_s = _slurm_state_for_target(self.job, target)
+        slurm_state, running_s = self._slurm_state(target)
         if self._slurm_says_dead(folder, target, entry, slurm_state):
             return
         if self._restarted_recently(target, slurm_state, running_s, threshold):
@@ -219,6 +254,130 @@ class StallRescuer:
         if not self._clean_remote(folder):
             return
         self._resubmit(folder, entry, attempt, rescuing_child, stalled_on_node=running_s is not None)
+
+    def _slurm_state(self, target):
+        '''_slurm_state_for_target, asked once per target and poll (the continuation and the stall pass share it).'''
+        if target not in self._slurm_states:
+            self._slurm_states[target] = _slurm_state_for_target(self.job, target)
+        return self._slurm_states[target]
+
+    def _continuation_candidates(self, rows):
+        '''
+        Rows that may be a wall-hit element to continue in place: stale or timed out, with a restart
+        written, and continuations left. sacct decides in _continue_one; a row it finds still running
+        goes on to the stall pass untouched.
+        '''
+        if not self.continuation_cap:
+            return []
+        candidates = []
+        for row in rows:
+            if row["effective"] not in (TaskState.STALLED.value, TaskState.TIMED_OUT.value) or _restart_output(row.get("tag_token")) is None:
+                continue
+            entry = LedgerEntry.from_json(self.ledger.get(row["folder"]))
+            if entry.terminal_no_rescue or entry.n_continuations >= self.continuation_cap:
+                continue
+            candidates.append(row)
+        return candidates
+
+    def _continue_all(self, rows):
+        '''The folders continued in place this poll.'''
+        continued = set()
+        for row in rows:
+            entry = LedgerEntry.from_json(self.ledger.get(row["folder"]))
+            if self._continue_one(row, entry):
+                self.ledger[row["folder"]] = entry.to_json()
+                continued.add(row["folder"])
+        return continued
+
+    def _continue_one(self, row, entry):
+        folder = row["folder"]
+        code_call_str = self.per_folder_commands.get(folder)
+        target, rescuing_child = self._resolve_target(folder, entry)
+        if target is None or not code_call_str:
+            return False
+        slurm_state, _ = self._slurm_state(target)
+        state = SlurmState.from_token(slurm_state)
+        if state not in self.CONTINUE_STATES:
+            return False
+
+        plan = self._continuation_input(folder)
+        if plan is None:
+            return False
+        text, t_tag, t_end, note = plan
+        if not self._write_remote_input(folder, text):
+            return False
+
+        n = entry.n_continuations + 1
+        bad_node = self.job.node_of(self.array_index_by_folder.get(folder)) if (state is SlurmState.NODE_FAIL and not rescuing_child) else None
+        try:
+            new_jobid = self.job.resubmit_single_task(code_call_str, f"_continue_{Path(folder).name}_c{n}", exclude_node=bad_node)
+        except Exception as e:
+            print(f"\t  - [continue] {folder}: resubmit_single_task raised ({type(e).__name__}: {e}); will retry next poll", typeMsg='w')
+            return False
+        if not new_jobid:
+            print(f"\t  - [continue] {folder}: resubmit_single_task returned no jobid; will retry next poll", typeMsg='w')
+            return False
+
+        entry.child_jobids.append(new_jobid)
+        entry.continuation_jobids.append(new_jobid)
+        entry.last_action_at = _utc_now()
+        # a live child again: the radius is no longer closed for the extras that wait on it
+        if entry.status.startswith("EXHAUSTED"):
+            entry.status = "active"
+        self.metadata_dirty = True
+        print(
+            f"\t  - [continue] {folder}: {target} ended {slurm_state} at t_tag={t_tag:g}; continuing in place to "
+            f"t_end={t_end:g}{note}: jobid={new_jobid} (continuation {n}/{self.continuation_cap}, exclude={bad_node})",
+            typeMsg='i',
+        )
+        return True
+
+    def _continuation_input(self, folder):
+        '''
+        (input text trimmed to end at t_end, t_tag, t_end, log note) for the continuation of `folder`, or None.
+        t_tag is the time CGYRO resumes from (rescue_spec progress line of out.cgyro.tag), t_end the time the
+        launch had to reach (.mitim_t_end, written by cgyro_requeue_trim.sh; else .mitim_t0 + the time_key).
+        The trim is _trim_time_key with total=t_end, the one the next-submission rescue applies with the
+        original run length; the continuation's own launch then records t_tag + remaining = t_end again.
+        '''
+        spec = self.sim.run_specifications.get("rescue_spec") or {}
+        input_file = self.sim.run_specifications.get("input_file")
+        line = spec.get("progress_line")
+        progress = f"sed -n {line}p" if line else "tail -n1"
+        sep = markers.CONTINUE_SPLIT
+        cmd = (f'cd "{self.job.folderExecution}/{folder}" && {progress} {spec.get("progress_file")} 2>/dev/null; echo {sep}; '
+               f'cat {markers.T_END} 2>/dev/null; echo {sep}; cat {markers.T0} 2>/dev/null; echo {sep}; cat {input_file}')
+        try:
+            out, _ = self.job.execute(cmd, printYN=False)
+        except Exception as e:
+            print(f"\t  - [continue] {folder}: remote read failed ({type(e).__name__}: {e}); not continued this poll", typeMsg='w')
+            return None
+        if isinstance(out, bytes):
+            out = out.decode(errors='replace')
+        parts = (out or "").split(f"{sep}\n")
+        if len(parts) != 4:
+            print(f"\t  - [continue] {folder}: unexpected remote read ({len(parts)} part(s)); not continued", typeMsg='w')
+            return None
+        tag, t_end_line, t0, text = parts
+        try:
+            t_tag = float(tag.split()[0])
+            m = re.search(rf"^{spec.get('time_key')}\s*=\s*(\S+)", text, flags=re.M)
+            t_end = float(t_end_line.split()[1]) if len(t_end_line.split()) > 1 else float(t0.split()[0]) + float(m.group(1))
+        except (IndexError, ValueError, AttributeError):
+            print(f"\t  - [continue] {folder}: resume time or t_end unreadable; not continued", typeMsg='w')
+            return None
+        text, note = _trim_time_key(text, spec, t_tag, total=t_end)
+        return text, t_tag, t_end, note
+
+    def _write_remote_input(self, folder, text):
+        input_file = self.sim.run_specifications.get("input_file")
+        cmd = f'cat > "{self.job.folderExecution}/{folder}/{input_file}" <<\'MITIM_INPUT_EOF\'\n{text.rstrip(chr(10))}\nMITIM_INPUT_EOF'
+        try:
+            self.job.execute(cmd, printYN=False)
+        except Exception as e:
+            print(f"\t  - [continue] {folder}: remote {input_file} write failed ({type(e).__name__}: {e}); not continued this poll", typeMsg='w')
+            return False
+        return True
 
     def _resolve_target(self, folder, entry):
         '''
@@ -335,11 +494,63 @@ class StallRescuer:
 def _cgyro_handle_stalled_tasks(sim, rows, session=None):
     '''Stall-rescue entry point for one poll's rows (see StallRescuer). No-op unless the user opted in.'''
     settings = getattr(sim, "auto_resubmit_settings", None) or {}
-    if not settings.get("enabled", False):
+    if not (settings.get("enabled", False) or settings.get("max_continuations_per_rho", 0)):
         return
     if getattr(sim, "simulation_job", None) is None:
         return
     StallRescuer(sim, settings, session=session).rescue(rows)
+
+
+def _restart_output(token):
+    '''The output index a run resumes from (first token of out.cgyro.tag), or None unless a positive integer.'''
+    token = str(token or "").strip()
+    return int(token) if token.isdigit() and int(token) > 0 else None
+
+
+def _trim_time_key(text, spec, done, total=None):
+    '''
+    (text, log note) with spec["time_key"] rewritten to the time left, total - done (at least 1), then
+    spec["after_trim"] applied (CGYRO: RESTART_STEP). total defaults to the time_key value in `text`, the
+    run length of a launch that started at t=0; unchanged text and "" when the key is absent.
+    '''
+    time_key = spec.get("time_key")
+    m = re.search(rf"^({time_key}\s*=\s*)(\S+)", text, flags=re.M) if time_key else None
+    if m is None:
+        return text, ""
+    current = float(m.group(2))
+    remaining = max((current if total is None else total) - done, 1.0)
+    text = text[:m.start(2)] + f"{remaining:.5E}" + text[m.end(2):]
+    note = f", {time_key} {current:g} -> {remaining:g} remaining"
+    after_trim = spec.get("after_trim")
+    if after_trim is not None:
+        text, extra = after_trim(text, remaining)
+        note += extra
+    return text, note
+
+
+def _continuations_in_queue(sim, rels):
+    '''
+    {rel: jobid} of the radii among `rels` whose in-place continuation (StallRescuer) of an earlier
+    submission is still queued or running, from the ledger that submission left on `sim`. squeue giving
+    no verdict counts as still there: a second CGYRO in the same folder is the outcome to avoid.
+    '''
+    ledger = getattr(sim, "_resubmit_ledger", None) or {}
+    entries = {rel: LedgerEntry.from_json(ledger.get(rel)) for rel in rels}
+    latest = {rel: e.child_jobids[-1] for rel, e in entries.items() if e.continuation_jobids}
+    if not latest:
+        return {}
+    from mitim_tools.simulation_tools.SIMtools import jobids_in_queue
+    job = sim.simulation_job
+    try:
+        job.connect()
+        states, _ = jobids_in_queue(job, list(latest.values()))
+        job.close()
+    except Exception as e:
+        print(f"\t- [rescue] squeue of the in-place continuations failed ({type(e).__name__}: {e}); treating them as alive", typeMsg="w")
+        return latest
+    if states is None:
+        return latest
+    return {rel: jid for rel, jid in latest.items() if jid in states}
 
 
 def _utc_now():
@@ -416,8 +627,15 @@ def rescue_interrupted_runs(sim, kwargs_run, folders, folders_red, input_file):
     )
     if not found:
         return []
+    alive = _continuations_in_queue(sim, list(found))
+    if alive:
+        raise RuntimeError(
+            "[MITIM] radii still being continued in place by an earlier submission of this evaluation: "
+            + ", ".join(f"{rel} (job {jid})" for rel, jid in alive.items())
+            + ". Re-attach to it (check_existing_runs: true) or scancel those jobs before running it again"
+        )
 
-    import hashlib, re
+    import hashlib
     rescued, finished = [], []
     for folder_sim_this, rel in zip(folders, folders_red):
         if rel not in found:
@@ -450,17 +668,8 @@ def rescue_interrupted_runs(sim, kwargs_run, folders, folders_red, input_file):
             if f.name not in keep_staged:
                 f.unlink()
         # Trim the run length to what is left (the code counts steps from the restart point)
-        remaining_msg = ""
-        m = re.search(rf"^({time_key}\s*=\s*)(\S+)", text, flags=re.M) if time_key else None
-        if m is not None:
-            total = float(m.group(2))
-            remaining = max(total - done, 1.0)
-            text = text[:m.start(2)] + f"{remaining:.5E}" + text[m.end(2):]
-            remaining_msg = f", {time_key} {total:g} -> {remaining:g} remaining"
-            after_trim = spec.get("after_trim")
-            if after_trim is not None:
-                text, note = after_trim(text, remaining)
-                remaining_msg += note
+        text, remaining_msg = _trim_time_key(text, spec, done)
+        if remaining_msg:
             (folder_sim_this / input_file).write_text(text)
         rescued.append(rel)
         print(f"\t- [rescue] {rel}: continuing interrupted run in place (resuming from t={progress}{remaining_msg}) [{report}]", typeMsg="i")
