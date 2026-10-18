@@ -18,6 +18,11 @@ q/johm/jbs/qohme columns are evolved. When no transp beat ran upstream, the beat
 does the transp beat's other job: it composes the ions from plasma.species and
 recomputes the fusion/radiation/exchange columns (analytic targets).
 
+Hybrid mode (a minuet beat right after each transp beat): TRANSP keeps the heating, fast ions, sources and radiation,
+which pass through, and MINUET re-solves q, shear and the flux surfaces, optionally on an X-point boundary taken from a
+geqdsk (boundary_geqdsk, boundary_psin), at TRANSP's vacuum field, with TRANSP-matched sawteeth
+(sawtooth_preset: transp_parity) and a pre-crash export (extract_at: pre_crash).
+
 MINUET is an optional MITIM dependency (pip install "mitim-fusion[minuet]"), so
 it is imported lazily and only when a minuet beat actually runs or plots.
 '''
@@ -55,6 +60,14 @@ class minuet_beat(beat):
             n_cells             = 200,          # current-diffusion radial cells
             rtol                = None,         # BDF relative tolerance (None -> MINUET default)
             n_save              = 201,          # saved time frames (plot granularity of run.minuet)
+            boundary_geqdsk     = None,         # geqdsk whose psi_N = boundary_psin surface is the fixed boundary (X-point); None -> the state's MXH LCFS
+            boundary_psin       = 0.99999,      # [psi_N] cut of boundary_geqdsk (1 - 1e-5 is the closest stable cut to an X-point)
+            gs_corner_capture   = None,         # [% of boundary length] corner-capture knot spacing; None -> 1.0 with boundary_geqdsk, MINUET default otherwise
+            sawtooth_preset     = None,         # 'transp_parity' -> Porcelli trigger + PorcelliReconnection(0.63) as TRANSP (overrides sawtooth_model/reconnection_model)
+            refresh_geom_relax  = None,         # GS-refresh under-relaxation in (0,1]; None -> MINUET default (1.0)
+            extract_at          = 't_end',      # 't_end' | 'pre_crash' (state just before the last crash, the transp beat's saw-1 analog)
+            pre_crash_offset    = 0.05,         # [s] how long before the last crash the pre_crash state is taken
+            species_passthrough = 'auto',       # 'auto' (= a transp beat ran upstream) | True (keep the incoming ions and source columns) | False (compose from plasma.species)
             **kwargs
             ):
 
@@ -74,6 +87,14 @@ class minuet_beat(beat):
             n_cells = n_cells,
             rtol = rtol,
             n_save = n_save,
+            boundary_geqdsk = boundary_geqdsk,
+            boundary_psin = boundary_psin,
+            gs_corner_capture = gs_corner_capture,
+            sawtooth_preset = sawtooth_preset,
+            refresh_geom_relax = refresh_geom_relax,
+            extract_at = extract_at,
+            pre_crash_offset = pre_crash_offset,
+            species_passthrough = species_passthrough,
         )
 
         # Grab things from previous beats (e.g. extend t_end to ensure sawtooth crashes)
@@ -106,6 +127,15 @@ class minuet_beat(beat):
 
         if not cfg['sawteeth']:
             sawtooth = None
+        elif cfg.get('sawtooth_preset') == 'transp_parity':
+            # Porcelli trigger + Porcelli incomplete reconnection in MINUET's reading of TRANSP's settings (nmix_kdsaw 4,
+            # fporcelli 0.63, nzones 60 -> core_anchor_inset = 1.5 zones). Kadomtsev, the MINUET default, declines every crash
+            # on TRANSP states with multiple q = 1 crossings. Same settings as task 07 (talk_2026_APS, run_minuet_leg.py)
+            sawtooth = mn.PorcelliSawtooth(trigger_q_smooth = 0.05, s1_halfwidth = 0.05, s1_side = "inner", p_rebuild_s = 0.25,
+                                           redistribution = mn.PorcelliReconnection(island_fraction = 0.63, width_convention = "x_q1",
+                                                                                    core = "reconnect", core_anchor_inset = 1.5 / 60))
+        elif cfg.get('sawtooth_preset') is not None:
+            raise ValueError(f'[MITIM] minuet beat: unknown sawtooth_preset "{cfg["sawtooth_preset"]}" (use "transp_parity" or null)')
         else:
             redistribution = {
                 'kadomtsev': mn.KadomtsevReconnection,
@@ -193,15 +223,84 @@ class minuet_beat(beat):
 
         # ---------------------------------------------------------------------------------------
         # Write the incoming state to the run folder (audit trail + MINUET source), cutting
-        # any self-intersecting outermost surfaces (see _trim_folded_surfaces)
+        # any self-intersecting outermost surfaces (see _trim_folded_surfaces). With a geqdsk
+        # boundary the state supplies only kinetics, ptot and q, so its edge is never re-read
         # ---------------------------------------------------------------------------------------
         input_file = self.folder / 'input.gacode'
         self.profiles_current.write_state(file = input_file)
-        input_file = self._trim_folded_surfaces(mn, input_file)
+        if cfg.get('boundary_geqdsk') is None:
+            input_file = self._trim_folded_surfaces(mn, input_file)
 
         # ---------------------------------------------------------------------------------------
-        # Build MINUET settings
+        # Run the discharge and persist the MINUET object (mitim_plot_minuet consumes this)
         # ---------------------------------------------------------------------------------------
+        print(f'\t- Running MINUET for {cfg["t_end"]:.1f} s ({"coupled CD+GS" if cfg["evolve_equilibrium"] else "CD-only"}'
+              f'{", boundary psi_N = " + str(cfg["boundary_psin"]) + " of " + str(cfg["boundary_geqdsk"]) if cfg.get("boundary_geqdsk") else ", boundary = MXH LCFS of the state"})')
+        m = self._build_minuet(mn, input_file)
+        m.run()
+        m.save(self.folder / 'run.minuet')
+        crashes = np.asarray(m.history['crashes']) if m.history is not None else np.array([])
+
+        # ---------------------------------------------------------------------------------------
+        # pre_crash: the transp beat extracts at saw-1 (just before the last crash), so a t_end export taken
+        # right after a crash would hand the next beats a post-crash q. MINUET runs cannot be rewound, so the
+        # discharge is re-run from t = 0 to (last crash - pre_crash_offset); the full run stays in run.minuet
+        # ---------------------------------------------------------------------------------------
+        m_export = m
+        if cfg.get('extract_at', 't_end') == 'pre_crash' and crashes.size > 0:
+            t_export = float(crashes[-1]) - cfg.get('pre_crash_offset', 0.05)
+            print(f'\t- extract_at = pre_crash: re-running MINUET to t = {t_export:.3f} s ({cfg.get("pre_crash_offset", 0.05)*1e3:.0f} ms before the last of {crashes.size} crashes, at {crashes[-1]:.3f} s)')
+            m_export = self._build_minuet(mn, input_file)
+            m_export.run(t_end = t_export)
+            n_rerun = len(m_export.history['crashes']) if m_export.history is not None else 0
+            if n_rerun != crashes.size - 1:
+                print(f'\t- The pre_crash re-run fired {n_rerun} crashes against {crashes.size - 1} expected: the exported state is not exactly pre-crash', typeMsg='w')
+        elif cfg.get('extract_at', 't_end') not in ('t_end', 'pre_crash'):
+            raise ValueError(f'[MITIM] minuet beat: unknown extract_at "{cfg["extract_at"]}" (use "t_end" or "pre_crash")')
+
+        # ---------------------------------------------------------------------------------------
+        # Export the evolved equilibrium ONTO the untouched kinetics/grid of the input file
+        # ---------------------------------------------------------------------------------------
+        m_export.export_input_gacode(str(self.folder / 'input.gacode_minuet'), keep_kinetics = str(input_file))
+
+        # ---------------------------------------------------------------------------------------
+        # Sidecar with the scalars that _inform_save()/summary() need after cleanup
+        # ---------------------------------------------------------------------------------------
+        x_ohm, p_ohm, P_ohm = self._ohmic_power(m_export)
+        print(f'\t- MINUET ohmic power (last 20% of the run): {P_ohm:.3f} MW, written as qohme at beat output')
+        minuet_results = {
+            'sawtooth_times': crashes,
+            't_end': float(m.result.t[-1]),
+            't_export': float(m_export.result.t[-1]),
+            'Ip_MA_realized': float(m_export.result.ip_enc[-1, -1]) * 1e-6,
+            'q0_initial': float(m.result.q0[0]),
+            'q0_final': float(m_export.result.q0[-1]),
+            'F_boundary_Tm': float(m.eq.F_b) if m.eq is not None else None,
+            'boundary_geqdsk': str(cfg.get('boundary_geqdsk')) if cfg.get('boundary_geqdsk') else None,
+            'evolve_equilibrium': cfg['evolve_equilibrium'],
+            'trim_rho': getattr(self, '_trim_rho', None),   # input.gacode_minuet is on the relabelled grid when set
+            'ohmic_x': x_ohm, 'ohmic_MWm3': p_ohm, 'P_ohm_MW': P_ohm,
+            'models': {
+                'resistivity': cfg['resistivity_model'],
+                'bootstrap': cfg['bootstrap_model'],
+                'sawtooth': (cfg.get('sawtooth_preset') or cfg['sawtooth_model'] if cfg['sawteeth'] else None),
+                'reconnection': ((cfg.get('sawtooth_preset') and 'porcelli (0.63)') or cfg['reconnection_model'] if cfg['sawteeth'] else None),
+            },
+        }
+        np.save(self.folder / 'minuet_results.npy', minuet_results)
+
+    def _build_minuet(self, mn, input_file):
+        '''
+        MINUET discharge object from the incoming state (kinetics, ptot, q) and the chosen boundary:
+            - boundary_geqdsk None: the state's own MXH LCFS (gacode source). The vacuum field is bcentr*rcentr of the
+              file (minuet maestro_fixes 88afd96; earlier minuet rebuilt F_b from q and the MXH edge metrics, +8 % on
+              the V3A shape).
+            - boundary_geqdsk given: its psi_N = boundary_psin surface is the fixed boundary (x = 1 there) and F_b is
+              the geqdsk's fpol at that surface. The state's kinetics, ptot and q are carried on its normalized rho_tor,
+              which MINUET re-reads as its own x (normalized to the cut's Phi_b, ~1 % below the state's on an X-point).
+        In both cases F_b must equal the state's vacuum bcentr*rcentr (TRANSP's field) within 0.5 %.
+        '''
+        cfg = self.minuet_config
         resistivity, bootstrap, sawtooth = self._build_models(mn)
 
         diffusion_kwargs = dict(n_cells = cfg['n_cells'], n_save = cfg['n_save'])
@@ -216,7 +315,8 @@ class minuet_beat(beat):
             diffusion_kwargs['Ip'] = abs(Ip_MA) * 1e6  # [A]
             print(f'\t- Commanding Ip = {abs(Ip_MA):.3f} MA from frozen engineering parameters')
 
-        settings = mn.Settings(
+        geqdsk = cfg.get('boundary_geqdsk')
+        settings_kwargs = dict(
             t_end = cfg['t_end'],
             evolve_equilibrium = cfg['evolve_equilibrium'],
             resistivity = resistivity,
@@ -224,54 +324,62 @@ class minuet_beat(beat):
             sawtooth = sawtooth,
             gs_ns = cfg['gs_ns'],
             gs_ntheta = cfg['gs_ntheta'],
-            # Near-uniform radial map: minuet's global default (2.0) packs cells to the edge
-            # for diverted/X-point boundaries, but the beat solves a smooth fixed-boundary MXH
-            # curve -- packing there starves the core grid (~2x coarser, equivalent to halving
-            # gs_ns) and puts GS jitter into the exported a/L* gradients, while buying nothing
-            # at the edge (kappa995/delta995 unchanged at the 1e-6 level, zero cost in time)
-            gs_s_packing = 0.5,
             diffusion = mn.DiffusionSettings(**diffusion_kwargs),
         )
+        if geqdsk is None:
+            # Near-uniform radial map: minuet's global default (2.0) packs cells to the edge
+            # for diverted/X-point boundaries, but this path solves a smooth fixed-boundary MXH
+            # curve -- packing there starves the core grid (~2x coarser, equivalent to halving
+            # gs_ns) and puts GS jitter into the exported a/L* gradients, while buying nothing
+            # at the edge (kappa995/delta995 unchanged at the 1e-6 level, zero cost in time).
+            # The geqdsk (X-point) path keeps MINUET's edge packing
+            settings_kwargs['gs_s_packing'] = 0.5
+        else:
+            settings_kwargs['boundary'] = float(cfg.get('boundary_psin', 0.99999))
+            settings_kwargs['gs_corner_capture'] = cfg.get('gs_corner_capture') or 1.0
+        if geqdsk is None and cfg.get('gs_corner_capture') is not None:
+            settings_kwargs['gs_corner_capture'] = cfg['gs_corner_capture']
+        if cfg.get('refresh_geom_relax') is not None:
+            settings_kwargs['refresh_geom_relax'] = cfg['refresh_geom_relax']
+        settings = mn.Settings(**settings_kwargs)
 
-        # ---------------------------------------------------------------------------------------
-        # Run the discharge and persist the MINUET object (mitim_plot_minuet consumes this)
-        # ---------------------------------------------------------------------------------------
-        print(f'\t- Running MINUET for {cfg["t_end"]:.1f} s ({"coupled CD+GS" if cfg["evolve_equilibrium"] else "CD-only"})')
         # Pass an explicit InputGacode (not the path): minuet's path sniffer keys on the
         # first header line, which for MITIM scratch-created states ("# Created from
         # scratch...") would misroute the file to the geqdsk reader
-        m = mn.minuet(mn.InputGacode.from_file(str(input_file)), settings = settings)
-        m.run()
-        m.save(self.folder / 'run.minuet')
+        ig = mn.InputGacode.from_file(str(input_file))
+        q_init = self._q_init(mn, ig)
+        if geqdsk is None:
+            m = mn.minuet(ig, q_init = q_init, settings = settings)
+        else:
+            m = mn.minuet(mn.GEQDSK.from_file(str(geqdsk)), profiles = mn.TabulatedKineticProfiles.from_input_gacode(ig),
+                          p_of_x = (ig.rho, ig.profiles['ptot']), q_init = q_init, settings = settings)
 
-        # ---------------------------------------------------------------------------------------
-        # Export the evolved equilibrium ONTO the untouched kinetics/grid of the input file
-        # ---------------------------------------------------------------------------------------
-        m.export_input_gacode(str(self.folder / 'input.gacode_minuet'), keep_kinetics = str(input_file))
+        # TRANSP's vacuum field, bcentr*rcentr [T m] (magnitudes: MINUET works with |F|)
+        F_vac = abs(float(ig.scalars['bcentr']) * float(ig.scalars['rcentr']))
+        F_b = abs(float(m.eq.F_b)) if m.eq is not None else F_vac
+        print(f'\t- MINUET boundary F = R*Bphi = {F_b:.4f} T m against the state\'s vacuum bcentr*rcentr = {F_vac:.4f} T m ({100*(F_b/F_vac-1):+.2f}%)')
+        if abs(F_b / F_vac - 1) > 0.005:
+            raise ValueError(f'[MITIM] minuet beat: boundary F_b = {F_b:.4f} T m differs from the vacuum bcentr*rcentr = {F_vac:.4f} T m '
+                             f'by {100*(F_b/F_vac-1):+.2f}% (> 0.5%): the geqdsk boundary was built for another field (or minuet lacks the vacuum-F_b fix)')
 
-        # ---------------------------------------------------------------------------------------
-        # Sidecar with the scalars that _inform_save()/summary() need after cleanup
-        # ---------------------------------------------------------------------------------------
-        crashes = np.asarray(m.history['crashes']) if m.history is not None else np.array([])
-        x_ohm, p_ohm, P_ohm = self._ohmic_power(m)
-        print(f'\t- MINUET ohmic power (last 20% of the run): {P_ohm:.3f} MW, written as qohme at beat output')
-        minuet_results = {
-            'sawtooth_times': crashes,
-            't_end': float(m.result.t[-1]),
-            'Ip_MA_realized': float(m.result.ip_enc[-1, -1]) * 1e-6,
-            'q0_initial': float(m.result.q0[0]),
-            'q0_final': float(m.result.q0[-1]),
-            'evolve_equilibrium': cfg['evolve_equilibrium'],
-            'trim_rho': getattr(self, '_trim_rho', None),   # input.gacode_minuet is on the relabelled grid when set
-            'ohmic_x': x_ohm, 'ohmic_MWm3': p_ohm, 'P_ohm_MW': P_ohm,
-            'models': {
-                'resistivity': cfg['resistivity_model'],
-                'bootstrap': cfg['bootstrap_model'],
-                'sawtooth': (cfg['sawtooth_model'] if cfg['sawteeth'] else None),
-                'reconnection': (cfg['reconnection_model'] if cfg['sawteeth'] else None),
-            },
-        }
-        np.save(self.folder / 'minuet_results.npy', minuet_results)
+        return m
+
+    @staticmethod
+    def _q_init(mn, ig):
+        '''
+        Initial q(rho_tor) = the incoming state's q, with two fixes of TRANSP-produced states (task 07, run_minuet_leg.py):
+            - axis: TRANSP's single-zone axis value (0.756 under a flat ~0.94 core on one ARC state) replaced by a
+              zero-slope continuation, q[0] = q[1].
+            - edge: the LAST node's q rescaled so that the q-implied Ip in the file's own MXH geometry equals the file's Ip
+              (Ip ~ 1/q at the boundary node for a fixed metric). The deficit (-2 to -4 % on ARC states) sits in that node,
+              and without the fix the commanded Ip would enter as an edge layer through MINUET's ip_match_buffer.
+        '''
+        from scipy.interpolate import PchipInterpolator
+        rho, q = ig.rho, np.array(ig.profiles['q'], float)
+        q[0] = q[1]
+        g = mn.FluxSurfaceGeometry.from_input_gacode(ig)
+        q[-1] *= g.Ip / (float(ig.scalars['current']) * 1e6)   # current(MA) -> A
+        return PchipInterpolator(rho, q)
 
     @staticmethod
     def _ohmic_power(m, last_fraction = 0.2):
@@ -445,9 +553,19 @@ class minuet_beat(beat):
 
         self.profiles_output.derive_quantities()
 
+        # Source densities pass through per unit volume at the same rho, so their totals follow the new V(rho). Not
+        # rescaled to the frozen powers (hybrid mode: TRANSP's deposition is kept as TRANSP computed it)
+        p_frozen.derive_quantities()
+        print('\t\t\t* Volume integrals, frozen state -> MINUET geometry: ' + ', '.join(
+            f'{k} {np.atleast_1d(p_frozen.derived[k])[-1]:.2f} -> {np.atleast_1d(self.profiles_output.derived[k])[-1]:.2f} MW' for k in ('qRF_MW', 'qBEAM_MW', 'Pfus', 'Prad')
+            if k in p_frozen.derived and k in self.profiles_output.derived))
+
         # Without a transp beat upstream nobody has applied plasma.species, and the fusion/radiation/exchange
-        # columns are the initializer's zeros (portals_soft, which evolves only qie, would read them as they are)
-        if not self._transp_upstream():
+        # columns are the initializer's zeros (portals_soft, which evolves only qie, would read them as they are).
+        # species_passthrough = True keeps the incoming ions and source columns (e.g. a minuet beat right after
+        # initializing from a TRANSP-made input.gacode)
+        passthrough = self.minuet_config.get('species_passthrough', 'auto')
+        if not (self._transp_upstream() if passthrough == 'auto' else passthrough):
             apply_species_composition(self.profiles_output, self.maestro_instance.maestro_namelist)
             self.profiles_output.recompute_targets(targets = ["qie", "qrad", "qfus"])
             print(f'\t\t\t* Targets recomputed on the composed plasma: Pfus = {self.profiles_output.derived["Pfus"]:.1f} MW, '

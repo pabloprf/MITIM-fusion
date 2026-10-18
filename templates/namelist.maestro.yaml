@@ -22,11 +22,10 @@ plasma:
     #       fibe:       use FIBE to create an equilibrium from boundary parameters, requires geqdsk file to specify f and pressure profiles
     #       separatrix: create separatrix from parameters (or RZ file) and guess internal equilibrium or use internal_flux_file
     #       profiles:   use an input.gacode file to initialize both equilibrium and profiles
-    # NOTE: the "separatrix" internal-equilibrium correction automatically PREFERS MINUET over FREEGS when the minuet
-    #       package is installed (FREEGS is the fallback). The TRANSP machine-initialization morph does the opposite
-    #       (FREEGS first, MINUET fallback): its MINUET slice leads to a TRANSP SIGFPE on the ARC deck-2 Case 1 chain
-    # NOTE: minuet is the default; without the optional minuet package installed, use freegs instead
-    initialization_type: minuet
+    # NOTE: the "separatrix" internal-equilibrium correction uses FREEGS unless separatrix.internal_equilibrium_solver
+    #       is "minuet". The TRANSP machine-initialization morph uses FREEGS first, MINUET as fallback (its MINUET
+    #       slice leads to a TRANSP SIGFPE on the ARC deck-2 Case 1 chain)
+    initialization_type: freegs
 
     # How to initialize the profiles. Options:
     #       eped_initializer: use EPED-based profile initializer (must exist as beat namelist below)
@@ -97,6 +96,10 @@ plasma:
       # {q_shape_lambda: L, q_shape_exponent: n} -> legacy q-constrained solve with q(x) = 1 + L*x^n scaled to Ip. Not
       #         recommended: its edge current reverses on shaped boundaries and the traced LCFS loses the requested shaping
       minuet_q_shape: null
+
+      # If initialization_type = separatrix: solver of the internal-equilibrium correction (the shaping is kept).
+      # freegs (default) | minuet (fixed-boundary MINUET GS, honors the curve exactly; FREEGS is its fallback on failure)
+      internal_equilibrium_solver: freegs
 
       # If initialization_type = geqdsk, freegs, separatrix: Number of MXH coefficients used in TWO places:
       #   1. At INITIALIZATION: the equilibrium->input.gacode conversion (to_profiles) parametrizes every
@@ -824,6 +827,34 @@ maestro:
       n_cells: 200      # current-diffusion radial cells
       rtol: null        # BDF relative tolerance (null -> MINUET default)
       n_save: 201       # saved time frames (plot granularity of run.minuet)
+
+      # Fixed boundary. null: the MXH LCFS of the incoming state, at its vacuum field bcentr*rcentr.
+      # Path to a geqdsk (e.g. a diverted FreeGS equilibrium): its psi_N = boundary_psin surface is the boundary
+      # (x = 1 there) and F_b = its fpol there, which must match the state's bcentr*rcentr within 0.5 % (the beat
+      # stops otherwise). The state still supplies the kinetics, ptot and q(rho_tor), re-read on MINUET's rho_tor
+      # normalized to the cut (on an X-point its Phi_b is ~1 % below the state's). Hybrid mode (a minuet beat right
+      # after each transp beat: TRANSP keeps heating, fast ions, sources and radiation, MINUET re-solves q, shear
+      # and the flux surfaces) uses this to carry an X-point that TRANSP itself cannot take.
+      # Never export a MINUET geqdsk to TRANSP or EPED: its exterior is a linear extrapolation, not a vacuum solve
+      boundary_geqdsk: null
+      boundary_psin: 0.99999    # [psi_N] cut of boundary_geqdsk; 1 - 1e-5 is the closest stable cut to an X-point
+      gs_corner_capture: null   # [% of boundary length] knot spacing that captures sharp corners; null -> 1.0 with
+                                # boundary_geqdsk, MINUET default otherwise
+      # Sawtooth preset. null: sawtooth_model + reconnection_model above. transp_parity: Porcelli trigger
+      # (trigger_q_smooth 0.05, s1 inner half-width 0.05, p_rebuild_s 0.25) + Porcelli incomplete reconnection
+      # (island_fraction 0.63, x_q1 width, reconnecting core inset 1.5 of TRANSP's 60 zones), i.e. MINUET's reading of
+      # TRANSP's nmix_kdsaw 4 / fporcelli 0.63. Kadomtsev declines every crash on TRANSP states with multiple q = 1 crossings
+      sawtooth_preset: null
+      refresh_geom_relax: null  # under-relaxation of the GS refresh, (0, 1]; null -> MINUET default 1.0. 0.5 damps the
+                                # period-2 CD-GS splitting mode MINUET's robustness check flagged on ARC states
+      # Exported state. t_end: the last frame. pre_crash: the state pre_crash_offset [s] before the LAST sawtooth crash
+      # (the transp beat's extract_at saw-1 analog); MINUET cannot rewind, so the run is repeated to that time (2x cost)
+      extract_at: t_end
+      pre_crash_offset: 0.05
+      # Ions and source columns of the incoming state. auto: kept when a transp beat ran upstream, otherwise composed
+      # from plasma.species with qie/qrad/qfus recomputed. true: always kept (e.g. a state written by a TRANSP chain).
+      # false: always composed. Sources are never rescaled: their densities follow MINUET's V(rho) (totals printed)
+      species_passthrough: auto
 
     preprocess_prepare: null
     preprocess_prepare_parameters: null

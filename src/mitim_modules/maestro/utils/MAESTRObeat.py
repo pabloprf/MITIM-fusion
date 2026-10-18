@@ -632,16 +632,19 @@ class initializer_from_separatrix(beat_initializer):
         )
 
         # [Optional] Use an equilibrium solver to correct the profiles (keeping the shaping).
-        # MINUET (fixed-boundary, honors the Miller curve exactly) is preferred when installed,
-        # with FREEGS as the fallback for anything that goes wrong in the MINUET path
+        # internal_equilibrium_solver: 'freegs' (default, development's behaviour) or 'minuet' (fixed-boundary, honors
+        # the Miller curve exactly), with FREEGS as the fallback for anything that goes wrong in the MINUET path
         if boundary_parameters is not None:
-            # rz_boundary_file path: the namelist scalars may be null, so feed the
-            # solver helpers the scalars of the equilibrium just built from the file
+            # rz_boundary_file path: the namelist scalars may be null, so feed the solver helpers
+            # the scalars of the equilibrium just built from the file
             kwargs.update(R = float(rmaj[-1]), a = float(rmin[-1]), z0 = float(z0[-1]),
                           kappa_sep = float(kappa[-1]), delta_sep = float(delta[-1]), zeta_sep = float(zeta[-1]))
+        solver = kwargs.get('internal_equilibrium_solver') or 'freegs'
+        if solver not in ('freegs', 'minuet'):
+            raise ValueError(f'[MITIM] separatrix.internal_equilibrium_solver must be "freegs" or "minuet", got "{solver}"')
         try:
             solver_used = None
-            if GEQtools.minuet_available():
+            if solver == 'minuet':
                 p_before = copy.deepcopy(self.p)
                 try:
                     self._correct_profiles_withminuet(Paux_MW = Paux_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
