@@ -504,7 +504,10 @@ transport:
         # job recorded in <base_cgyro>/cgyro_submission.json instead of resubmitting.
         check_existing_runs: False
 
-        # Polling cadence for .check() when run_type=="submit" (minutes)
+        # Polling cadence for .check() when run_type=="submit" (minutes). A driver that runs inside a SLURM job and
+        # has less than every_n_minutes + 5 min of wall left while the job is live writes
+        # <run>/Outputs/MITIM_DRIVER_WALL_UNFINISHED.json, for the launcher to resubmit it (check_existing_runs: True);
+        # the next driver removes it when an evaluation of the run is read.
         every_n_minutes: 10
 
         # SSH connect retry behaviour for the mitim_job that owns the cluster

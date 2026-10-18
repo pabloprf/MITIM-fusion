@@ -30,6 +30,7 @@ CASH_KARP_ABORT = "ERROR: (CGYRO) Cash-Carp step exceeded"
 CGYRO_SUBMISSION = "cgyro_submission.json"
 GX_SUBMISSION = "gx_submission.json"
 RESTART_SOURCES = "restart_sources.json"
+DRIVER_WALL_UNFINISHED = "MITIM_DRIVER_WALL_UNFINISHED.json"   # <PORTALS run>/Outputs: driver hit its SLURM wall mid-poll
 
 # Extra cases (load_balance 'extra_points')
 EXTRA_DIR = "extra_cgyro"

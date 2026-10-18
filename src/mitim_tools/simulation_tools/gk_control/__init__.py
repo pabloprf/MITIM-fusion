@@ -10,6 +10,7 @@ accepts, rescues, resubmits and schedules a running radius, and the names of the
     status        per-radius state of a running submission (remote probe)
     rescue        stalled radii (scancel + resubmit) and interrupted runs (continue in place)
     submission    re-attach to, poll and fetch a submission; the per-poll callback
+    driver_wall   marker left for the launcher when the driver's own SLURM wall comes before the job ends
     extra_points  extra cases on freed slots, bash (in-allocation scheduler) and array modes
     cgyro_client  GKRunControl, the run-control half of the CGYRO class
     live          live state of the radii of a running evaluation, stop requests

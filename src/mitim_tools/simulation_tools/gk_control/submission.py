@@ -19,6 +19,7 @@ from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.simulation_tools.gk_control.status import _SLURM_JOB_GONE_STATES, CgyroProbe, RadiusStatus, TaskState
 from mitim_tools.simulation_tools.gk_control.rescue import _cgyro_handle_stalled_tasks
 from mitim_tools.simulation_tools.gk_control.extra_points import ArrayExtraPoints
+from mitim_tools.simulation_tools.gk_control.driver_wall import DriverWallMarker, portals_run_folder
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
@@ -35,13 +36,7 @@ def gk_job_name_suffix(folder, evaluation_number):
     MAESTRO names every one "run_portals", so there it is "<maestro folder>_<Beat_n>".
     (Written by mitim_7 on development_cgyro_job_names.)
     '''
-    folder = Path(folder)
-    run = folder
-    if folder.name == "transport_simulation_folder":
-        if folder.parent.parent.name == "Execution":
-            run = folder.parents[2]
-        elif folder.parent.parent.name == "initialization_simple_relax":
-            run = folder.parents[3]
+    run = portals_run_folder(folder) or Path(folder)
     tag = f"{run.parents[2].name}_{run.parent.name}" if run.name == "run_portals" else run.name
     tag = re.sub(r"[^A-Za-z0-9_.-]", "_", tag)
     if len(tag) > _JOB_TAG_MAX_LENGTH:
@@ -101,6 +96,7 @@ class GKSubmission:
 
         filename = getattr(sim, "_submission_metadata_filename", None)
         self.path = None if filename is None else self.folder / base_subfolder / filename
+        self.driver_wall = DriverWallMarker(sim, self.folder, base_subfolder)
 
     @property
     def name(self):
@@ -191,7 +187,7 @@ class GKSubmission:
         self.sim.check(
             every_n_minutes=every_n_minutes,
             skip_first_iteration_squeue=reattached,
-            custom_checker=getattr(self.sim, "_custom_check_callback", None),
+            custom_checker=self._poll_checker(every_n_minutes),
         )
 
         print("")
@@ -216,6 +212,7 @@ class GKSubmission:
             except Exception as e:
                 print(f"\t- remote scratch removal raised ({e}); leaving the folder in place", typeMsg='w')
 
+        self.driver_wall.clear()
         if self.path is None:
             return
         if self.path.exists():
@@ -223,6 +220,22 @@ class GKSubmission:
         self.path.unlink(missing_ok=True)
 
     # ------------------------------------------------------------------
+
+    def _poll_checker(self, every_n_minutes):
+        '''
+        The per-poll callback check() runs: the backend's own (per-radius status, rescue, extra
+        cases), then the driver-wall marker, fed with the radius rows the backend's callback returns.
+        '''
+        backend_checker = getattr(self.sim, "_custom_check_callback", None)
+
+        def checker(sim):
+            rows = None
+            try:
+                rows = backend_checker(sim) if backend_checker is not None else None
+            finally:
+                self.driver_wall.poll(every_n_minutes, rows=rows)
+
+        return checker
 
     def _job_alive(self):
         '''
@@ -319,7 +332,8 @@ def cgyro_per_task_callback(sim):
     poll: the probe prints and returns the rows, the rescuer acts on the stalled ones, and the extra
     cases of finished radii are submitted, stopped and classified (ArrayExtraPoints; a no-op without
     load_balance 'extra_points'). Users who haven't opted into auto_resubmit_settings see the
-    historical detect-only behavior.
+    historical detect-only behavior. Returns the radius rows (None when no probe ran), which
+    GKSubmission hands to the driver-wall marker.
     '''
     job = getattr(sim, "simulation_job", None)
     kwargs_organize = getattr(sim, "kwargs_organize", None)
@@ -331,5 +345,6 @@ def cgyro_per_task_callback(sim):
             if rows:
                 _cgyro_handle_stalled_tasks(sim, rows, session=session)
                 ArrayExtraPoints(sim, session=session).poll(rows)
+            return rows
     except Exception as e:
         print(f"\t- [per-task status] poll over ssh failed ({type(e).__name__}: {e}); continuing", typeMsg='w')
