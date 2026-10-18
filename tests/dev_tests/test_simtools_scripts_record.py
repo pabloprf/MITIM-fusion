@@ -255,6 +255,8 @@ def test_submission_record_compat(old):
         # and ledger. Checked here, then left out of the key-for-key comparison
         assert new_json["kwargs_organize"].pop("extra_points") is None, new_json["kwargs_organize"]
         assert new_json.pop("extra_ledger") == {}, new_json
+        # ... and the per-user QOS cap of the submission (allocation qos_cap / fallback_qos; .get() on reload)
+        assert new_json["job"].pop("qos_cap") is None, new_json["job"]
         # Folder paths differ by design (two temp trees); compare everything else
         old_norm = json.dumps(_strip_volatile(old_json)).replace(str(old_folder), "ROOT")
         new_norm = json.dumps(_strip_volatile(new_json)).replace(str(new_folder), "ROOT")
