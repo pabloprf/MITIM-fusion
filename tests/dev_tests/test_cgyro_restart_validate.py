@@ -231,12 +231,17 @@ def test_retrieval_keeps_the_intact_old():
         root = Path(tmp)
         broken = fake_radius(root / "rho_0.5", rows=310, tag="", restart=False, old=True, last=200, prev=100)
         valid = fake_radius(root / "rho_0.7", rows=300, tag=300, old=True)
-        job = types.SimpleNamespace(folderExecution=str(root),
-                                    execute=lambda cmd: subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=60))
+        def execute(cmd):
+            out = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=60)
+            return out.stdout, out.stderr
+        job = types.SimpleNamespace(folderExecution=str(root), execute=execute)
         spec = FARMINGtools.RetrievalSpec(selective={"rho_0.5": ["bin.cgyro.restart"], "rho_0.7": ["bin.cgyro.restart"]},
                                           fallbacks={"bin.cgyro.restart": "bin.cgyro.restart.old"})
-        with contextlib.redirect_stdout(None):
+        import io
+        log = io.StringIO()
+        with contextlib.redirect_stdout(log):
             FARMINGtools.mitim_job._resolve_fallbacks_on_remote(job, spec)
+        assert "MITIM restart_validate: bin.cgyro.restart has no valid header" in log.getvalue(), log.getvalue()
         assert is_valid_blob(broken / "bin.cgyro.restart") and tag_of(broken) == (200, 100.0)
         assert (broken / markers.RESTART_BAD).exists() and not (broken / "bin.cgyro.restart.old").exists()
         assert is_valid_blob(valid / "bin.cgyro.restart") and tag_of(valid) == (300, 150.0)

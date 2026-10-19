@@ -1689,7 +1689,11 @@ class mitim_job:
                 )
         if fallback_lines:
             print(f"\t\t- Resolving {len(fallback_lines)} primary/fallback pair(s) on remote")
-            self.execute(" ; ".join(fallback_lines))
+            _, error = self.execute(" ; ".join(fallback_lines))
+            # what a registered repair did (one "MITIM ..." line per action on stderr) must not go unseen
+            for line in (error.decode(errors="replace") if isinstance(error, bytes) else (error or "")).splitlines():
+                if line.startswith("MITIM "):
+                    print(f"\t\t  {line}", typeMsg="w")
 
     def remove_scratch_folder(self):
         # Safety guard: never rm -rf the user's working directory in in-place mode
