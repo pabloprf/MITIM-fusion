@@ -59,14 +59,14 @@ class FakeJob:
         self.launchSlurm = True
         self.ssh = None
         self.infoSLURM = {"STATE": "RUNNING"}
-        self.slurm_settings = {"job-name": "cgyro_ev0"}
+        self.slurm_settings = {"job-name": "cgyro_E_pt03_ev0"}
         self.output_folders = [FAST, SLOW]
         self.output_folders_selective = {FAST: ["out.cgyro.info"], SLOW: ["out.cgyro.info"]}
         self.scheduler_result = None
         self.in_queue = set()          # jobids squeue still lists
         self.squeue_answers = True     # False: slurmctld gave no verdict
         self.next_jobid = 200
-        self.submitted, self.cancelled, self.put = [], [], []
+        self.submitted, self.cancelled, self.put, self.directives = [], [], [], []
 
     @contextlib.contextmanager
     def session(self, **kwargs):
@@ -91,10 +91,11 @@ class FakeJob:
         self.put.append((str(local_file), str(remote_path)))
         shutil.copy2(local_file, remote_path)
 
-    def resubmit_single_task(self, code_call_str, label, exclude_node=None):
+    def resubmit_single_task(self, code_call_str, label, exclude_node=None, extra_directives=None):
         jobid = str(self.next_jobid)
         self.next_jobid += 1
         self.submitted.append((code_call_str, label, jobid))
+        self.directives.append(extra_directives)
         self.in_queue.add(jobid)
         return jobid
 

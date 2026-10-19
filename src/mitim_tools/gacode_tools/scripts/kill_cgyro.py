@@ -2,8 +2,7 @@ import argparse
 import tempfile
 import time
 from pathlib import Path
-from mitim_tools.gacode_tools.utils import CGYROplot
-from mitim_modules.portals.utils.PORTALSplot import locate_running_cgyro
+from mitim_tools.simulation_tools.gk_control import live
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 """
@@ -28,7 +27,7 @@ def main():
     parser.add_argument("--yes", action="store_true", help="Do not ask for confirmation")
     args = parser.parse_args()
 
-    run = locate_running_cgyro(Path(args.folder).expanduser().resolve())
+    run = live.locate_running_cgyro(Path(args.folder).expanduser().resolve())
     if run is None:
         print("No CGYRO evaluation in flight in this PORTALS run (a bash-mode run is only found on the filesystem where its scratch lives)", typeMsg="w")
         return
@@ -37,7 +36,7 @@ def main():
     print(f"CGYRO evaluation {run['it']} running on {run['machine_settings']['machine']}:{run['folder_execution']}")
 
     with tempfile.TemporaryDirectory(prefix="mitim_cgyro_kill_") as tmp:
-        state = CGYROplot.live_radii_state(run["machine_settings"], run["folder_execution"], pairs, tmp)
+        state = live.live_radii_state(run["machine_settings"], run["folder_execution"], pairs, tmp)
     running = [key for key, st in state.items() if not (st["exit"] or st["budget"] or st["discard"])]
     _print_status(state)
 
@@ -62,7 +61,7 @@ def main():
             print(f"\t- rho={key[1]:.4f}: out.cgyro.time not written for {(time.time() - st['mtime']) / 60:.0f} min; if its launch is dead the stop does nothing (a relaunch clears it)", typeMsg="w")
     if not args.yes and not print(f"Stop {', '.join(f'rho={rho:.4f}' for _, rho in targets)} at the next restart write and use the fluxes simulated so far?", typeMsg="q"):
         return
-    CGYROplot.request_stop(run["machine_settings"], run["folder_execution"], targets)
+    live.request_stop(run["machine_settings"], run["folder_execution"], targets)
     print("The watchdog picks the request up within ~20 s and stops each radius right after its next restart write (RESTART_STEP)")
 
 

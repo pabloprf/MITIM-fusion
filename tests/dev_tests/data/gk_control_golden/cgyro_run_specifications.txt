@@ -1,0 +1,43 @@
+{
+ "code": "cgyro",
+ "code_call": "<callable>",
+ "complete_variation": null,
+ "completion_alt_file": "mitim_budget.tag",
+ "completion_marker": [
+  "out.cgyro.info",
+  "EXIT"
+ ],
+ "control_function": "<callable>",
+ "controls_file": "input.cgyro.controls",
+ "default_cores": 16,
+ "force_submission_type": "slurm_array",
+ "input_class": "<class CGYROinput>",
+ "input_file": "input.cgyro",
+ "output_class": "<class CGYROoutput>",
+ "rescue_spec": {
+  "after_trim": "<callable>",
+  "checksum_ignore": [
+   "MAX_TIME",
+   "RESTART_STEP"
+  ],
+  "keep_staged": [
+   "mitim_guard.json",
+   "mitim_guard.py"
+  ],
+  "progress_cmd": "<callable>",
+  "progress_file": "out.cgyro.tag",
+  "progress_line": 2,
+  "report_files": [
+   "out.cgyro.time",
+   "bin.cgyro.ky_flux",
+   "bin.cgyro.restart",
+   "out.cgyro.tag"
+  ],
+  "required": [
+   "bin.cgyro.restart",
+   "out.cgyro.tag"
+  ],
+  "time_key": "MAX_TIME"
+ },
+ "state_converter": "to_cgyro"
+}

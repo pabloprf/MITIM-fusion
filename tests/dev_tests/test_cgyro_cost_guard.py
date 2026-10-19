@@ -6,11 +6,14 @@ a radius that costs too many wall seconds per a/cs while its heat flux is far ab
 stopped by the watchdog, at once, and counts as finished.
 
 Three layers are covered, none needs CGYRO:
-  - templates/cgyro_guard.py, the judge that runs on the compute node: the binary flux reader
+  - templates/gk_control/cgyro_guard.py, the judge that runs on the compute node: the binary flux reader
     and every clause of the stop rule, on synthetic radius folders;
-  - templates/cgyro_watchdog.sh: the real bash around a fake CGYRO (`sleep`), with the guard
+  - templates/gk_control/cgyro_watchdog.sh: the real bash around a fake CGYRO (`sleep`), with the guard
     files staged as CGYROtools.CostGuard stages them;
   - the Python wiring: CostGuard staging and the targets the transport layer hands it.
+A CGYRO that ends on the Cash-Karp abort while over-driven is accepted as a guard stop
+(cgyro_guard.abort_verdict, the watchdog's abort branch), and every guard-stopped radius gets
+its flux std floored (cost_guard.std_floor).
 
 Run as:
 
@@ -43,7 +46,7 @@ from mitim_tools.gacode_tools import CGYROtools
 from mitim_tools.simulation_tools import SIMtools
 from mitim_modules.powertorch.physics_models import transport_cgyro
 
-_spec = importlib.util.spec_from_file_location("cgyro_guard", mitim_root / "templates" / "cgyro_guard.py")
+_spec = importlib.util.spec_from_file_location("cgyro_guard", mitim_root / "templates" / "gk_control" / "cgyro_guard.py")
 guard = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(guard)
 
@@ -58,7 +61,8 @@ def _fake_radius(d, nt=300, cost=600.0, qe=80.0, qi=30.0, t_end=450.0, cost_rece
     A radius folder as a running CGYRO leaves it, one output per a/cs up to t = nt: every output
     took `cost` wall seconds (the last 5 `cost_recent`), and the heat fluxes are constant at qe, qi
     (GB), spread over fields and ky. The other moments hold 999 so a wrong index shows.
-    The guard files are staged by CostGuard itself.
+    The guard files are staged by CostGuard itself, at 100 s per a/cs and floor_time 50 unless
+    `options` says otherwise (the tests do not depend on the machine of config_user.json).
     '''
     d.mkdir(parents=True, exist_ok=True)
     (d / "out.cgyro.time").write_text("".join(f" {t:.4E}  1.0E-03  1.0E-08  1.0E-02\n" for t in range(1, nt + 1)))
@@ -78,10 +82,31 @@ def _fake_radius(d, nt=300, cost=600.0, qe=80.0, qi=30.0, t_end=450.0, cost_rece
     data = array.array(precision, list(record.flatten(order="F")) * nt)
     (d / "bin.cgyro.ky_flux").write_bytes(data.tobytes())
 
-    cost_guard = CGYROtools.CostGuard({"enabled": True, "targets_GB": {RHO: TARGETS}, **(options or {})})
+    options = {"seconds_per_acs": 100.0, "floor_time": 50.0, **(options or {})}
+    cost_guard = CGYROtools.CostGuard({"enabled": True, "targets_GB": {RHO: TARGETS}, **options})
     for src, dst in cost_guard.stage(d, None)[RHO]:
         shutil.copy(src, d / dst)
     return d
+
+
+def _burst(d, nt, n_last, qi):
+    '''Overwrite Qi of the last n_last outputs of a _fake_radius flux file (float32, 4 moments).'''
+    data = array.array("f")
+    data.frombytes((d / "bin.cgyro.ky_flux").read_bytes())
+    per_record = N_SPECIES * 4 * N_FIELD * N_N
+    for k in range(nt - n_last, nt):
+        for i_n in range(N_N):
+            for i_field in range(N_FIELD):
+                base = k * per_record + N_SPECIES * (1 + 4 * (i_field + N_FIELD * i_n))
+                for i_species in range(N_SPECIES - 1):
+                    data[base + i_species] = qi / ((N_SPECIES - 1) * N_FIELD * N_N)
+    (d / "bin.cgyro.ky_flux").write_bytes(data.tobytes())
+
+
+def _ramp(d, nt, n_last, qi_start, qi_end):
+    '''Qi of the last n_last outputs of a _fake_radius rising linearly from qi_start to qi_end.'''
+    for n in range(n_last, 0, -1):
+        _burst(d, nt, n, qi_start + (qi_end - qi_start) * (n_last - n) / (n_last - 1))
 
 
 def test_flux_reader():
@@ -125,6 +150,33 @@ def test_stop_rule():
             v = guard.verdict(str(_fake_radius(root / f"case{i}", **kwargs)))
             assert v.startswith("STOP" if stops else "WAIT"), (name, v)
             print(f"\t({name}: {v})")
+
+        # pt07 H ev1 (2026-10-13): an ion burst in the last 20 a/cs (8.8x) over a trace at ~3x is
+        # not a stop, because the ratio is averaged over [max(floor_time, t/2), t]
+        d = _fake_radius(root / "burst", nt=348, qe=10.0, qi=30.0)
+        _burst(d, nt=348, n_last=20, qi=88.0)
+        v = guard.verdict(str(d))
+        assert v.startswith("WAIT") and "x_QiGB" in v and "ratio=3." in v, v
+        print(f"\t(burst in the window, trace at 3x: {v})")
+
+        # saturation test: over [max(floor_time, t/2), t] = [150, 300] a Qi still rising 30 -> 90
+        # (late/early ~1.7) is left running; a slow drift 50 -> 56 (~1.06) is within the 10% tolerance
+        d = _fake_radius(root / "rising", nt=300, qe=10.0, qi=30.0)
+        _ramp(d, nt=300, n_last=150, qi_start=30.0, qi_end=90.0)
+        v = guard.verdict(str(d))
+        assert v.startswith("WAIT") and "x_QiGB" in v and "late/early=1.6" in v, v
+        print(f"\t(still rising: {v})")
+        d = _fake_radius(root / "drifting", nt=300, qe=10.0, qi=30.0)
+        _ramp(d, nt=300, n_last=150, qi_start=50.0, qi_end=56.0)
+        v = guard.verdict(str(d))
+        assert v.startswith("STOP") and "late/early=1.06" in v, v
+        d = _fake_radius(root / "rising_tolerant", nt=300, qe=10.0, qi=30.0, options={"rising_tolerance": 1.0})
+        _ramp(d, nt=300, n_last=150, qi_start=30.0, qi_end=90.0)
+        assert guard.verdict(str(d)).startswith("STOP")
+        d = _fake_radius(root / "rising_off", nt=300, qe=10.0, qi=30.0, options={"rising_tolerance": None})
+        _ramp(d, nt=300, n_last=150, qi_start=30.0, qi_end=90.0)
+        v = guard.verdict(str(d))
+        assert v.startswith("STOP") and "late/early" not in v, v
 
         # the cost is per a/cs, not per output: the same rows with outputs 0.5 a/cs apart cost double
         d = _fake_radius(root / "spacing", nt=300, cost=60.0)
@@ -212,7 +264,7 @@ def test_staging():
     (restart blobs), and stays off when disabled or without targets.'''
     d = Path(tempfile.mkdtemp())
     try:
-        cg = CGYROtools.CostGuard({"enabled": True, "flux_ratio": 8, "targets_GB": {RHO: TARGETS, 0.5: {"QeGB": 1.0}}})
+        cg = CGYROtools.CostGuard({"enabled": True, "flux_ratio": 8, "seconds_per_acs": 100, "targets_GB": {RHO: TARGETS, 0.5: {"QeGB": 1.0}}})
         files = cg.stage(d, {RHO: [("blob", "bin.cgyro.restart")]})
         assert files[RHO][0] == ("blob", "bin.cgyro.restart") and [dst for _, dst in files[RHO][1:]] == ["mitim_guard.json", "mitim_guard.py"]
         assert [dst for _, dst in files[0.5]] == ["mitim_guard.json", "mitim_guard.py"]
@@ -228,6 +280,23 @@ def test_staging():
     finally:
         shutil.rmtree(d, ignore_errors=True)
     print("PASS test_staging")
+
+
+def test_seconds_per_acs_per_machine():
+    '''seconds_per_acs {gpu, cpu} takes the number of the class of the CGYRO machine in
+    config_user.json (gpus_per_node 0 -> cpu); a plain number is used as is.'''
+    from mitim_tools.misc_tools import CONFIGread
+    original = CONFIGread.machineSettings
+    try:
+        for gpus, expected in ((4, 100.0), (0, 1000.0)):
+            CONFIGread.machineSettings = lambda code=None, gpus=gpus, **kw: {"gpus_per_node": gpus}
+            cg = CGYROtools.CostGuard({"enabled": True, "seconds_per_acs": {"gpu": 100, "cpu": 1000}, "targets_GB": {RHO: TARGETS}})
+            assert cg.thresholds["seconds_per_acs"] == expected, (gpus, cg.thresholds)
+            assert CGYROtools.CostGuard({"enabled": True, "targets_GB": {RHO: TARGETS}}).thresholds["seconds_per_acs"] == expected
+        assert CGYROtools.CostGuard({"enabled": True, "seconds_per_acs": 250, "targets_GB": {RHO: TARGETS}}).thresholds["seconds_per_acs"] == 250.0
+    finally:
+        CONFIGread.machineSettings = original
+    print("PASS test_seconds_per_acs_per_machine")
 
 
 def test_targets_from_transport_layer():
@@ -251,11 +320,109 @@ def test_targets_from_transport_layer():
     print("PASS test_targets_from_transport_layer")
 
 
+CASH_KARP = "ERROR: (CGYRO) Cash-Carp step exceeded max iteration count"
+
+
+def test_abort_rule():
+    '''An abort is a guard stop only past floor_time (50) and with Qe or Qi >= abort_flux_ratio x target
+    (null = flux_ratio, 5) over the second half of the trace; the cost does not enter.'''
+    root = Path(tempfile.mkdtemp())
+    cases = [
+        # name,                              kwargs,                                                   stops
+        ("pt07: t=77, cheap at the end",     dict(nt=77, cost=10.0),                                   True),
+        ("abort before floor_time",          dict(nt=40),                                              False),
+        ("abort close to target",            dict(nt=77, qe=20.0, qi=20.0),                            False),
+        ("accept_abort off",                 dict(nt=77, options={"accept_abort": False}),             False),
+        ("abort_flux_ratio above the flux",  dict(nt=77, options={"abort_flux_ratio": 10}),            False),
+        ("abort_flux_ratio below flux_ratio", dict(nt=77, qe=40.0, options={"flux_ratio": 5, "abort_flux_ratio": 3}), True),
+    ]
+    try:
+        for i, (name, kwargs, stops) in enumerate(cases):
+            v = guard.abort_verdict(str(_fake_radius(root / f"case{i}", **kwargs)))
+            assert v.startswith("STOP" if stops else "WAIT"), (name, v)
+            print(f"\t({name}: {v})")
+        d = root / "case0"
+        out = subprocess.run([sys.executable, str(d / "mitim_guard.py"), str(d), "--abort"], capture_output=True, text=True)
+        assert out.stdout.startswith("STOP t=77 ratio=8.0x_QeGB"), out
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    print("PASS test_abort_rule")
+
+
+def test_watchdog_accepts_abort():
+    '''The real watchdog around a CGYRO that ends on the Cash-Karp abort: over-driven past floor_time
+    it leaves a GUARD tag with reason=cash_karp_abort (finished, guard_stop = 1); close to target, or
+    with the guard off, no tag. The launch keeps its own exit status either way.'''
+    root = Path(tempfile.mkdtemp())
+    abort = f"echo '{CASH_KARP}' >> out.cgyro.info; exit 3"
+    try:
+        d = _fake_radius(root / "far", nt=77)
+        rc = subprocess.run(["bash", "-c", f"cd {d}; " + _watchdog(d, abort)], timeout=60).returncode
+        tag = (d / "mitim_budget.tag").read_text()
+        assert rc == 3, rc
+        assert tag.startswith("GUARD t=77 ratio=8.0x_QeGB reason=cash_karp_abort"), tag
+        assert _finished(d), "radius_finished must accept an accepted abort"
+        from mitim_tools.gacode_tools.utils import CGYROutils
+        flags = CGYROutils.harvest_run_fields(types.SimpleNamespace(folder=d, suffix_read=''))
+        assert flags['budget_stop'] == 1 and flags['guard_stop'] == 1, flags
+        print(f"\t(far: {tag.strip()})")
+
+        for name, kwargs, guard_on in (("near", dict(qe=20.0, qi=20.0), True), ("off", {}, False)):
+            d = _fake_radius(root / name, nt=77, **kwargs)
+            subprocess.run(["bash", "-c", f"cd {d}; " + _watchdog(d, abort, guard_on=guard_on)], timeout=60)
+            assert not (d / "mitim_budget.tag").exists(), name
+
+        # an abort that is not Cash-Karp is never judged
+        d = _fake_radius(root / "other", nt=77)
+        subprocess.run(["bash", "-c", f"cd {d}; " + _watchdog(d, "echo 'ERROR: (CGYRO) something else' >> out.cgyro.info")], timeout=60)
+        assert not (d / "mitim_budget.tag").exists()
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    print("PASS test_watchdog_accepts_abort")
+
+
+def test_std_floor():
+    '''The transport layer raises every turbulent std of a guard-stopped radius to std_floor x |flux|
+    and leaves the other radii, and a radius stopped by hand (STOP tag), untouched.'''
+    root = Path(tempfile.mkdtemp())
+    try:
+        rhos = [0.5, 0.65, RHO]
+        sub = root / "Evaluation"
+        sub.mkdir()
+        (sub / f"mitim_budget.tag_{RHO:.4f}").write_text("GUARD t=77 ratio=8.0x_QeGB reason=cash_karp_abort elapsed=10s\n")
+        (sub / "mitim_budget.tag_0.6500").write_text("STOP t=300 elapsed=10s budget=0s min_time=0\n")
+
+        model = transport_cgyro.gyrokinetic_model.__new__(transport_cgyro.gyrokinetic_model)
+        model.folder = root
+        for key in [spec[0] for spec in transport_cgyro._FLUX_SPEC + (transport_cgyro._EXCHANGE_SPEC,)]:
+            setattr(model, f"{key}_turb", np.array([2.0, 3.0, -80.0]))
+            setattr(model, f"{key}_turb_stds", np.array([0.1, 0.1, 1.0]))
+        ctx = types.SimpleNamespace(rho_locations=rhos, subfolder_name="Evaluation",
+                                    run_kwargs={"cost_guard": {"enabled": True, "std_floor": 0.5}})
+        model._gk_report_guard_stops(ctx)
+        assert np.allclose(model.QeGB_turb_stds, [0.1, 0.1, 40.0]), model.QeGB_turb_stds
+        assert np.allclose(model.MtGB_turb_stds, [0.1, 0.1, 40.0]), model.MtGB_turb_stds
+
+        # no floor configured: nothing changes
+        model.QeGB_turb_stds = np.array([0.1, 0.1, 1.0])
+        ctx.run_kwargs = {"cost_guard": {"enabled": True, "std_floor": None}}
+        model._gk_report_guard_stops(ctx)
+        assert np.allclose(model.QeGB_turb_stds, [0.1, 0.1, 1.0])
+        assert CGYROtools.CostGuard({"enabled": True, "targets_GB": {RHO: TARGETS}}).thresholds["abort_flux_ratio"] == 5.0
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    print("PASS test_std_floor")
+
+
 if __name__ == "__main__":
     test_flux_reader()
     test_stop_rule()
     test_staging()
+    test_seconds_per_acs_per_machine()
     test_targets_from_transport_layer()
+    test_abort_rule()
+    test_std_floor()
+    test_watchdog_accepts_abort()
     test_watchdog_stops_at_once()
     test_watchdog_leaves_the_rest_alone()
     print("\nALL PASS")

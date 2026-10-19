@@ -66,6 +66,17 @@ New handling of jobs in remote or local clusters. Example use:
 SRUN_STEP_REFUSAL_WAITS = (60, 120, 240)
 SRUN_STEP_REFUSAL_PATTERNS = ("Unable to create step for job", "Job/step already completing or completed")
 
+# Bounds on every paramiko call that can wait on the server [s]. Without them a link that stays up but stops
+# answering (seen from a laptop driver to Perlmutter, 2026-10-14) blocked open_sftp for 10-15 min, inside
+# paramiko's 1 h channel-open default, and the driver stopped polling. A timeout raises SSHException or
+# socket.timeout, both in RetryPolicy.TRANSIENT, so the connection is rebuilt and the call retried.
+SSH_CONNECT_TIMEOUT = 60        # TCP connect to the host (or the jump host)
+SSH_BANNER_TIMEOUT = 60         # server's SSH banner after the TCP connect
+SSH_AUTH_TIMEOUT = 120          # key / agent authentication
+SSH_CHANNEL_OPEN_TIMEOUT = 120  # opening a channel: the sftp session, the jump tunnel
+SFTP_IDLE_TIMEOUT = 600         # an sftp request or transfer with no byte from the server for this long
+_SSH_CONNECT_TIMEOUTS = dict(timeout=SSH_CONNECT_TIMEOUT, banner_timeout=SSH_BANNER_TIMEOUT, auth_timeout=SSH_AUTH_TIMEOUT)
+
 
 def slurm_job_snapshot(folder, note):
     '''
@@ -175,6 +186,12 @@ class RetryPolicy:
                             "will retry on next iteration",
                             typeMsg="w",
                         )
+
+
+# Remote repair run in a folder right before its primary/fallback pair is resolved (_resolve_fallbacks_on_remote),
+# keyed by primary basename: {primary: fn(folder) -> bash}. CGYROtools registers the restart check
+# (gk_control/watchdog.restart_validate), so a bin.cgyro.restart with a broken header never deletes its intact .old.
+REMOTE_PAIR_REPAIRS = {}
 
 
 @dataclass
@@ -391,6 +408,9 @@ class mitim_job:
         # mitim_bash.src, and its accepted extra folders are added to the retrieval.
         self.scheduler = None
         self.scheduler_result = None
+        # Optional {"cap": int, "fallback": str} (allocation qos_cap / fallback_qos): every sbatch of this job
+        # goes to the fallback qos when the user's jobs in the configured one would pass the cap (qos_for_submission)
+        self.qos_cap = None
 
     # The five historical attribute names are views on the spec: external code
     # (SIMtools.load_submission_state, fetch_cgyro_intermediate) assigns them directly,
@@ -692,6 +712,54 @@ class mitim_job:
                 self.jobid = None
         else:
             self.jobid = None
+        self.sbatch_refusal = self._sbatch_refusal() if (self.launchSlurm and self.jobid is None) else None
+
+    # What sbatch prints when it refuses a submission (cost check, bad QOS, invalid account, ...). The
+    # executor runs `./mitim_shell_executor.sh > mitim.out`, so these lines arrive on the dispatch's stderr
+    SBATCH_REFUSAL_PATTERNS = ("sbatch: error", "Batch job submission failed")
+
+    def _sbatch_refusal(self):
+        '''
+        sbatch's own error lines from the last dispatch (stderr, then mitim.out), or None when sbatch
+        printed none: then it went through and only its jobid could not be read back. The exit status
+        of sbatch is not kept by the executor, so its message is the signal.
+        '''
+        texts = [getattr(self, "last_dispatch_error", None)]
+        try:
+            texts.append((self.folder_local / "mitim.out").read_text(errors="replace"))
+        except OSError:
+            pass
+        lines = []
+        for text in texts:
+            text = text.decode(errors="replace") if isinstance(text, bytes) else (text or "")
+            lines += [l.strip() for l in text.splitlines() if any(p in l for p in self.SBATCH_REFUSAL_PATTERNS)]
+        return "\n".join(dict.fromkeys(lines)) or None
+
+    def qos_for_submission(self, n_new):
+        '''
+        The qos an sbatch of `n_new` jobs must use instead of the configured one, or None to keep it.
+        With qos_cap set: the fallback qos when the user's jobs in the configured qos (array elements
+        counted one by one) plus n_new would pass the cap, a per-user limit that sbatch only reveals by
+        refusing. Asked on the caller's live connection; a squeue without answer keeps the configured qos.
+        '''
+        if not self.qos_cap:
+            return None
+        qos = (self.machineSettings.get("slurm") or {}).get("qos")
+        if qos is None:
+            print("\t- [qos cap] qos_cap is set but the machine config has no slurm.qos; submitting as configured", typeMsg="w")
+            return None
+        out, err = self.execute(f'squeue -h -r -u "$USER" -q {shlex.quote(qos)} -o "%i"; echo "{SqueueAnswer.TRAILER}$?"', printYN=False)
+        out, err = (x.decode(errors="replace") if isinstance(x, bytes) else (x or "") for x in (out, err))
+        answer = SqueueAnswer.parse(out, error=err)
+        if not answer.answered:
+            print(f"\t- [qos cap] squeue gave no count of the jobs in qos {qos} ({answer.error or 'no answer'}); submitting in {qos}", typeMsg="w")
+            return None
+        count, cap = len([l for l in answer.table.splitlines() if l.strip()]), int(self.qos_cap["cap"])
+        if count + n_new <= cap:
+            return None
+        fallback = self.qos_cap["fallback"]
+        print(f"\t- [qos cap] {count} job(s) of the user in qos {qos} + {n_new} new > cap {cap}: submitting with --qos={fallback}", typeMsg="i")
+        return fallback
 
     def put_file(self, local_file, remote_path):
         '''One file onto the machine (a plain copy when it is local), on the caller's live connection.'''
@@ -700,7 +768,7 @@ class mitim_job:
         else:
             self._sftp_transfer_with_retry('put', str(local_file), str(remote_path))
 
-    def resubmit_single_task(self, code_call_str, label, exclude_node=None):
+    def resubmit_single_task(self, code_call_str, label, exclude_node=None, extra_directives=None):
         '''
         Submit a fresh, single-task (non-array) sbatch that runs `code_call_str`
         verbatim, reusing this job's machineSettings and live SSH session.
@@ -722,6 +790,10 @@ class mitim_job:
         `exclude_node` (optional): if provided, added as the SBATCH --exclude
         list on the resubmit so a known-bad node doesn't get re-tried. Falls
         back gracefully on None / empty string.
+
+        `extra_directives` (optional): sbatch flags written after the standard
+        directives, e.g. ["--nice=100"] for the extra cases of load_balance
+        'extra_points'. With `qos_cap` set, sbatch may get --qos=<fallback>.
         '''
         if not self.launchSlurm:
             raise RuntimeError("resubmit_single_task requires launchSlurm=True")
@@ -765,6 +837,7 @@ class mitim_job:
             launchSlurm=True,
             slurm_settings=slurm_settings,
             if_array_relabel=False,
+            extra_directives=extra_directives,
         )
 
         # Ship just the sbatch file (the shell-executor wrapper isn't used —
@@ -782,7 +855,9 @@ class mitim_job:
 
         # `--parsable` makes sbatch print just <jobid>[;<cluster>] on stdout —
         # easy to parse, no log-file scraping like the run() path needs.
-        submit_cmd = f"cd {shlex.quote(str(self.folderExecution))} && chmod +x {sbatch_basename} && sbatch --parsable {sbatch_basename}"
+        qos = self.qos_for_submission(1)
+        submit_cmd = (f"cd {shlex.quote(str(self.folderExecution))} && chmod +x {sbatch_basename} && "
+                      f"sbatch --parsable{f' --qos={qos}' if qos else ''} {sbatch_basename}")
         out, err = self.execute(submit_cmd, printYN=True)
         if isinstance(out, bytes):
             out = out.decode(errors='replace')
@@ -855,6 +930,11 @@ class mitim_job:
             else:
                 print("\t* In-place local execution: skipping scratch setup and file staging")
 
+            # sbatch reads SBATCH_QOS over the script's #SBATCH --qos
+            if execute_flag and self.qos_cap and self.launchSlurm and self.scheduler is None:
+                qos = self.qos_for_submission(len(str(self.slurm_settings.get("array") or "0").split(",")))
+                comm = f"export SBATCH_QOS={qos} && {comm}" if qos else comm
+
             # ~~~~~~ Execute
             execution_counter = 0
             refusal_reruns, refusals_seen = 0, 0
@@ -911,6 +991,9 @@ class mitim_job:
                     time.sleep(wait)
                 elif execution_counter < attempts_execution + refusal_reruns:
                     print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter - refusal_reruns}/{attempts_execution})")
+
+            # what the last execution printed: run() reads a refused sbatch from it
+            self.last_dispatch_output, self.last_dispatch_error = output, error
 
             # ~~~~~~ Remove scratch folder
             if received:
@@ -1040,6 +1123,7 @@ class mitim_job:
                 port=self.port,
                 sock=self.sock,
                 allow_agent=True,
+                **_SSH_CONNECT_TIMEOUTS,
             )
         except paramiko.ssh_exception.NoValidConnectionsError:
             print("\t> Paramiko's connection failed! trying again in 5 seconds to avoid random drops", typeMsg="w")
@@ -1052,12 +1136,24 @@ class mitim_job:
                 port=self.port,
                 sock=self.sock,
                 allow_agent=True,
+                **_SSH_CONNECT_TIMEOUTS,
             )
 
         try:
-            self.sftp = self.ssh.open_sftp()
+            self.sftp = self._open_sftp()
         except paramiko.sftp.SFTPError:
             raise Exception("[MITIM] SFTPError: Your bashrc on the server likely contains print statements")
+
+    def _open_sftp(self):
+        '''
+        SSHClient.open_sftp() with bounds: it opens its session with paramiko's 1 h default and then
+        waits on the channel with no timeout. A server that stops answering raises SSHException
+        ("Timeout opening channel") or socket.timeout here, which the retry policy handles.
+        '''
+        channel = self.ssh.get_transport().open_session(timeout=SSH_CHANNEL_OPEN_TIMEOUT)
+        channel.settimeout(SFTP_IDLE_TIMEOUT)
+        channel.invoke_subsystem("sftp")
+        return paramiko.SFTPClient(channel)
 
     def define_jump(self):
         if self.jump_host is not None:
@@ -1089,6 +1185,7 @@ class mitim_job:
                 ),
                 key_filename=key_jump,
                 allow_agent=True,
+                **_SSH_CONNECT_TIMEOUTS,
             )
 
             # Use the existing transport of self.jump_client for tunneling
@@ -1100,6 +1197,7 @@ class mitim_job:
                 "direct-tcpip",
                 (self.target_host, create_port_in_tunnel),
                 (self.target_host, 0),
+                timeout=SSH_CHANNEL_OPEN_TIMEOUT,
             )
 
             # to pass to self.ssh
@@ -1569,6 +1667,7 @@ class mitim_job:
           primary present    -> remove fallback (dedup + free remote disk)
           fallback only      -> rename fallback to primary
           neither present    -> no-op
+        A repair registered for the primary (REMOTE_PAIR_REPAIRS) runs first in that folder.
         Idempotent and safe if the folders don't exist yet.
         '''
         if not spec.fallbacks:
@@ -1582,13 +1681,19 @@ class mitim_job:
                     continue
                 p = f"{self.folderExecution}/{folder}/{primary}"
                 f = f"{self.folderExecution}/{folder}/{fallback}"
+                repair = REMOTE_PAIR_REPAIRS.get(primary)
                 fallback_lines.append(
-                    f'if [ -f "{p}" ]; then rm -f "{f}"; '
+                    (f'(\n{repair(f"{self.folderExecution}/{folder}")}\n); ' if repair is not None else '')
+                    + f'if [ -f "{p}" ]; then rm -f "{f}"; '
                     f'elif [ -f "{f}" ]; then mv "{f}" "{p}"; fi'
                 )
         if fallback_lines:
             print(f"\t\t- Resolving {len(fallback_lines)} primary/fallback pair(s) on remote")
-            self.execute(" ; ".join(fallback_lines))
+            _, error = self.execute(" ; ".join(fallback_lines))
+            # what a registered repair did (one "MITIM ..." line per action on stderr) must not go unseen
+            for line in (error.decode(errors="replace") if isinstance(error, bytes) else (error or "")).splitlines():
+                if line.startswith("MITIM "):
+                    print(f"\t\t  {line}", typeMsg="w")
 
     def remove_scratch_folder(self):
         # Safety guard: never rm -rf the user's working directory in in-place mode
@@ -1624,7 +1729,7 @@ class mitim_job:
 
         return output, error
 
-    def probe_interrupted_runs(self, rel_folders, required_files, checksum_file, progress_file=None, progress_line=None, checksum_ignore_prefix=None, report_files=None, completion=None):
+    def probe_interrupted_runs(self, rel_folders, required_files, checksum_file, progress_file=None, progress_line=None, checksum_ignore_prefix=None, report_files=None, completion=None, progress_cmd=None):
         '''
         Look inside the (possibly remote) scratch folder for sub-folders left by an
         interrupted execution. For each entry of `rel_folders` (relative to
@@ -1632,7 +1737,10 @@ class mitim_job:
         when every file in `required_files` exists there or the run there already ended, and
         nothing otherwise. `progress_token` is the first column of line `progress_line`
         (1-based; None = last line) of `progress_file` (e.g. the time the code will resume
-        from), or None. `report` is a 'name=bytes ...' string with the sizes of `report_files`
+        from), or None. `progress_cmd`, when given, replaces that read: shell run with the
+        sub-folder in $d whose output is the token (CGYRO: the time its restart validation
+        would resume from, so a broken tag next to a usable restart still gives one).
+        `report` is a 'name=bytes ...' string with the sizes of `report_files`
         (forensics for the log; missing files are skipped). `finished` is True when the
         sub-folder satisfies `completion` = (marker_file, marker_text, alt_file): marker_file
         contains marker_text, or alt_file exists (e.g. CGYRO's EXIT line in out.cgyro.info, or
@@ -1648,6 +1756,9 @@ class mitim_job:
         checks = ' && '.join(f'[ -f "$d/{f}" ]' for f in list(required_files) + [checksum_file])
         pick = f'sed -n "{int(progress_line)}p"' if progress_line else 'tail -n 1'
         prog = f'$({pick} "$d/{progress_file}" 2>/dev/null | awk \'{{print $1}}\')' if progress_file else 'none'
+        prefix = ''
+        if progress_cmd:
+            prefix, prog = f'_mitim_progress() {{\n{progress_cmd.rstrip()}\n}}\n', '$(_mitim_progress)'
         report = ' '.join(f'$([ -f "$d/{f}" ] && echo "{f}=$(wc -c < "$d/{f}" | tr -d " ")")' for f in (report_files or []))
         prefixes = [checksum_ignore_prefix] if isinstance(checksum_ignore_prefix, str) else list(checksum_ignore_prefix or [])
         filt = ''.join(f" | grep -v '^{p}'" for p in prefixes)
@@ -1665,7 +1776,7 @@ class mitim_job:
                 f'echo "MITIM_RESCUE {rel} $f $h {prog} | {report}"; fi'
             )
         with self.session(log_file=self.folder_local / 'paramiko.log'):
-            output, _ = self.execute('; '.join(lines))
+            output, _ = self.execute(prefix + '; '.join(lines))
         found = {}
         for line in (output or b'').decode('utf-8', errors='ignore').splitlines():
             head, _, report_str = line.partition('|')
@@ -1691,6 +1802,22 @@ class mitim_job:
         # going through define_machine_quick.
         return self.slurm_settings.get("job-name", self.slurm_settings.get("name", "mitim_job"))
 
+    JOB_BY_FOLDER = "MITIM_JOB_BY_FOLDER"
+
+    def _jobs_by_folder_bash(self):
+        '''
+        Shell, run from inside folderExecution, that sets `_ids` to the comma-joined jobids of the jobs
+        named like this one AND submitted from this folder (squeue %Z, the sbatch working directory:
+        every MITIM submission does `cd folderExecution && ... sbatch`, so each array element has it),
+        and `_lk_rc` to squeue's exit code (`_lk` holds its output). A name alone is never enough: PORTALS
+        names every CGYRO array cgyro_ev<N>, and another run's job of that name must not be adopted or
+        cancelled. %Z is compared with the folder as written and as `pwd -P` resolves it.
+        '''
+        folder = shlex.quote(str(self.folderExecution))
+        name = shlex.quote(self._squeue_job_name())
+        return (f'_wd=$(pwd -P); _lk=$(squeue -h -n {name} -o "%F|%Z" 2>&1); _lk_rc=$?; '
+                f'_ids=$(printf "%s\\n" "$_lk" | awk -F"|" -v a={folder} -v b="$_wd" \'$2==a || $2==b {{print $1}}\' | sort -u | paste -sd, -)')
+
     def check(self, file_output = "slurm_output.dat"):
         """
         Check job status slurm
@@ -1699,13 +1826,15 @@ class mitim_job:
                 wait for the full slurm execution, but will launch it and retrieve the jobid,
                 which the check command uses to check the status of the job.
             - If the class was initiated but not run, it will not have the jobid, so it will
-                try to find it from the job_name, which must match the submitted one.
+                try to find it from the job_name AND the folder it was submitted from
+                (_jobs_by_folder_bash); a job of the same name from another folder is ignored.
         """
 
         if self.jobid is not None:
             txt_look = f"-j {self.jobid}"
         else:
-            txt_look = f"-n {self._squeue_job_name()}"
+            # without a recorded jobid, only the jobs of this name submitted from this folder (_jobs_by_folder_bash)
+            txt_look = '-j "$_ids"'
 
         # The remote folder holds the job's scripts from before sbatch, so it exists for every submitted
         # job; when it is gone (scratch deleted) nothing can ever be retrieved, and without this marker
@@ -1715,6 +1844,13 @@ class mitim_job:
         # table alone cannot tell a job that left the queue from a slurmctld that did not answer
         squeue = (f'_squeue_err=$(squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" 2>&1 > squeue_output.dat); '
                   f'echo "{SqueueAnswer.TRAILER}$? $_squeue_err" >> squeue_output.dat')
+        if self.jobid is None:
+            # a lookup slurm did not answer is silence (keep polling); no job of this name from this folder is
+            # an answered empty table (not found)
+            squeue = (f'{self._jobs_by_folder_bash()}; '
+                      f'if [ "$_lk_rc" != 0 ]; then echo "{SqueueAnswer.TRAILER}$_lk_rc $_lk" > squeue_output.dat; '
+                      f'elif [ -z "$_ids" ]; then echo "{SqueueAnswer.TRAILER}0 " > squeue_output.dat; '
+                      f'else echo "{self.JOB_BY_FOLDER} $_ids"; {squeue}; fi')
         command = (f'if [ -d {folder} ]; then cd {folder} && {{ {squeue}; }}; '
                    f'else echo {self.REMOTE_FOLDER_GONE}; fi')
 
@@ -1738,6 +1874,7 @@ class mitim_job:
                 if self._remote_folder_gone(output):
                     self._set_gone()
                     return
+                self._warn_job_by_folder(output)
                 received = self.retrieve(spec=spec, best_effort=True)
             except RetryPolicy.TRANSIENT as _poll_exc:
                 print(f"\t* Status poll could not reach the remote ({type(_poll_exc).__name__}: {_poll_exc}); "
@@ -1749,6 +1886,13 @@ class mitim_job:
         self.interpret_status(file_output = file_output)
 
     REMOTE_FOLDER_GONE = "MITIM_REMOTE_FOLDER_GONE"
+
+    def _warn_job_by_folder(self, output):
+        text = output.decode(errors="ignore") if isinstance(output, bytes) else (output or "")
+        for line in text.splitlines():
+            if line.startswith(self.JOB_BY_FOLDER):
+                print(f"\t* No recorded jobid: following job(s) {line.split()[-1]}, named \"{self._squeue_job_name()}\" "
+                      f"and submitted from {self.folderExecution}", typeMsg="w")
 
     def _remote_folder_gone(self, output):
         text = output.decode(errors="ignore") if isinstance(output, bytes) else (output or "")
@@ -1851,7 +1995,7 @@ class mitim_job:
 
         txt = "\t* Job was checked"
         if (self.jobid is None) and (self.jobid_found is not None):
-            txt += f' (jobid {self.jobid_found}, found from name "{self._squeue_job_name()}")'
+            txt += f' (jobid {self.jobid_found}, found from name "{self._squeue_job_name()}" and folder)'
         elif self.jobid is not None:
             txt += f" (jobid {self.jobid})"
         txt += f', is {self.infoSLURM["STATE"]} (job.infoSLURM)'
@@ -2192,7 +2336,7 @@ class SbatchScript:
         # (one whole node per job).
         self.exclusive = request_exclusive_node or job_exclusive
 
-    def directives(self, folderExecution, label_log_files="", if_array_relabel=False, append_mode=False):
+    def directives(self, folderExecution, label_log_files="", if_array_relabel=False, append_mode=False, extra_directives=None):
         lines = ["#!/usr/bin/env bash"]
 
         lines.append(f"#SBATCH --job-name {self.name}")
@@ -2243,6 +2387,8 @@ class SbatchScript:
             lines.append("#SBATCH --open-mode=append")
 
         lines.append("#SBATCH --profile=all")
+        # Caller-specific flags after the standard ones (e.g. --nice on the extra cases of load_balance 'extra_points')
+        lines.extend(f"#SBATCH {d}" for d in (extra_directives or []))
 
         return lines
 
@@ -2294,7 +2440,8 @@ def create_slurm_execution_files(
     if_array_relabel = False,
     lock_file=None,
     lock_file_timeout_hours=12,
-    append_mode = False
+    append_mode = False,
+    extra_directives=None,
 ):
 
     fileSBATCH = folder_local / f"mitim_bash{label_log_files}.src"
@@ -2318,6 +2465,7 @@ def create_slurm_execution_files(
         label_log_files=label_log_files,
         if_array_relabel=if_array_relabel,
         append_mode=append_mode,
+        extra_directives=extra_directives,
     )
     commandSBATCH.extend(script.preamble())
 

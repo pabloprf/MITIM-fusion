@@ -40,8 +40,14 @@ DESCRIPTION
 *   💥 **PORTALS-CGYRO cost guard: automatic stop of a slow radius far above its target.** New
     `transport.options.cgyro.run.cost_guard` (off by default): the watchdog stops a radius whose wall cost
     per a/cs is high while its heat flux (Qe or Qi) is far above the turbulent target, at once, and the
-    radius counts as finished (`mitim_budget.tag` starting with `GUARD`, harvest `guard_stop`). Thresholds
-    and time gates are documented in `templates/namelist.portals.yaml`; needs `python3` on the compute node.
+    radius counts as finished (`mitim_budget.tag` starting with `GUARD`, harvest `guard_stop`). The flux
+    ratio is averaged over `[max(floor_time, t/2), t]`, so a single burst cannot trigger a stop, and a flux
+    still rising over that stretch is left to run (`rising_tolerance`); `seconds_per_acs` can be given per
+    machine class (`{gpu: 100, cpu: 1000}`, the default). A radius
+    that dies on CGYRO's Cash-Karp abort while over-driven is accepted the same way (`accept_abort`), and
+    every guard-stopped radius gets a flux std of at least `std_floor` x |flux| so the surrogates use it for
+    its direction only. Thresholds and time gates are documented in `templates/namelist.portals.yaml`;
+    needs `python3` on the compute node.
 
 *   💥 **Claude Code agent `portals-cgyro` shipped in `.claude/agents/`: an operator for live PORTALS-CGYRO
     runs.** It checks each radius' cost per a/cs, time step and saturation, stops hopeless radii with
@@ -295,8 +301,42 @@ DESCRIPTION
     sbatch settings as one element), stopped when the last main radius ends and harvested into
     `Outputs/extra_points.csv` as in bash mode. The extras are tracked in `cgyro_submission.json`, so a re-attaching
     driver keeps them. In both modes the extra case now takes per-radius option lists (e.g. `RESTART_STEP`) at its own radius.
+    A main radius that hits its element wall and is continued in place by the next driver link keeps its extras running;
+    that link takes them over and stops them only when the main radius really ends. Extras are submitted with `--nice`
+    and wait while any of the user's main CGYRO jobs, or this chain's own rescue, is pending (`extra_points.nice`,
+    `yield_to_pending_mains`, `rescues_first`).
+
+*   💥 **PORTALS-CGYRO array runs continue a wall-hit radius within the same driver link.** With `rescue_interrupted`,
+    an element that ends TIMEOUT/PREEMPTED/NODE_FAIL after a restart write is resubmitted in place to its original end
+    time by the polling driver (`max_continuations_per_rho`, default 2) instead of failing the link. A driver about to
+    hit its own SLURM wall with radii unfinished writes `Outputs/MITIM_DRIVER_WALL_UNFINISHED.json` for its launcher to
+    resubmit it. Optional `allocation.qos_cap`/`fallback_qos` move submissions above a per-user QOS cap (e.g. Perlmutter
+    premium, 5 jobs) to a fallback QOS.
 
 ### Bug Fixes
+
+*   🐛 **A remote session no longer blocks a driver when the server stops answering.** Every paramiko call that waits
+    on the server is bounded (`FARMINGtools.SSH_CONNECT_TIMEOUT`, `SSH_BANNER_TIMEOUT`, `SSH_AUTH_TIMEOUT`,
+    `SSH_CHANNEL_OPEN_TIMEOUT`, `SFTP_IDLE_TIMEOUT`); a timeout is a transient error, so the session is rebuilt and
+    retried. A laptop driver had sat 10-15 min in `open_sftp` (paramiko's channel-open default is 1 h) and stopped polling.
+
+*   🐛 **A code launched through SLURM on a machine whose `slurm` block names no partition (Perlmutter: qos, account,
+    constraint) is no longer capped to the driver's own allocation.** `cores_per_node` was cut to the CPUs of the
+    driver job, which refused multi-node CPU launches (64 nodes). Any non-empty `slurm` block now counts as a SLURM launch.
+
+*   🐛 **PORTALS-CGYRO chains no longer die after an in-place continuation or a failed read in a batch job.** A radius
+    continued in its own folder (rescue or SLURM requeue) now has its per-output binaries cut to the restart output
+    before CGYRO starts, so a continuation that ends before the old trace no longer leaves stale records that crashed
+    every later read. Without a terminal, a failed CGYRO read raises its own error instead of asking whether to run
+    `cgyro -t` (which raised `InteractiveTerminalError` and killed every chained driver link). A restart write broken by a
+    filesystem outage (empty `out.cgyro.tag`, zeroed `bin.cgyro.restart` header) is repaired before the next launch from
+    `bin.cgyro.restart.old` and the tag history, instead of crashing CGYRO and restarting the radius from scratch.
+
+*   🐛 **A driver without a recorded jobid no longer follows or cancels another run's job of the same name.** Every
+    PORTALS CGYRO array is named `cgyro_ev<N>`; the status poll fell back to `squeue -n <name>` and `delete()` ran
+    `scancel -n <name>`. Both now take only the jobs of that name submitted from this job's folder (squeue `%Z`).
+    GK jobs are also named after their run (`cgyro_<run folder>_ev<N>`; MAESTRO `<case>_<Beat_n>`), `delete()`
+    cancels the rescue and extra-case jobs with the parent, and a refused sbatch raises at once with sbatch's message.
 
 *   🐛 **A CGYRO radius that MITIM stopped on purpose no longer shows as FAILED in SLURM.** A run stopped and accepted
     by the watchdog (`mitim_budget.tag`: `wall_budget`, `mitim_kill_cgyro`, cost guard, the stop of an extra case)
@@ -599,11 +639,18 @@ DESCRIPTION
     `SbatchScript`. `SIMtools`: `RadialCall`/`WorkPlan` (the one place the `rho_<r>` naming lives),
     `CompletionSpec`, `JobScript` builders, `SubmissionRecord` (owns `cgyro_submission.json`, same schema),
     `RunType`/`SubmissionType`/`JobStatus`, and `_run` as named steps. `CGYROtools`: `CgyroLaunchBody`,
-    `Watchdog` (bash in `templates/cgyro_watchdog.sh` / `cgyro_probe.sh`), `RadiusStatus`/`CgyroProbe`,
+    `Watchdog` (bash in `templates/gk_control/cgyro_watchdog.sh` / `cgyro_probe.sh`), `RadiusStatus`/`CgyroProbe`,
     `StallRescuer`, `_ResolvedControls`. `transport_cgyro` (1970 → 700 lines) drives single-plasma, batched and
     GX evaluations through one `GKSubmission` engine, with `RestartChain`, `PerIterOverrides` and
     `ExtraPointHarvester` in `physics_models/utils/`. Generated scripts and resolved inputs are tested
     byte-identical to the previous code.
+
+*   🔎 **Gyrokinetic run control gathered in `mitim_tools.simulation_tools.gk_control` (behaviour-preserving).**
+    `markers` (every tag/file name: `mitim_budget.tag`, `mitim_stop`, `GUARD`, ...), `watchdog`, `cost_guard`,
+    `completion`, `status`, `rescue` (stall and interrupted-run), `submission` (`GKSubmission`), `extra_points`
+    (bash scheduler and array mode), `live`, and `GKRunControl`, the run-control half of the `CGYRO` class. Old
+    names (`CGYROtools.Watchdog`, `SIMtools.radius_finished`, `SCHEDULERtools`, ...) still work; generated
+    shell and specs are checked byte-identical by `tests/dev_tests/test_gk_control_golden.py`.
 
 *   🔎 **NEW CHANGE**, description
 

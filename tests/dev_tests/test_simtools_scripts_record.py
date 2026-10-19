@@ -190,13 +190,13 @@ def test_array_element_rename():
 
     # Run the script head with a fake scontrol: first start, then a requeue that already carries the suffix
     head = array.command.split(SIMtools.ArraySlurmScript._RENAME_ELEMENT)[0] + SIMtools.ArraySlurmScript._RENAME_ELEMENT
-    for name_at_start in ("cgyro_ev0", "cgyro_ev0_rho_0.6712"):
+    for name_at_start in ("cgyro_E_pt03_ev0", "cgyro_E_pt03_ev0_rho_0.6712"):
         out = subprocess.run(
             ["bash", "-c", 'scontrol() { echo "$@"; }\n' + head],
             env={"SLURM_ARRAY_TASK_ID": "1", "SLURM_ARRAY_JOB_ID": "100", "SLURM_JOB_NAME": name_at_start, "PATH": "/usr/bin:/bin"},
             capture_output=True, text=True, check=True).stdout.strip()
-        assert out == "update JobId=100_1 JobName=cgyro_ev0_rho_0.6712", out
-    print("PASS: array element 1 renames itself to cgyro_ev0_rho_0.6712, also after a requeue")
+        assert out == "update JobId=100_1 JobName=cgyro_E_pt03_ev0_rho_0.6712", out
+    print("PASS: array element 1 renames itself to cgyro_E_pt03_ev0_rho_0.6712, also after a requeue")
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +251,12 @@ def test_submission_record_compat(old):
 
         old_json = json.loads((old_folder / "base_cgyro" / "cgyro_submission.json").read_text())
         new_json = json.loads((new_folder / "base_cgyro" / "cgyro_submission.json").read_text())
+        # Intended additions since the reference commit (9d87c230, array-mode extra_points): the extra-case plan
+        # and ledger. Checked here, then left out of the key-for-key comparison
+        assert new_json["kwargs_organize"].pop("extra_points") is None, new_json["kwargs_organize"]
+        assert new_json.pop("extra_ledger") == {}, new_json
+        # ... and the per-user QOS cap of the submission (allocation qos_cap / fallback_qos; .get() on reload)
+        assert new_json["job"].pop("qos_cap") is None, new_json["job"]
         # Folder paths differ by design (two temp trees); compare everything else
         old_norm = json.dumps(_strip_volatile(old_json)).replace(str(old_folder), "ROOT")
         new_norm = json.dumps(_strip_volatile(new_json)).replace(str(new_folder), "ROOT")

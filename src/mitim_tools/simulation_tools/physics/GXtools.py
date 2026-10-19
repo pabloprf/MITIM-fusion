@@ -4,6 +4,8 @@ from pathlib import Path
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, CONFIGread
 from mitim_tools.gacode_tools.utils import GACODEdefaults, CGYROutils
 from mitim_tools.simulation_tools import SIMtools
+from mitim_tools.simulation_tools.gk_control import markers
+from mitim_tools.simulation_tools.gk_control.shell import _shell_text
 from mitim_tools.simulation_tools.utils import SIMplot
 from mitim_tools.simulation_tools.utils.GKaveraging import GKaverager, PRIMARY_CHANNELS, resolve_fixed_tmin
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -12,13 +14,13 @@ from mitim_tools import __version__ as mitim_version
 from IPython import embed
 
 # Bash run right before `gx` in its folder, so a requeued array element resumes from its own checkpoint
-_REQUEUE_RESUME_BASH = (__mitimroot__ / "templates" / "gx_requeue_resume.sh").read_text()
+_REQUEUE_RESUME_BASH = _shell_text("gx_requeue_resume.sh")
 
 class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
     # Persist the slurm submission (run_type 'submit'), so a restarted PORTALS driver with check_existing_runs
-    # re-attaches to the in-flight array instead of resubmitting (SIMtools.SubmissionRecord, gk_submission.py)
-    _submission_metadata_filename = "gx_submission.json"
+    # re-attaches to the in-flight array instead of resubmitting (SIMtools.SubmissionRecord, gk_control/submission.py)
+    _submission_metadata_filename = markers.GX_SUBMISSION
 
     # Restart file GX writes every nsave steps and reads back through restart_if_exists (input.gx.controls).
     # The PORTALS warm-start chain (restart_from_cases) retrieves it as <file>_<rho:.4f> and stages it back

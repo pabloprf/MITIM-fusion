@@ -165,7 +165,7 @@ def _bash(folder, script):
 
 
 def test_requeue_bash_appends_only_when_resuming_its_own_run(tmp_path):
-    body = (__mitimroot__ / "templates" / "gx_requeue_resume.sh").read_text()
+    body = (__mitimroot__ / "templates" / "gk_control" / "gx_requeue_resume.sh").read_text()
     call = GXtools.GX(rhos=[0.3]).run_specifications["code_call"]("rho_0.3000", n=1, p="/scratch")
     assert body in call and ">> gxplasma.mitim.log" in call
     # multi-rank GX writes parallel HDF5; without this Open MPI locks every write on NFS and the run stalls

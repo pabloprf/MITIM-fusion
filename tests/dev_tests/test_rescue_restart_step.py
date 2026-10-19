@@ -12,7 +12,7 @@ A SLURM requeue (preemption) reruns the same array script instead: CGYRO resumes
 out.cgyro.tag and adds the FULL MAX_TIME again (engaging reduced3 array 23565718, 2026-09-23:
 radii requeued at t=55-206 of 450 would have run to t~500-650). The launch body now records
 the end time at the first launch of a submission and trims MAX_TIME on a relaunch of the
-same job, rounded up to whole restart periods (templates/cgyro_requeue_trim.sh).
+same job, rounded up to whole restart periods (templates/gk_control/cgyro_requeue_trim.sh).
 
 Run as:
 
@@ -29,6 +29,7 @@ import io
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -168,6 +169,8 @@ def test_requeue_trims_max_time():
         run_dir = d / "rho_0.6673"
         run_dir.mkdir()
         (run_dir / "input.cgyro").write_text(INPUT.replace("RESTART_STEP            = 450", "RESTART_STEP            = 25"))
+        # a continuation needs a blob with a valid header next to its tag (cgyro_restart_validate.sh)
+        (run_dir / "bin.cgyro.restart").write_bytes(struct.pack("<ii", 140974129, 3) + bytes(2040))
         # first launch (warm start, no tag): nothing trimmed, end time t=450 recorded for job 111
         mt, _ = _launch(run_dir, 111)
         assert mt == 450.0 and (run_dir / ".mitim_t_end").read_text().split() == ["111_2", "450"], mt

@@ -159,55 +159,10 @@ class WorkPlan:
         return code_executor
 
 
-@dataclass
-class CompletionSpec:
-    '''
-    How a code says "this radius ran to completion": a substring that must appear in
-    `marker_file`, or the presence of `alt_file` (e.g. the tag left when a watchdog
-    stops a run on purpose). Names carry the per-radius suffix when a rho is given,
-    and are plain when it is not (scratch-folder layout).
-    '''
-    marker_file: str = None
-    marker_text: str = None
-    alt_file: str = None
-
-    @classmethod
-    def from_run_specifications(cls, run_specifications):
-        marker = (run_specifications or {}).get("completion_marker")
-        return None if marker is None else cls(marker[0], marker[1], (run_specifications or {}).get("completion_alt_file"))
-
-    @classmethod
-    def coerce(cls, completion_marker, alt_file=None):
-        '''Accept a CompletionSpec, a (file, substring) tuple or None.'''
-        if isinstance(completion_marker, cls):
-            return cls(completion_marker.marker_file, completion_marker.marker_text,
-                       completion_marker.alt_file if alt_file is None else alt_file)
-        if completion_marker is None:
-            return cls(None, None, alt_file)
-        return cls(completion_marker[0], completion_marker[1], alt_file)
-
-    def _name(self, file, rho):
-        return file if rho is None else f"{file}{rho_suffix(rho)}"
-
-    def finished(self, folder, rho=None):
-        '''Returns (finished, marker_path).'''
-        folder = Path(folder)
-        mfile = folder / self._name(self.marker_file, rho) if self.marker_file is not None else folder
-        finished = False
-        if self.marker_file is not None:
-            try:
-                finished = self.marker_text in mfile.read_text(errors="ignore")
-            except OSError:
-                finished = False
-        if not finished and self.alt_file is not None:
-            finished = (folder / self._name(self.alt_file, rho)).exists()
-        return finished, mfile
-
-    def unfinished(self, plan):
-        '''(call, marker_path) for every call of the plan that did not run to completion.'''
-        if not isinstance(plan, WorkPlan):
-            plan = WorkPlan.from_code_executor(plan)
-        return [(call, mfile) for call, (ok, mfile) in ((c, self.finished(c.folder, c.rho)) for c in plan) if not ok]
+# CompletionSpec and radius_finished live in gk_control.completion (aliases kept: SIMtools.CompletionSpec,
+# SIMtools.radius_finished)
+from mitim_tools.simulation_tools.gk_control import markers
+from mitim_tools.simulation_tools.gk_control.completion import CompletionSpec, radius_finished
 
 
 def _submitted_state(sim, attribute, what):
@@ -278,6 +233,31 @@ def jobids_in_queue(job, job_ids):
         if toks and toks[0] in job_ids:
             states.setdefault(toks[0], toks[1] if len(toks) > 1 else '?')
     return states, answer
+
+
+# Pending reasons of a job that is not waiting for nodes: it would not take a freed one anyway
+_PENDING_NOT_FOR_NODES = ("JobArrayTaskLimit", "Dependency", "DependencyNeverSatisfied", "BeginTime", "JobHeldUser", "JobHeldAdmin")
+
+
+def pending_jobs_of_user(job):
+    '''
+    {jobid: name} of the user's jobs waiting for nodes (PENDING, minus the reasons in _PENDING_NOT_FOR_NODES), from
+    any run, asked on the job's live connection. None when slurm gave no verdict. A pending array prints one row.
+    '''
+    cmd = f'squeue -h -u "$USER" -t PENDING -o "%i|%j|%r"; echo "{FARMINGtools.SqueueAnswer.TRAILER}$?"'
+    out, err = job.execute(cmd, printYN=False)
+    out, err = (x.decode(errors='replace') if isinstance(x, bytes) else (x or "") for x in (out, err))
+
+    answer = FARMINGtools.SqueueAnswer.parse(out, error=err)
+    if not answer.answered:
+        return None
+    pending = {}
+    for line in answer.table.strip().splitlines():
+        jobid, _, rest = line.strip().partition("|")
+        name, _, reason = rest.partition("|")
+        if jobid and reason.strip() not in _PENDING_NOT_FOR_NODES:
+            pending[jobid] = name.strip()
+    return pending
 
 
 class JobScript:
@@ -361,7 +341,7 @@ class ArraySlurmScript(JobScript):
     _INDEXED_FOLDER = "${FOLDERS[$SLURM_ARRAY_TASK_ID]}"
 
     # An array has ONE --job-name, so each element appends its own folder name when it starts
-    # (cgyro_ev0 -> cgyro_ev0_rho_0.5500); a pending element still shows the array name. The
+    # (cgyro_myrun_ev0 -> cgyro_myrun_ev0_rho_0.5500); a pending element still shows the array name. The
     # suffix strip keeps a requeued element from stacking it, and a refused rename never stops the run.
     # JobId is <array>_<index> on purpose: one element's $SLURM_JOB_ID can equal the array id, which
     # scontrol reads as the whole array.
@@ -480,6 +460,7 @@ class SubmissionRecord:
                 "output_file_fallbacks": getattr(job, "output_file_fallbacks", {}),
                 "log_simulation_file": str(job.log_simulation_file) if job.log_simulation_file else None,
                 "run_in_place": bool(getattr(job, "run_in_place", False)),
+                "qos_cap": getattr(job, "qos_cap", None),
             },
         )
 
@@ -555,6 +536,7 @@ class SubmissionRecord:
         job.output_folders_selective = self.job["output_folders_selective"]
         job.output_file_fallbacks = self.job.get("output_file_fallbacks", {})
         job.run_in_place = self.job.get("run_in_place", False)
+        job.qos_cap = self.job.get("qos_cap")
 
         # On the original submit path `_run` creates this folder; on re-attach the process is
         # fresh and it may not exist, while `retrieve()` writes its tarball here
@@ -585,7 +567,7 @@ class SubmissionRecord:
         # actually staged at submit time; the local file may have been wiped since
         sim._restart_sources_payload = self.restart_sources
         if self.restart_sources and isinstance(self.restart_sources, dict) and self.path is not None:
-            local_json = self.path.parent / "restart_sources.json"
+            local_json = self.path.parent / markers.RESTART_SOURCES
             try:
                 local_json.parent.mkdir(parents=True, exist_ok=True)
                 with open(local_json, "w") as f:
@@ -791,7 +773,7 @@ class mitim_simulation:
         run_type = 'normal', # 'normal': send, submit and wait; 'submit': send and submit and do not wait; 'send': send and do not submit; 'prep': do not submit
         additional_files_to_send = None, # Dict (rho keys) of files to send along with the run (e.g. for restart). Each list entry is either a path or a (src_path, dst_basename) tuple — tuples let the file be renamed on stage-in (e.g. CGYRO restart per-rho blobs -> out.cgyro.restart).
         helper_lostconnection=False, # If True, it means that the connection to the remote machine was lost, but the files are there, so I just want to retrieve them not execute the commands
-        job_name_suffix='_sim', # Suffix appended to the code name for the slurm --job-name (e.g. "cgyro" + "_sim" -> "cgyro_sim"). PORTALS overrides with "_ev{evaluation_number}" to tag submissions by iteration.
+        job_name_suffix='_sim', # Suffix appended to the code name for the slurm --job-name (e.g. "cgyro" + "_sim" -> "cgyro_sim"). PORTALS overrides with "_<run folder>_ev{evaluation_number}" to tag submissions by run and iteration.
         rescue_interrupted=False, # If True, radii whose previous execution was interrupted in the scratch folder (restart + tag files present, identical input) are continued in place instead of wiped and re-run (codes that declare `rescue_spec`, e.g. CGYRO)
     ):
 
@@ -1004,119 +986,15 @@ class mitim_simulation:
         the extra case of a radius whose element finished early (kwargs_organize["extra_points"]). None: no extras.'''
         return None
 
+    def _extra_points_handed_over(self):
+        '''Extra ledger a detached submission starts with: what an earlier submission of the same work handed
+        over to it (CGYRO array-mode extra cases). Empty for codes without extra points.'''
+        return {}
+
     def _rescue_interrupted_runs(self, kwargs_run, folders, folders_red, input_file):
-        '''
-        Continue, in place, radial runs that a previous execution left unfinished in
-        the scratch folder (driver killed, allocation expired). Enabled by
-        run(rescue_interrupted=True) for codes declaring `run_specifications["rescue_spec"]`:
-            {"required": [files that must exist, e.g. restart blob + tag],
-             "progress_file": file holding the time the code will resume from,
-             "progress_line": its 1-based line number (None = last line); first token is read,
-             "time_key": input-file key holding the run length (e.g. "MAX_TIME"),
-             "checksum_ignore": input-file key prefixes excluded from the identity md5
-                (optional, defaults to [time_key]; list every key `after_trim` rewrites,
-                otherwise the next rescue of the same folder fails the identity check),
-             "after_trim": optional callable (text, remaining) -> (text, log_note) applied
-                to the staged input after the time_key rewrite, for keys whose value must
-                follow the trimmed run length (CGYRO: RESTART_STEP),
-             "report_files": files whose sizes are logged for forensics (optional),
-             "keep_staged": staged files a continued radius still receives (optional; CGYRO: the
-                cost-guard files, which a launch made before the guard existed left no copy of)}
-        A rho sub-folder is rescued only if the required files are there and its
-        input file is byte-identical (md5) to the one just generated, so a changed
-        namelist, preset or gradient never continues a stale run. Rescued folders
-        are kept across the scratch wipe (mitim_job.preserve_subfolders) and receive
-        no staged restart file, so the code's own continuation logic takes over
-        (CGYRO: restart + out.cgyro.tag -> restart_flag=1, t continues). Codes take
-        `time_key` as a number of steps to ADD from the restart point (CGYRO:
-        n_time = MAX_TIME/DELTA_T), so for rescued radii that key is rewritten in the
-        staged input to the remaining time (original minus the resume time) and
-        excluded from the identity md5. The resume time must be the one the code
-        restarts from (CGYRO: t_current in out.cgyro.tag, second line), NOT the last
-        printed time: the restart blob predates the last output by up to one restart
-        interval, and counting from the wrong point over- or under-shoots the target.
-        Everything else is staged and run as usual.
-
-        A sub-folder whose run already ENDED there (the code's completion marker, e.g. CGYRO's
-        EXIT line or mitim_budget.tag) passes the same identity check but is not run again: in
-        bash mode results come back only when the whole evaluation ends, so a driver killed
-        after some radii finished leaves them finished in scratch only. Such folders are kept
-        across the wipe like the rescued ones and returned, so `_run` launches the others and
-        retrieves them all.
-        Returns the scratch-relative folders that ended.
-        '''
-        spec = self.run_specifications.get("rescue_spec")
-        self.simulation_job.preserve_subfolders = []
-        self._finished_in_scratch = []
-        if not (kwargs_run.get("rescue_interrupted", False) and spec):
-            return []
-        if getattr(self.simulation_job, "run_in_place", False):
-            print("\t- rescue_interrupted requested but the run is in-place (no scratch folder): nothing to rescue", typeMsg="i")
-            return []
-
-        time_key = spec.get("time_key")
-        ignore_prefixes = list(spec.get("checksum_ignore") or ([time_key] if time_key else []))
-        completion = CompletionSpec.from_run_specifications(self.run_specifications)
-        found = self.simulation_job.probe_interrupted_runs(
-            folders_red, spec.get("required", []), input_file,
-            progress_file=spec.get("progress_file"), progress_line=spec.get("progress_line"),
-            checksum_ignore_prefix=ignore_prefixes, report_files=spec.get("report_files"),
-            completion=None if completion is None else (completion.marker_file, completion.marker_text, completion.alt_file),
-        )
-        if not found:
-            return []
-
-        import hashlib, re
-        rescued, finished = [], []
-        for folder_sim_this, rel in zip(folders, folders_red):
-            if rel not in found:
-                continue
-            md5_remote, progress, report, ended = found[rel]
-            text = (folder_sim_this / input_file).read_text()
-            kept = "".join(l for l in text.splitlines(keepends=True) if not any(l.startswith(p) for p in ignore_prefixes))
-            if hashlib.md5(kept.encode()).hexdigest() != md5_remote:
-                print(f"\t- [rescue] {rel}: {'finished' if ended else 'interrupted'} run found but its {input_file} differs from the new one; discarding it", typeMsg="w")
-                continue
-            if ended:
-                # Staged restarts would overwrite the finished run's own files on extraction
-                for f in folder_sim_this.iterdir():
-                    if f.name != input_file:
-                        f.unlink()
-                finished.append(rel)
-                print(f"\t- [rescue] {rel}: run already finished in scratch (t={progress}); not relaunched, collected with the others [{report}]", typeMsg="i")
-                continue
-            # Without a resume time the trim below cannot happen and the radius would run
-            # the full time_key again on top of the restart point, so it is not rescued
-            try:
-                done = float(progress)
-            except (TypeError, ValueError):
-                print(f"\t- [rescue] {rel}: interrupted run found but no resume time could be read ({progress!r}); discarding it", typeMsg="w")
-                continue
-            # Keep only the input file locally (plus what the code declares safe to send again):
-            # staged restarts would overwrite the orphan's own (more advanced) restart on extraction
-            keep_staged = {input_file, *spec.get("keep_staged", [])}
-            for f in folder_sim_this.iterdir():
-                if f.name not in keep_staged:
-                    f.unlink()
-            # Trim the run length to what is left (the code counts steps from the restart point)
-            remaining_msg = ""
-            m = re.search(rf"^({time_key}\s*=\s*)(\S+)", text, flags=re.M) if time_key else None
-            if m is not None:
-                total = float(m.group(2))
-                remaining = max(total - done, 1.0)
-                text = text[:m.start(2)] + f"{remaining:.5E}" + text[m.end(2):]
-                remaining_msg = f", {time_key} {total:g} -> {remaining:g} remaining"
-                after_trim = spec.get("after_trim")
-                if after_trim is not None:
-                    text, note = after_trim(text, remaining)
-                    remaining_msg += note
-                (folder_sim_this / input_file).write_text(text)
-            rescued.append(rel)
-            print(f"\t- [rescue] {rel}: continuing interrupted run in place (resuming from t={progress}{remaining_msg}) [{report}]", typeMsg="i")
-
-        self.simulation_job.preserve_subfolders = rescued + finished
-        self._finished_in_scratch = finished
-        return finished
+        '''Continue in place the radii a previous execution left unfinished in scratch; see gk_control.rescue.rescue_interrupted_runs.'''
+        from mitim_tools.simulation_tools.gk_control.rescue import rescue_interrupted_runs
+        return rescue_interrupted_runs(self, kwargs_run, folders, folders_red, input_file)
 
     def _run(
         self,
@@ -1187,7 +1065,7 @@ class mitim_simulation:
             input_file=self.run_specifications.get('input_file', 'input.tglf'),
             code_call=self.run_specifications.get('code_call', None),
             name=f"{code}_{self.nameRunid}{kwargs_run.get('extra_name', '')}",
-            # Slurm --job-name suffix ('_sim' by default, '_ev{N}' for PORTALS)
+            # Slurm --job-name suffix ('_sim' by default, '_<run folder>_ev{N}' for PORTALS)
             job_name_suffix=kwargs_run.get('job_name_suffix', '_sim'),
             launch_slurm=kwargs_run.get("launchSlurm", True),
             allocation=allocation,
@@ -1260,8 +1138,11 @@ class mitim_simulation:
         '''
         machineSettings = FARMINGtools.mitim_job.grab_machine_settings(settings.code)
 
+        # Launched through SLURM, the code gets its own allocation, so the driver's limits do not
+        # apply. Any non-empty slurm block counts (same rule as SLURMtools.resolve): Perlmutter
+        # selects nodes with qos/constraint and names no partition.
         if (machineSettings["machine"] != "local") or \
-            (settings.launch_slurm and ("partition" in self.simulation_job.machineSettings["slurm"])):
+            (settings.launch_slurm and bool(self.simulation_job.machineSettings.get("slurm"))):
             return machineSettings
 
         ntasks = os.environ.get('SLURM_NTASKS')
@@ -1348,8 +1229,8 @@ class mitim_simulation:
         hooks = self._extra_point_hooks(settings.resources_per_call) if (script.hosts and script.folders) else None
         if hooks is None:
             return
-        from mitim_tools.simulation_tools.utils import SCHEDULERtools
-        self._scheduler_to_attach = SCHEDULERtools.InAllocationScheduler(
+        from mitim_tools.simulation_tools.gk_control.extra_points import InAllocationScheduler
+        self._scheduler_to_attach = InAllocationScheduler(
             script.folder_bodies(), script.hosts, script.max_parallel,
             completion_marker=self.run_specifications.get("completion_marker"), **hooks)
 
@@ -1363,6 +1244,9 @@ class mitim_simulation:
         )
         self.simulation_job.scheduler = getattr(self, "_scheduler_to_attach", None)
         self._scheduler_to_attach = None
+        # allocation qos_cap / fallback_qos: every sbatch of this submission (array, rescues, extras) checks the cap
+        if settings.allocation.get("qos_cap") is not None:
+            self.simulation_job.qos_cap = {"cap": int(settings.allocation["qos_cap"]), "fallback": settings.allocation["fallback_qos"]}
 
         # `files_we_must_check` is what check_all_received flags as missing (triggers the
         # retry). The tarball additionally carries the optional files, so they come down if
@@ -1432,12 +1316,25 @@ class mitim_simulation:
                 "run_type='normal' to run it as a bash script and wait."
             )
 
+        # Read before run(): a scratch wipe going in consumes preserve_subfolders
+        handed_over = self._extra_points_handed_over()
+
         self.simulation_job.run(
             waitYN=False,
             check_if_files_received=False,
             removeScratchFolders=False,
             removeScratchFolders_goingIn=settings.cold_start,
         )
+
+        # A refused sbatch (allocation cost check, bad QOS) is an error now, with sbatch's own words; no
+        # record is written, so the next process submits fresh. An sbatch that went through but whose
+        # jobid was not read back keeps a jobid-less record: check() finds it by name AND submit folder.
+        refusal = getattr(self.simulation_job, "sbatch_refusal", None)
+        if self.simulation_job.jobid is None and refusal:
+            raise RuntimeError(
+                f"[MITIM] sbatch refused the {settings.code.upper()} submission (job name "
+                f"{self.simulation_job._squeue_job_name()}):\n\t{refusal}"
+            )
 
         self.kwargs_organize = {
             "code_executor": code_executor,
@@ -1451,7 +1348,7 @@ class mitim_simulation:
             # slurm_array + load_balance 'extra_points': launch bodies of the extra cases (None otherwise)
             "extra_points": getattr(script, "extra_points", None),
         }
-        self._extra_ledger = {}
+        self._extra_ledger = handed_over
 
         self.slurm_output = "slurm_output.dat"
 
@@ -1468,19 +1365,22 @@ class mitim_simulation:
             self._base_subfolder = settings.base_subfolder
             self._write_submission_metadata(self._base_subfolder)
 
-    def _child_jobids(self):
+    def _child_jobids(self, include_handed_over=False):
         '''
         Deduplicated jobids this submission spawned next to its own job (insertion order): the
         rescue jobs of the auto-resubmit ledger, then the extra cases still in flight (load_balance
         'extra_points' in array mode). Empty until a radius was resubmitted or given an extra.
+        include_handed_over: also the extra cases left running for the next submission (HANDED_OVER);
+        the poll never waits on those, but delete() cancels them.
         '''
+        live = ("RUNNING", "STOPPING") + (("HANDED_OVER",) if include_handed_over else ())
         seen = []
         for entry in (getattr(self, "_resubmit_ledger", None) or {}).values():
             for jid in entry.get("child_jobids", []):
                 if jid not in seen:
                     seen.append(jid)
         for entry in (getattr(self, "_extra_ledger", None) or {}).values():
-            if entry.get("status") in ("RUNNING", "STOPPING") and entry.get("jobid") not in seen:
+            if entry.get("status") in live and entry.get("jobid") not in seen:
                 seen.append(entry["jobid"])
         return seen
 
@@ -1655,9 +1555,9 @@ class mitim_simulation:
 
     def delete(self):
         '''
-        Cancel the submitted job. The scratch folder is left alone: it holds the only record
-        of what the job did, and it is still the running job's working directory until the
-        scancel lands.
+        Cancel the submitted job and the rescue / extra-case jobs it spawned. The scratch folder is
+        left alone: it holds the only record of what the job did, and it is still the running job's
+        working directory until the scancel lands.
         '''
         print("\n\n\t- Deleting job")
 
@@ -1665,8 +1565,15 @@ class mitim_simulation:
         launch_slurm = job.launchSlurm
         job.launchSlurm = False   # the scancel is a plain shell command, not a job to queue
         try:
+            # never by name alone: another run's job of the same name (cgyro_ev<N>) would be cancelled too.
+            # The rescue / extra-case jobs this submission spawned go with it (from mitim_7's job-names work)
+            children = "".join(f" {jid}" for jid in self._child_jobids(include_handed_over=True))
+            jobid = job.jobid or getattr(job, "jobid_found", None)
+            command = (f"scancel {jobid}{children}" if jobid is not None
+                       else f'{job._jobs_by_folder_bash()}; _c="$([ "$_lk_rc" = 0 ] && echo "${{_ids//,/ }}"){children}"; '
+                            f'[ -n "${{_c// /}}" ] && scancel $_c || true')
             job.prep(
-                f"scancel -n {job._squeue_job_name()}",
+                command,
                 label_log_files="_finish",
             )
             job.run(removeScratchFolders=False)
@@ -2488,19 +2395,6 @@ def inputToVariable(folder, rhos, file='input.tglf'):
 
     return inputFilesTGLF
 
-def radius_finished(folder, rho, completion_marker, completion_alt_file=None):
-    """
-    Whether the run stored in `folder` as `<file>_<rho>` ran to completion.
-
-    completion_marker: (file, substring); `<file>_<rho>` must CONTAIN the substring. For
-    CGYRO that is ('out.cgyro.info', 'EXIT'), a line written only on an orderly finish
-    (cgyro_final_kernel.F90) - a crash writes 'ERROR: (CGYRO)' and a signal writes nothing.
-    completion_alt_file: file whose presence (`<file>_<rho>`) also counts as finished,
-    e.g. the 'mitim_budget.tag' left when CGYRO's wall-budget watchdog stops a run on purpose.
-
-    Returns (finished, marker_path).
-    """
-    return CompletionSpec.coerce(completion_marker, alt_file=completion_alt_file).finished(folder, rho)
 
 
 def cold_start_checker(

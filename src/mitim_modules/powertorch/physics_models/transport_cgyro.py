@@ -4,10 +4,11 @@ from pathlib import Path
 import numpy as np
 from mitim_tools.gacode_tools import CGYROtools
 from mitim_tools.simulation_tools import SIMtools
+from mitim_tools.simulation_tools.gk_control import markers
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.powertorch.physics_models.utils.cgyro_extra_points import ExtraPointHarvester
 from mitim_modules.powertorch.physics_models.utils.cgyro_restart import RestartChain, RestartPlan
-from mitim_modules.powertorch.physics_models.utils.gk_submission import GKSubmission
+from mitim_tools.simulation_tools.gk_control.submission import GKSubmission, gk_job_name_suffix
 from mitim_modules.powertorch.physics_models.utils.per_iter_overrides import PerIterOverrides
 
 
@@ -81,6 +82,33 @@ def _check_exchange_moment(outputs, labels):
 def _averaging_records(outputs):
     '''Per-rho GKaverager.to_dict() (window, flag, provenance) of the read outputs, for the fluxes JSON.'''
     return [o.averaging.to_dict() for o in outputs] if all(hasattr(o, 'averaging') for o in outputs) else None
+
+
+def _cost_records(outputs):
+    '''
+    Per-rho wall cost of the read CGYRO traces, for the fluxes JSON (CGYROutils.harvest_run_fields; None
+    for outputs without out.cgyro.timing, e.g. GX). NaN fields are written as null.
+      cost_s_per_acs      [s per a/cs] median TOTAL of out.cgyro.timing over the output spacing
+      wall_s              [s] setup + every TOTAL row of the trace
+      n_nodes             distinct hosts of the ranks (out.cgyro.hosts); a shared node counts whole
+      node_h              [node-h] wall_s x n_nodes / 3600
+      node_h_per_900acs   [node-h] cost_s_per_acs x 900 x n_nodes / 3600
+      t_last              [a/cs] last time of the trace
+    plus guard_stop, budget_stop and reached_max_time as in harvest_run_fields.
+    '''
+    from mitim_tools.gacode_tools.utils.CGYROutils import harvest_run_fields
+
+    def record(o):
+        f = harvest_run_fields(o)
+        t = getattr(o, 't', None)
+        rec = {'cost_s_per_acs': f['cost_s_per_acs'], 'wall_s': f['wall_s'], 'n_nodes': f['n_nodes'],
+               'node_h': f['wall_s'] * f['n_nodes'] / 3600.0,
+               'node_h_per_900acs': f['cost_s_per_acs'] * 900.0 * f['n_nodes'] / 3600.0,
+               't_last': float(t[-1]) if t is not None and len(t) else np.nan,
+               'guard_stop': f['guard_stop'], 'budget_stop': f['budget_stop'], 'reached_max_time': f['reached_max_time']}
+        return {k: (None if np.isnan(v) else float(v)) for k, v in rec.items()}
+
+    return [record(o) for o in outputs] if all(hasattr(o, 'timing_total') for o in outputs) else None
 
 
 def _flux_arrays(outputs_per_plasma, mean_attr, std_attr, per_species, impurity_position):
@@ -191,6 +219,8 @@ class gyrokinetic_model:
             "stall_init_kill_seconds":    run_options.get("stall_init_kill_seconds", 1800),
             "stall_running_kill_seconds": run_options.get("stall_running_kill_seconds", 1800),
             "max_resubmits_per_rho":      run_options.get("max_resubmits_per_rho", 1),
+            # In-link continuation of wall-hit radii (StallRescuer): only with rescue_interrupted
+            "max_continuations_per_rho":  run_options.get("max_continuations_per_rho", 2) if run_options.get("rescue_interrupted", False) else 0,
         }
 
         forwardable = _forwardable_kwargs(
@@ -261,12 +291,32 @@ class gyrokinetic_model:
         ctx.run_kwargs["cost_guard"] = {**options, "targets_GB": targets}
 
     def _gk_report_guard_stops(self, ctx):
-        '''Say which radii of this evaluation the cost guard stopped: their fluxes come from a short trace.'''
-        for rho in ctx.rho_locations:
-            tag = self.folder / ctx.subfolder_name / f"mitim_budget.tag_{rho:.4f}"
-            if tag.is_file() and CGYROtools.CostGuard.stopped(tag.read_text()):
-                print(f"\t- rho = {rho:.4f} was stopped by cost_guard ({tag.read_text().strip()}); "
-                      "its fluxes are whatever the averaging makes of the shorter trace", typeMsg='w')
+        '''
+        Say which radii of this evaluation the cost guard stopped (also a Cash-Karp abort it accepted):
+        their fluxes come from a short trace. With cost_guard.std_floor > 0 every turbulent flux std of
+        such a radius becomes at least std_floor x |flux| (GB units, before any conversion), so the
+        surrogates take the point for its direction only.
+        '''
+        std_floor = float((ctx.run_kwargs.get("cost_guard") or {}).get("std_floor") or 0.0)
+        for i, rho in enumerate(ctx.rho_locations):
+            tag = self.folder / ctx.subfolder_name / f"{markers.BUDGET_TAG}_{rho:.4f}"
+            if not (tag.is_file() and CGYROtools.CostGuard.stopped(tag.read_text())):
+                continue
+            print(f"\t- rho = {rho:.4f} was stopped by cost_guard ({tag.read_text().strip()}); "
+                  "its fluxes are whatever the averaging makes of the shorter trace"
+                  + (f", with std >= {std_floor:g} x |flux|" if std_floor > 0 else ""), typeMsg='w')
+            if std_floor > 0:
+                self._gk_floor_stds(i, std_floor)
+
+    def _gk_floor_stds(self, i, std_floor):
+        '''Raise the std of every turbulent flux of radius index i to std_floor x |flux| (single plasma).'''
+        for key in [spec[0] for spec in _FLUX_SPEC + (_EXCHANGE_SPEC,)]:
+            mean, std = getattr(self, f"{key}_turb", None), getattr(self, f"{key}_turb_stds", None)
+            if mean is None or std is None:
+                continue
+            std = np.array(std, dtype=float)
+            std[i] = CGYROtools.CostGuard.floored_std(mean[i], std[i], std_floor)
+            setattr(self, f"{key}_turb_stds", std)
 
     def _gk_prepare(self, ctx, gk_class):
         '''
@@ -334,6 +384,8 @@ class gyrokinetic_model:
             organize_label="per-(plasma,rho) folders" if ctx.batched else "per-rho folders",
         )
 
+        # array-mode extra cases may be handed to the next driver only if it re-attaches (ArrayExtraPoints)
+        gk._reattach_enabled = ctx.check_existing_runs
         if not ctx.unpickled:
             outcome = ctx.submission.try_reattach(
                 on_fresh_fallback=lambda: ctx.chain.rerun_for_fresh_submission(gk, ctx.run_kwargs, ctx.turb_target_GB),
@@ -392,6 +444,8 @@ class gyrokinetic_model:
 
         averaging = [_averaging_records(outputs) for outputs in outputs_per_plasma]
         self.averaging_info_turb = averaging if ctx.batched else averaging[0]
+        cost = [_cost_records(outputs) for outputs in outputs_per_plasma]
+        self.cost_info_turb = cost if ctx.batched else cost[0]
 
     # ------------------------------------------------------------------------------------------
     # Pieces of a stage
@@ -401,7 +455,7 @@ class gyrokinetic_model:
         return ExtraPointHarvester(self, ctx.code, ctx.rho_locations, ctx.run_kwargs, ctx.read_options)
 
     def _gk_submit(self, ctx, gk):
-        job_name_suffix = f"_ev{ctx.evaluation_number}"
+        job_name_suffix = gk_job_name_suffix(self.folder, ctx.evaluation_number)
         if ctx.batched:
             gk.prep(ctx.list_of_states[0], self.folder, cold_start=ctx.cold_start)
             ctx.plasma_labels = gk.run_over_plasmas(

@@ -1,17 +1,23 @@
 """
 Cost guard of one running CGYRO radius (namelist transport.options.cgyro.run.cost_guard).
 
-templates/cgyro_watchdog.sh runs it on the compute node as `python3 mitim_guard.py <radius folder>`,
+templates/gk_control/cgyro_watchdog.sh runs it on the compute node as `python3 mitim_guard.py <radius folder>`,
 next to the mitim_guard.json that CGYROtools.CostGuard staged (thresholds + turbulent targets of this
 radius). Standard library only, Python >= 3.6. It prints ONE line and never raises:
 
-    STOP t=.. cost=.. ratio=.. remaining=..    the radius is not worth its wall time
+    STOP t=.. cost=.. remaining=.. ratio=.. late/early=..    the radius is not worth its wall time
     WAIT ...                                   anything else, including "cannot tell"
+
+With `--abort` (run once, after CGYRO ended on the Cash-Karp abort) it judges whether that abort
+belongs to an over-driven radius: STOP t=.. ratio=.. when t >= floor_time and Qe or Qi, averaged
+over the same [max(floor_time, t/2), t], is >= abort_flux_ratio x target; WAIT otherwise.
 
 Units and conventions (the same ones CGYROutils.CGYROoutput uses):
     t          [a/cs]   first column of out.cgyro.time
     cost       [s per a/cs] mean TOTAL of the out.cgyro.timing rows of the window, divided by the
                output spacing of t (so it does not assume one output per a/cs)
+    flux ratio heat fluxes averaged over [max(floor_time, t/2), t], not over the short window, so
+               a single burst cannot make the ratio (flux_outputs)
     fluxes     gyro-Bohm units as CGYRO writes them in bin.cgyro.ky_flux, summed over fields
                (phi, A_par, B_par) and ky; Qe is the LAST species, Qi the sum of all the others
     targets    turbulent targets in the same GB units: total target minus neoclassical
@@ -136,6 +142,17 @@ def heat_fluxes(folder, nt, nwin):
     return {"QeGB": q_species[-1], "QiGB": sum(q_species[:-1])}
 
 
+def flux_outputs(t, floor_time):
+    '''
+    Number of outputs in [max(floor_time, t_now/2), t_now], the stretch both rules average the heat
+    fluxes over: long enough that one turbulent burst does not set the ratio, and it leaves out the
+    linear overshoot before floor_time and, after an abort, keeps the last outputs of the dt collapse
+    from dominating. Close to the fallback window PORTALS then stores the flux with.
+    '''
+    t_start = max(floor_time, 0.5 * t[-1])
+    return max(1, sum(1 for ti in t if ti >= t_start))
+
+
 def verdict(folder):
     with open(os.path.join(folder, FILE)) as f:
         g = json.load(f)
@@ -164,7 +181,8 @@ def verdict(folder):
         return "WAIT " + status
 
     # Only a flux ABOVE its target counts: far below it at early times may just not have saturated
-    fluxes = heat_fluxes(folder, len(t), nwin)
+    nflux = flux_outputs(t, g["floor_time"])
+    fluxes = heat_fluxes(folder, len(t), nflux)
     ratios = {k: fluxes[k] / target for k, target in g["targets_GB"].items() if k in fluxes and target > 0.0}
     if not ratios:
         return "WAIT " + status + " no positive heat-flux target"
@@ -175,11 +193,58 @@ def verdict(folder):
     stop = (ratios[channel] >= g["flux_ratio"]
             and t_now >= g["floor_time"]
             and (t_now >= g["min_time"] or waived))
+    if stop and g.get("rising_tolerance", 0.1) is not None:
+        growth = late_over_early(folder, len(t), nflux, channel, fluxes[channel])
+        status += " late/early={}".format("NA" if growth is None else "{:.2f}".format(growth))
+        stop = growth is not None and growth <= 1.0 + g.get("rising_tolerance", 0.1)
     return ("STOP " if stop else "WAIT ") + status
+
+
+def late_over_early(folder, nt, nflux, channel, mean_all):
+    '''
+    Saturation test of the triggering flux: mean of the 2nd half of the flux_outputs stretch over the
+    mean of its 1st half (None when the stretch is too short to split or the 1st half is not
+    positive). A ratio stop waits while the flux is still rising: it may not have saturated, and the
+    ratio would only grow. The 1st-half mean is recovered from the whole-stretch mean.
+    '''
+    nlate = nflux // 2
+    if nlate < 1:
+        return None
+    late = heat_fluxes(folder, nt, nlate)[channel]
+    early = (nflux * mean_all - nlate * late) / (nflux - nlate)
+    return late / early if early > 0.0 else None
+
+
+def abort_verdict(folder):
+    '''
+    The Cash-Karp abort of CGYRO's adaptive integrator (dt collapses until the step iteration limit)
+    ends a radius driven far above its target. No cost clause: the cost of the last outputs only
+    measures the collapse. The flux is averaged over flux_outputs, as in verdict.
+    '''
+    with open(os.path.join(folder, FILE)) as f:
+        g = json.load(f)
+    if not g.get("accept_abort", True):
+        return "WAIT accept_abort is off"
+
+    t = simulated_times(folder)
+    if not t:
+        return "WAIT no output rows"
+    t_now = t[-1]
+    if t_now < g["floor_time"]:
+        return "WAIT t={:g} abort before floor_time".format(t_now)
+
+    fluxes = heat_fluxes(folder, len(t), flux_outputs(t, g["floor_time"]))
+    ratios = {k: fluxes[k] / target for k, target in g["targets_GB"].items() if k in fluxes and target > 0.0}
+    if not ratios:
+        return "WAIT t={:g} no positive heat-flux target".format(t_now)
+    channel = max(ratios, key=ratios.get)
+    status = "t={:g} ratio={:.1f}x_{}".format(t_now, ratios[channel], channel)
+    threshold = g.get("abort_flux_ratio") or g["flux_ratio"]
+    return ("STOP " if ratios[channel] >= threshold else "WAIT ") + status
 
 
 if __name__ == "__main__":
     try:
-        print(verdict(sys.argv[1]))
+        print(abort_verdict(sys.argv[1]) if "--abort" in sys.argv[2:] else verdict(sys.argv[1]))
     except Exception as e:
         print("WAIT guard error: {}".format(e))

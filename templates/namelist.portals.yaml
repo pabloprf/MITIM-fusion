@@ -504,7 +504,10 @@ transport:
         # job recorded in <base_cgyro>/cgyro_submission.json instead of resubmitting.
         check_existing_runs: False
 
-        # Polling cadence for .check() when run_type=="submit" (minutes)
+        # Polling cadence for .check() when run_type=="submit" (minutes). A driver that runs inside a SLURM job and
+        # has less than every_n_minutes + 5 min of wall left while the job is live writes
+        # <run>/Outputs/MITIM_DRIVER_WALL_UNFINISHED.json, for the launcher to resubmit it (check_existing_runs: True);
+        # the next driver removes it when an evaluation of the run is read.
         every_n_minutes: 10
 
         # SSH connect retry behaviour for the mitim_job that owns the cluster
@@ -520,6 +523,12 @@ transport:
         # instead of starting over; radii that already finished there are just collected.
         # Needs the scratch folder to survive between launches.
         rescue_interrupted: True
+        # With rescue_interrupted, an array element that ends TIMEOUT/PREEMPTED/NODE_FAIL after
+        # writing a restart is also continued in place within the same submission: as soon as its
+        # radius goes stale (or the array is gone), the poll trims its input.cgyro so the run ends
+        # at its original t_end and resubmits it alone (out.cgyro.tag kept: t continues). At most
+        # this many per rho and evaluation, counted apart from max_resubmits_per_rho.
+        max_continuations_per_rho: 2
 
         # Auto stall-detect-and-resubmit. The custom checker classifies each
         # rho on every poll; when a rho has been STALLED (no out.cgyro.timing
@@ -574,6 +583,12 @@ transport:
         #                        (sbatch --array=...%N); the rest queue behind them.
         #   exclusive          : force sbatch --exclusive. Omit/null to defer to
         #                        the machine config's slurm.exclusive.
+        #   qos_cap, fallback_qos : (optional, both or neither) per-user job cap of the machine
+        #                        config's slurm.qos (e.g. 5 on Perlmutter premium), which sbatch only
+        #                        reveals by refusing. Before every sbatch of the evaluation (array,
+        #                        rescues, extra cases) MITIM counts the user's jobs in that qos
+        #                        (squeue -r: array elements one by one) and, if count + new jobs >
+        #                        qos_cap, submits with --qos=<fallback_qos>. Unset: no check.
 
         # Radii finish at different times (bash mode: the driver waits for the slowest one while
         # the other nodes of the allocation idle; slurm_array: a finished element gives its node
@@ -608,8 +623,19 @@ transport:
         #                               max_concurrent_calls; it is tracked in cgyro_submission.json,
         #                               so a re-attaching driver (check_existing_runs) keeps it,
         #                               and cancelled 30 min after the stop request if still running.
+        #                               A main radius that hits its wall clock after a restart write
+        #                               (with rescue_interrupted and check_existing_runs) is continued
+        #                               in place by the next driver, which keeps its extras running
+        #                               and stops them only when that radius really ends.
         #                               Not available with run_type "normal" on a slurm array (the
         #                               driver does not poll) nor in a standard slurm job.
+        #                               Array mode yields to the mains (extra_points sub-keys):
+        #                                 nice: extras get sbatch --nice=<nice> (null: none);
+        #                                 yield_to_pending_mains: no extra is submitted while
+        #                                   squeue shows a main or rescue CGYRO job of ANY of the
+        #                                   user's runs waiting for nodes;
+        #                                 rescues_first: nor while a rescue of this evaluation
+        #                                   is pending. No squeue answer: no extra.
         #   min_time is the shared physics floor: the shortest saturated run you accept.
         load_balance:
           strategy: null
@@ -617,18 +643,27 @@ transport:
           min_time: 300
           extra_points:
             perturbation: 0.15
+            nice: 100
+            yield_to_pending_mains: true
+            rescues_first: true
 
         # Stop a radius that is burning wall time far from its target, as a user watching the run
         # would: its flux already says which way the next step goes, and its magnitude would not be
-        # trusted anyway. The watchdog around every radial call checks, every 2 minutes, the last
-        # `window` a/cs of the run and stops CGYRO at once when ALL of these hold:
+        # trusted anyway. The watchdog around every radial call checks the run every 2 minutes and
+        # stops CGYRO at once when ALL of these hold:
         #   - cost >= seconds_per_acs  [wall seconds per a/cs: TOTAL of out.cgyro.timing over the
         #     output spacing of out.cgyro.time]. The last quarter of the window must be that slow
         #     too, so a radius whose cost is coming back down is left alone.
-        #   - Qe or Qi (turbulent, GB units, all fields) >= flux_ratio x its turbulent target (total
+        #     The cost is measured over the last `window` a/cs. seconds_per_acs is one number or one
+        #     per machine class, {gpu: 100, cpu: 1000}; the class is the one of the machine CGYRO runs
+        #     on (config_user.json, gpus_per_node 0 -> cpu).
+        #   - Qe or Qi (turbulent, GB units, all fields), averaged over [max(floor_time, t/2), t] so
+        #     that one turbulent burst cannot set it, >= flux_ratio x its turbulent target (total
         #     target minus neoclassical, as in restart_from_cases "best"). Only ABOVE the target: a
         #     flux far below it at early times may just not have saturated. Particle flux is not
         #     used (its target is near zero).
+        #   - that flux is no longer rising: its mean over the 2nd half of [max(floor_time, t/2), t]
+        #     is <= (1 + rising_tolerance) x its mean over the 1st half (null: no saturation test).
         #   - t >= min_time [a/cs]; waived when the wall time still needed to reach the end of the
         #     run at the current cost is >= waive_min_time_hours.
         #   - t >= floor_time [a/cs], which is never waived (keeps the linear overshoot out).
@@ -639,14 +674,28 @@ transport:
         # than the end of the trace. Independent of load_balance.min_time. Works in every
         # submission mode; needs python3 on the compute node (without it nothing is stopped) and
         # is not available in the batched multi-plasma dispatch.
+        # accept_abort: a radius over-driven this far often dies before min_time with CGYRO's
+        #   "Cash-Carp step exceeded max iteration count" (dt collapses). With accept_abort, a radius
+        #   that ends on that abort with t >= floor_time and Qe or Qi, averaged over the same
+        #   [max(floor_time, t/2), t], >= abort_flux_ratio x target (null = flux_ratio) is accepted as a guard
+        #   stop (tag "GUARD ... reason=cash_karp_abort"): no rescue, no new launch. An abort before
+        #   floor_time or close to target is a numerics problem and stays an error.
+        # std_floor: for every guard-stopped radius (abort or not), each turbulent flux std is raised
+        #   to at least std_floor x |flux| (1 sigma, fraction of the flux itself), so the surrogates
+        #   treat the point as direction-only. Simple relax uses the mean and is unaffected.
+        #   0 or null keeps the standard error of the mean over the short trace.
         cost_guard:
           enabled: false
-          seconds_per_acs: 100
+          seconds_per_acs: {gpu: 100, cpu: 1000}
           flux_ratio: 5
           min_time: 250
           waive_min_time_hours: 12
-          floor_time: 50
+          floor_time: 150
           window: 20
+          rising_tolerance: 0.1
+          accept_abort: true
+          abort_flux_ratio: null
+          std_floor: 0.5
 
       read:
         # tmin: left edge of the signal-analysis window.
@@ -761,7 +810,7 @@ transport:
         #   - The warm-started gxplasma.out.nc starts at t_saved, not at 0 as CGYRO's: a negative
         #     tmin (see read) picks the same window as for CGYRO, an absolute tmin >= 0 does not.
         #   - A preempted array element that SLURM requeues resumes from its own checkpoint and
-        #     runs only the remaining time (templates/gx_requeue_resume.sh), whatever this knob says.
+        #     runs only the remaining time (templates/gk_control/gx_requeue_resume.sh), whatever this knob says.
         restart_from_cases: null
 
         # If True (and run_type=="submit"), a restarted PORTALS driver re-attaches to the slurm job

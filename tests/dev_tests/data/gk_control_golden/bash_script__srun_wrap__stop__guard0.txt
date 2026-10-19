@@ -1,0 +1,267 @@
+#!/usr/bin/env bash
+set -m
+max_parallel_execution=2
+
+folders=(
+    "base_cgyro/rho_0.5500"
+    "base_cgyro/rho_0.6712"
+)
+
+MITIM_HOSTS=( node01 node02 )
+MITIM_CALL=0
+
+for folder in "${folders[@]}"; do
+    MITIM_CALL=$((MITIM_CALL+1))
+    {
+# A filesystem outage during a restart write left an empty out.cgyro.tag and a bin.cgyro.restart with a zeroed header,
+# and the next launch crashed on them. CGYRO writes a checkpoint as: blob to bin.cgyro.restart.part, header into it,
+# bin.cgyro.restart -> bin.cgyro.restart.old, .part -> bin.cgyro.restart, THEN out.cgyro.tag (i_current, t_current).
+# So bin.cgyro.restart.old is the previous checkpoint, RESTART_STEP outputs earlier, and a tag write that failed leaves
+# the tag of .old as the newest one the watchdog saw (.mitim_tag_last; .mitim_tag_prev is the one before). Before
+# anything reads the tag, check both and fall back:
+#   a) bad (or missing) blob, valid .old: .old goes back in place (bad blob kept as bin.cgyro.restart.bad) with ITS tag,
+#      the newest history entry older than the bad write's tag (any entry when that tag never landed), else rebuilt
+#      RESTART_STEP outputs before the bad write from out.cgyro.time;
+#   b) valid blob, bad tag: the tag of this blob never landed. With a valid .old and history, the pair .old +
+#      .mitim_tag_last is exact (one restart period of progress lost); else the tag is rebuilt one RESTART_STEP after
+#      .mitim_tag_last, or at the newest restart point out.cgyro.time reached, from that row of out.cgyro.time;
+#   c) nothing to rebuild from: no tag, so CGYRO warm-starts at t=0 from a valid blob, or cold-starts without one.
+# Valid blob: >= 1024 bytes (the header) opening with a CGYRO restart magic (v3 140974129, v2 140906808 / 140916753;
+# int32, native = little endian on the nodes). Valid tag: line 1 a positive integer, line 2 a number; a rebuilt tag has
+# 2 lines (CGYRO reads delta_t, line 3, only if present). A repaired tag restarts the history. Restart points are
+# counted from the launch start (.mitim_t0 of the launch that wrote them, the nearest out.cgyro.time row). Valid files,
+# and a launch with neither tag nor blob, are left alone. Every action is one "MITIM restart_validate:" line on stderr.
+# _rv_apply=0 (interrupted-run probe) changes nothing and prints the time the launch would resume from (empty: cold start).
+_rv_dir="/scratch/test/"$folder""; _rv_apply=1; _rv_t=0
+_rv_tag="$_rv_dir/out.cgyro.tag"; _rv_rs="$_rv_dir/bin.cgyro.restart"; _rv_last="$_rv_dir/.mitim_tag_last"; _rv_prev="$_rv_dir/.mitim_tag_prev"
+_rv_tag_ok() { awk 'NR==1 {i = ($1 ~ /^[0-9]+$/ && $1+0 > 0)} NR==2 {t = ($1 ~ /^[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?$/)} END {exit !(i && t)}' "$1" 2>/dev/null; }
+_rv_blob_ok() { [ -f "$1" ] && [ "$(wc -c < "$1" | awk '{print $1+0}')" -ge 1024 ] && case "$(od -An -t d4 -N4 "$1" | awk '{print $1}')" in 140974129|140906808|140916753) ;; *) false ;; esac; }
+_rv_i() { awk 'NR==1 {print $1+0}' "$1"; }
+_rv_row() { awk -v n="$1" 'NF {k++} k==n {print $1; exit}' "$_rv_dir/out.cgyro.time" 2>/dev/null; }
+_rv_log() { [ "$_rv_apply" = 1 ] && echo "MITIM restart_validate: $*" >&2; }
+_rv_run() { [ "$_rv_apply" = 1 ] && "$@"; }
+# the tag, from a history file or rebuilt (output i, time t); the history restarts at it
+_rv_set() {
+    _rv_t=${2:-$(awk 'NR==2 {print $1}' "$1")}
+    if [ "$_rv_apply" = 1 ]; then
+        if [ -n "$2" ]; then printf '%12d\n  %s\n' "$1" "$2" > "$_rv_tag"; else cp "$1" "$_rv_tag"; fi
+        cp "$_rv_tag" "$_rv_last"; rm -f "$_rv_prev"
+    fi
+}
+_rv_unset() { _rv_t=$1; _rv_run rm -f "$_rv_tag" "$_rv_last" "$_rv_prev"; }
+_rv_swap() { [ -f "$_rv_rs" ] && _rv_run mv -f "$_rv_rs" "$_rv_rs.bad"; _rv_run mv -f "$_rv_rs.old" "$_rv_rs"; }
+# newest restart point of the launch that wrote out.cgyro.time: every RESTART_STEP outputs after its start row
+_rv_newest() {
+    awk -v t0="$(cat "$_rv_dir/.mitim_t0" 2>/dev/null)" -v rs="$_rv_step" 'NF {n++; d = $1 - t0; d = d < 0 ? -d : d; if (t0+0 > 0 && (n == 1 || d < b)) {b = d; i0 = n}}
+        END {print (rs > 0 && n > 0) ? i0 + int((n - i0) / rs) * rs : 0}' "$_rv_dir/out.cgyro.time" 2>/dev/null
+}
+# rebuilt tag at output $1 with the time of that row, or (no such row) no tag and the warm start at t=0
+_rv_rebuild() {
+    _rv_r=$( [ "${1:-0}" -gt 0 ] 2>/dev/null && _rv_row "$1")
+    if [ -n "$_rv_r" ]; then _rv_set "$1" "$_rv_r"; _rv_log "$2; tag rebuilt from out.cgyro.time: output $1, t=$_rv_r"
+    else _rv_unset 0; _rv_log "$2; NO TAG could be rebuilt (output ${1:-?}): WARM START AT t=0 from bin.cgyro.restart, simulated time lost"; fi
+}
+if [ -f "$_rv_tag" ] || [ -f "$_rv_rs" ]; then
+    _rv_step=$(awk -F= '{g=$1; gsub(/[ \t]/,"",g)} g=="RESTART_STEP" {v=$2; gsub(/[ \t]/,"",v); print int(v); exit}' "$_rv_dir/input.cgyro" 2>/dev/null)
+    _rv_tv=none; [ -f "$_rv_tag" ] && { _rv_tag_ok "$_rv_tag" && _rv_tv=ok || _rv_tv=bad; }
+    _rv_bv=bad; _rv_blob_ok "$_rv_rs" && _rv_bv=ok
+    if [ "$_rv_bv" = ok ] && [ "$_rv_tv" = ok ]; then
+        _rv_t=$(awk 'NR==2 {print $1}' "$_rv_tag")
+    elif [ "$_rv_bv" = ok ] && [ "$_rv_tv" = none ]; then
+        :
+    elif [ "$_rv_bv" = bad ] && _rv_blob_ok "$_rv_rs.old"; then
+        _rv_msg="bin.cgyro.restart $([ -f "$_rv_rs" ] && echo "has no valid header (kept as bin.cgyro.restart.bad)" || echo "missing"), restored bin.cgyro.restart.old"
+        _rv_swap
+        # the bad write's own tag landed: .old is older than it
+        _rv_lim=$([ "$_rv_tv" = ok ] && _rv_i "$_rv_tag")
+        _rv_h=""
+        for _rv_f in "$_rv_last" "$_rv_prev"; do
+            if _rv_tag_ok "$_rv_f" && { [ -z "$_rv_lim" ] || [ "$(_rv_i "$_rv_f")" -lt "$_rv_lim" ]; }; then _rv_h=$_rv_f; break; fi
+        done
+        if [ -n "$_rv_h" ]; then
+            _rv_hi=$(_rv_i "$_rv_h"); _rv_set "$_rv_h"; _rv_log "$_rv_msg with its tag from ${_rv_h##*/}: output $_rv_hi, t=$_rv_t"
+        else
+            _rv_bad=${_rv_lim:-$(_rv_newest)}
+            _rv_rebuild "$([ "${_rv_step:-0}" -gt 0 ] 2>/dev/null && echo $(( ${_rv_bad:-0} - _rv_step )))" "$_rv_msg (bad write at output ${_rv_bad:-?}, RESTART_STEP ${_rv_step:-?})"
+        fi
+    elif [ "$_rv_bv" = ok ]; then
+        _rv_msg="out.cgyro.tag is not a valid tag"
+        if _rv_blob_ok "$_rv_rs.old" && _rv_tag_ok "$_rv_last"; then
+            _rv_hi=$(_rv_i "$_rv_last"); _rv_swap; _rv_set "$_rv_last"
+            _rv_log "$_rv_msg; its blob's tag never landed: continuing from bin.cgyro.restart.old (newest blob kept as bin.cgyro.restart.bad) with .mitim_tag_last: output $_rv_hi, t=$_rv_t"
+        elif [ "${_rv_step:-0}" -gt 0 ] 2>/dev/null && _rv_tag_ok "$_rv_last"; then
+            _rv_rebuild "$(( $(_rv_i "$_rv_last") + _rv_step ))" "$_rv_msg (one RESTART_STEP $_rv_step after .mitim_tag_last)"
+        elif [ "${_rv_step:-0}" -gt 0 ] 2>/dev/null; then
+            _rv_rebuild "$(_rv_newest)" "$_rv_msg (newest restart point, RESTART_STEP $_rv_step)"
+        else
+            _rv_unset 0; _rv_log "$_rv_msg and nothing to rebuild it from: WARM START AT t=0 from bin.cgyro.restart, simulated time lost"
+        fi
+    else
+        [ -f "$_rv_rs" ] && _rv_run mv -f "$_rv_rs" "$_rv_rs.bad"
+        _rv_unset ""; _rv_log "no valid bin.cgyro.restart or bin.cgyro.restart.old (tag: $_rv_tv): COLD START, out.cgyro.tag removed$([ -f "$_rv_rs.bad" ] && echo ", blob kept as bin.cgyro.restart.bad")"
+    fi
+fi
+[ "$_rv_apply" = 1 ] || echo "$_rv_t"
+touch "/scratch/test/"$folder"/.mitim_run_started"; _t0=$(sed -n 2p "/scratch/test/"$folder"/out.cgyro.tag" 2>/dev/null | awk '{print $1+0}'); echo "${_t0:-0}" > "/scratch/test/"$folder"/.mitim_t0"
+# A SLURM requeue (preemption, node failure) reruns this same script in the same folder: CGYRO resumes
+# from out.cgyro.tag and would add the FULL MAX_TIME again. The first launch of a submission records the
+# time the run must reach; a relaunch under the same job trims MAX_TIME to what is left, rounded up to
+# whole restart periods so RESTART_STEP keeps firing (overshoot below one period).
+_rq_dir="/scratch/test/"$folder""; _rq_in="$_rq_dir/input.cgyro"; _rq_job="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-none}}_${SLURM_ARRAY_TASK_ID:-0}"
+_rq_key() { awk -F= -v k="$1" '{g=$1; gsub(/[ \t]/,"",g)} g==k {v=$2; gsub(/[ \t]/,"",v); print v+0; exit}' "$_rq_in" 2>/dev/null; }
+_rq_mt=$(_rq_key MAX_TIME)
+if [ -n "$_rq_mt" ]; then
+    if [ "$(awk '{print $1}' "$_rq_dir/.mitim_t_end" 2>/dev/null)" = "$_rq_job" ]; then
+        _rq_end=$(awk '{print $2}' "$_rq_dir/.mitim_t_end")
+        _rq_new=$(awk -v te="$_rq_end" -v t0="${_t0:-0}" -v dt="$(_rq_key DELTA_T)" -v ps="$(_rq_key PRINT_STEP)" -v rs="$(_rq_key RESTART_STEP)" \
+            'BEGIN{r=te-t0; p=rs*ps*dt; if (p>0) {n=int(r/p); if (n*p < r-1e-9*p) n++; if (n<1) n=1; r=n*p} else if (r<=0) r=ps*dt; printf "%.10g\n", r}')
+        if [ "$_rq_new" != "$_rq_mt" ]; then
+            sed -i.mitim_bak "s/^\([ \t]*MAX_TIME[ \t]*=[ \t]*\).*/\1$_rq_new/" "$_rq_in" && rm -f "$_rq_in.mitim_bak"
+            echo "MITIM: requeued at t=${_t0:-0}, run ends at t=$_rq_end: MAX_TIME $_rq_mt -> $_rq_new" >&2
+        fi
+    else
+        awk -v j="$_rq_job" -v a="${_t0:-0}" -v b="$_rq_mt" 'BEGIN{printf "%s %.10g\n", j, a+b}' > "$_rq_dir/.mitim_t_end"
+    fi
+fi
+# A continuation in place (out.cgyro.tag present: MITIM's interrupted-run rescue or a SLURM requeue) resumes
+# at output i_current, line 1 of out.cgyro.tag, written right after that output's records. CGYRO rewinds its
+# ASCII files to i_current outputs, but the per-output binaries have been found holding the records written
+# after it (509 records against 501 rows of out.cgyro.time), which the reader cannot reshape. Cut each one to
+# i_current records before CGYRO starts, as its own rewind would. The record count of the binaries is the
+# row count of out.cgyro.time when it divides every one of them, else the count bin.cgyro.ky_flux holds for
+# the out.cgyro.grids sizes nearest that row count; when neither divides every binary, nothing is cut.
+# Warm starts from another evaluation stage no out.cgyro.tag and are left alone. Files never grow.
+_tr_dir="/scratch/test/"$folder""
+if [ -f "$_tr_dir/out.cgyro.tag" ]; then
+    _tr_k=$(sed -n 1p "$_tr_dir/out.cgyro.tag" 2>/dev/null | awk '{print int($1)}')
+    _tr_nt=$(awk 'NF' "$_tr_dir/out.cgyro.time" 2>/dev/null | wc -l | awk '{print $1+0}')
+    _tr_files=""
+    for _tr_f in ky_flux ky_cflux lky_flux_n lky_flux_e lky_flux_v kxky_n kxky_e kxky_v kxky_phi kxky_apar kxky_bpar freq hb phib aparb bparb; do
+        [ -s "$_tr_dir/bin.cgyro.$_tr_f" ] && _tr_files="$_tr_files $_tr_dir/bin.cgyro.$_tr_f"
+    done
+    _tr_size() { wc -c < "$1" | awk '{print $1+0}'; }
+    _tr_divides() { local f; for f in $_tr_files; do (( $(_tr_size "$f") % $1 == 0 )) || return 1; done; }
+    _tr_n=0
+    if [ -n "$_tr_files" ] && (( ${_tr_k:-0} > 0 && _tr_nt > 0 )); then
+        if _tr_divides "$_tr_nt"; then
+            _tr_n=$_tr_nt
+        elif [ -s "$_tr_dir/bin.cgyro.ky_flux" ] && [ -f "$_tr_dir/out.cgyro.grids" ]; then
+            # one ky_flux record: n_n x n_species x n_field values x 3 or 4 moments x 4 or 8 bytes
+            _tr_base=$(awk '{for (i=1; i<=NF; i++) {n++; if (n<=3) p = (n==1 ? $i : p*$i)}} END {print int(p)}' "$_tr_dir/out.cgyro.grids")
+            _tr_s=$(_tr_size "$_tr_dir/bin.cgyro.ky_flux"); _tr_best=-1
+            for _tr_r in $(( _tr_base*12 )) $(( _tr_base*16 )) $(( _tr_base*24 )) $(( _tr_base*32 )); do
+                (( _tr_r > 0 && _tr_s % _tr_r == 0 )) || continue
+                _tr_c=$(( _tr_s / _tr_r )); _tr_d=$(( _tr_c > _tr_nt ? _tr_c - _tr_nt : _tr_nt - _tr_c ))
+                if (( _tr_best < 0 || _tr_d < _tr_best )); then _tr_best=$_tr_d; _tr_n=$_tr_c; fi
+            done
+            (( _tr_n > 0 )) && ! _tr_divides "$_tr_n" && _tr_n=0
+        fi
+        if (( _tr_n > _tr_k )); then
+            for _tr_f in $_tr_files; do
+                _tr_keep=$(( $(_tr_size "$_tr_f") / _tr_n * _tr_k ))
+                truncate -s "$_tr_keep" "$_tr_f" 2>/dev/null || dd if=/dev/null of="$_tr_f" bs=1 seek="$_tr_keep" 2>/dev/null
+            done
+            echo "MITIM: continuing in place from output $_tr_k: binaries cut from $_tr_n to $_tr_k records" >&2
+        elif (( _tr_n == 0 )); then
+            echo "MITIM: continuing in place from output $_tr_k: record count of the binaries unknown, none cut" >&2
+        fi
+    fi
+fi
+_lb_dir="/scratch/test/"$folder""; _lb_budget=0; _lb_min=300; _lb_discard=1; _lb_guard=0; _lb_gt=0
+set -m 2>/dev/null
+# a stop request applies to this launch only (a leftover one would end it at the first restart write)
+rm -f "$_lb_dir/mitim_stop"
+(
+export OMP_NUM_THREADS=8
+export OMP_STACKSIZE=1G
+export OMPI_MCA_io=^ompio
+_npc=1; _k=$((MITIM_CALL-1)); _nh=${#MITIM_HOSTS[@]}; _sel=""
+for _j in $(seq 0 $((_npc-1))); do _h=${MITIM_HOSTS[$(( (_k*_npc+_j) % _nh ))]}; _sel="${_sel}${_sel:+,}${_h}"; done
+export MITIM_FOLDER="$folder"
+srun -N1 -n4 -c32 --gpus-per-node=4 --cpu-bind=none ${_sel:+-w $_sel} --overlap --export=ALL bash -c 'if [ "$SLURM_PROCID" != "0" ]; then exit 0; fi; export H=$(hostname); export SLURM_JOB_NODELIST=$H SLURM_NODELIST=$H SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 SLURM_TASKS_PER_NODE=4 SLURM_NTASKS=4 SLURM_NPROCS=4 SLURM_JOB_CPUS_PER_NODE=32; export OMP_NUM_THREADS=8 OMP_STACKSIZE=1G OMPI_MCA_io=^ompio; cgyro -e "$MITIM_FOLDER" -n 4 -nomp 8 -numa 4 -mpinuma 1 -p /scratch/test' 
+) & _lb_pid=$!
+_lb_t0=$(date +%s)
+# tag history for cgyro_restart_validate.sh: the last two valid out.cgyro.tag contents, newest first. A
+# restart write the filesystem dropped leaves a broken tag and the tag of bin.cgyro.restart.old in .mitim_tag_last
+_lb_tagl=$(cat "$_lb_dir/.mitim_tag_last" 2>/dev/null)
+_lb_mt() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
+_lb_tree() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do echo "$c"; _lb_tree "$c"; done; }
+# TERM the launch and wait until its whole process tree is gone: mpirun/prterun puts every rank in
+# its own process group, so the group kill alone returns while ranks still hold the node/GPUs
+_lb_kill() {
+    local pids="$_lb_pid $(_lb_tree $_lb_pid)" i
+    kill -TERM -- -$_lb_pid 2>/dev/null || pkill -TERM -P $_lb_pid
+    for i in $(seq 1 60); do kill -0 $pids 2>/dev/null || return 0; sleep 1; done
+    kill -KILL -- -$_lb_pid 2>/dev/null; kill -KILL $pids 2>/dev/null
+}
+while kill -0 $_lb_pid 2>/dev/null; do
+    for _lb_i in $(seq 1 20); do kill -0 $_lb_pid 2>/dev/null || break; sleep 1; done
+    if [ -f "$_lb_dir/out.cgyro.tag" ]; then
+        _lb_tag=$(<"$_lb_dir/out.cgyro.tag")
+        if [ "$_lb_tag" != "$_lb_tagl" ] && printf '%s\n' "$_lb_tag" | awk 'NR==1 {i = ($1 ~ /^[0-9]+$/ && $1+0 > 0)} NR==2 {t = ($1 ~ /^[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?$/)} END {exit !(i && t)}'; then
+            [ -f "$_lb_dir/.mitim_tag_last" ] && mv -f "$_lb_dir/.mitim_tag_last" "$_lb_dir/.mitim_tag_prev"
+            printf '%s\n' "$_lb_tag" > "$_lb_dir/.mitim_tag_last"; _lb_tagl=$_lb_tag
+        fi
+    fi
+    kill -0 $_lb_pid 2>/dev/null || break
+    # stop request: the wall budget (if any) is spent, or mitim_stop was dropped (scheduler, mitim_kill_cgyro)
+    _lb_stop=0; [ -f "$_lb_dir/mitim_stop" ] && _lb_stop=1
+    # cost guard (run.cost_guard): mitim_guard.py judges cost per a/cs and flux vs target at most every
+    # 2 min. Its STOP ends the launch at once, not at the next restart write (hours away on a radius
+    # this slow): CGYRO writes bin.cgyro.restart to a .part file and renames it, so the blob on disk is
+    # whole, only older than the end of the flux trace. No python3 or no verdict means no stop.
+    if (( _lb_stop == 0 && _lb_guard == 1 )) && (( $(date +%s) - _lb_gt >= 120 )) && [ -f "$_lb_dir/mitim_guard.json" ]; then
+        _lb_gt=$(date +%s)
+        # bounded: this loop is also what honors mitim_stop, a read hung on the filesystem must not freeze it
+        _lb_v=$($(command -v timeout >/dev/null 2>&1 && echo "timeout 60") python3 "$_lb_dir/mitim_guard.py" "$_lb_dir" 2>/dev/null)
+        echo "$(date '+%Y-%m-%d %H:%M:%S') ${_lb_v:-WAIT no verdict (python3 missing?)}" > "$_lb_dir/mitim_guard.status"
+        if [ "${_lb_v%% *}" = "STOP" ]; then
+            echo "GUARD ${_lb_v#STOP } elapsed=$(( $(date +%s) - _lb_t0 ))s" > "$_lb_dir/mitim_budget.tag"
+            _lb_kill
+            break
+        fi
+    fi
+    if (( _lb_stop == 0 )); then (( _lb_budget > 0 )) || continue; (( $(date +%s) - _lb_t0 < _lb_budget )) && continue; fi
+    _lb_t=$(tail -n1 "$_lb_dir/out.cgyro.time" 2>/dev/null | awk '{print $1+0}')
+    if ! awk -v t="${_lb_t:-0}" -v m="$_lb_min" 'BEGIN{exit !(t>=m)}'; then
+        (( _lb_stop == 0 )) && continue
+        # a main radius is never discarded (the evaluation needs it): stopped below min_time it is accepted like any stop
+        if (( _lb_discard == 1 )); then
+        echo "DISCARD t=${_lb_t:-0} min_time=$_lb_min elapsed=$(( $(date +%s) - _lb_t0 ))s" > "$_lb_dir/mitim_discard.tag"
+        _lb_kill
+        break
+        fi
+    fi
+    # past min_time: stop right after the next restart write (out.cgyro.tag is rewritten with
+    # every bin.cgyro.restart) so the blob a later iteration warm-starts from is whole
+    _lb_m0=$(_lb_mt "$_lb_dir/out.cgyro.tag")
+    while kill -0 $_lb_pid 2>/dev/null && [ "$(_lb_mt "$_lb_dir/out.cgyro.tag")" = "$_lb_m0" ]; do sleep 5; done
+    sleep 5
+    _lb_t=$(tail -n1 "$_lb_dir/out.cgyro.time" 2>/dev/null | awk '{print $1+0}')
+    echo "$([ $_lb_stop = 1 ] && echo STOP || echo BUDGET) t=$_lb_t elapsed=$(( $(date +%s) - _lb_t0 ))s budget=${_lb_budget}s min_time=$_lb_min" > "$_lb_dir/mitim_budget.tag"
+    _lb_kill
+    break
+done
+wait $_lb_pid 2>/dev/null; _lb_rc=$?
+# cost guard, abort branch: CGYRO ended on its own with the Cash-Karp abort (dt collapsed). When
+# mitim_guard.py --abort judges the radius over-driven (t >= floor_time, heat flux far above target)
+# the abort is accepted as a guard stop, so the radius counts as finished instead of failing again
+# on the next launch. Any other abort, or no verdict, stays the error it is.
+if (( _lb_guard == 1 )) && [ ! -f "$_lb_dir/mitim_budget.tag" ] && [ -f "$_lb_dir/mitim_guard.json" ] \
+    && grep -qs "^ERROR: (CGYRO) Cash-Carp step exceeded" "$_lb_dir/out.cgyro.info"; then
+    _lb_v=$($(command -v timeout >/dev/null 2>&1 && echo "timeout 60") python3 "$_lb_dir/mitim_guard.py" "$_lb_dir" --abort 2>/dev/null)
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ${_lb_v:-WAIT no verdict (python3 missing?)}" > "$_lb_dir/mitim_guard.status"
+    if [ "${_lb_v%% *}" = "STOP" ]; then
+        echo "GUARD ${_lb_v#STOP } reason=cash_karp_abort elapsed=$(( $(date +%s) - _lb_t0 ))s" > "$_lb_dir/mitim_budget.tag"
+    fi
+fi
+(exit $_lb_rc)
+_mitim_rc=$?
+if [ -f "/scratch/test/"$folder"/mitim_budget.tag" ]; then _mitim_rc=0; fi; if [ "$_mitim_rc" = 0 ] && ! grep -qs "^EXIT: (CGYRO)" "/scratch/test/"$folder"/out.cgyro.info" && [ ! -f "/scratch/test/"$folder"/mitim_budget.tag" ] && [ ! -f "/scratch/test/"$folder"/mitim_discard.tag" ]; then echo "MITIM: cgyro returned 0 but out.cgyro.info has no EXIT line; reporting rc=1" >&2; _mitim_rc=1; fi
+if [ -f "/scratch/test/"$folder"/bin.cgyro.restart" ] && [ -f "/scratch/test/"$folder"/.mitim_run_started" ] && [ ! "/scratch/test/"$folder"/bin.cgyro.restart" -nt "/scratch/test/"$folder"/.mitim_run_started" ]; then rm -f "/scratch/test/"$folder"/bin.cgyro.restart"; fi; rm -f "/scratch/test/"$folder"/.mitim_run_started"
+(exit $_mitim_rc)
+    } &
+    while (( $(jobs -rp | wc -l) >= max_parallel_execution )); do sleep 1; done
+done
+
+wait

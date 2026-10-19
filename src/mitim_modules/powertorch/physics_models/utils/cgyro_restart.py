@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
+from mitim_tools.simulation_tools.gk_control import markers
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 # Predicted channel -> GB flux key, shared by the powerstate targets and fluxes_turb.json
@@ -50,7 +51,7 @@ class RestartPlan:
         if not self.sources:
             return None
         out_dir = Path(folder) / base_subfolder
-        out_path = out_dir / "restart_sources.json"
+        out_path = out_dir / markers.RESTART_SOURCES
         payload = {
             "mode": self.mode,
             "evaluation_number": int(self.evaluation_number),
@@ -75,7 +76,7 @@ class RestartPlan:
         '''
         if not payload:
             return
-        out_path = Path(folder) / base_subfolder / "restart_sources.json"
+        out_path = Path(folder) / base_subfolder / markers.RESTART_SOURCES
         try:
             out_path.parent.mkdir(parents=True, exist_ok=True)
             with open(out_path, "w") as f:
