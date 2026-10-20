@@ -557,12 +557,19 @@ class minuet_beat(beat):
 
         self.profiles_output.derive_quantities()
 
-        # Source densities pass through per unit volume at the same rho, so their totals follow the new V(rho). Not
-        # rescaled to the frozen powers (hybrid mode: TRANSP's deposition is kept as TRANSP computed it)
+        # Source densities pass through per unit volume at the same rho, so their totals follow the new V(rho)
         p_frozen.derive_quantities()
         print('\t\t\t* Volume integrals, frozen state -> MINUET geometry: ' + ', '.join(
             f'{k} {np.atleast_1d(p_frozen.derived[k])[-1]:.2f} -> {np.atleast_1d(self.profiles_output.derived[k])[-1]:.2f} MW' for k in ('qRF_MW', 'qBEAM_MW', 'Pfus', 'Prad')
             if k in p_frozen.derived and k in self.profiles_output.derived))
+
+        # Auxiliary power is an engineering input: keep TRANSP's deposition shape but pin its integral to the frozen
+        # total, as the transp beat does. Otherwise the larger MINUET volume inflates it, MAESTROmain re-freezes the
+        # inflated total and the next transp beat sets its antenna power from it (a ratchet of ~+4 % per minuet beat)
+        print('\t\t\t* Rescaling auxiliary power to the frozen totals')
+        transp_beat._rescale_aux_to_frozen(self, p_frozen, 'qrfe(MW/m^3)',   'qrfi(MW/m^3)',   'qRF_MW')
+        transp_beat._rescale_aux_to_frozen(self, p_frozen, 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'qBEAM_MW')
+        self.profiles_output.derive_quantities()
 
         # Without a transp beat upstream nobody has applied plasma.species, and the fusion/radiation/exchange
         # columns are the initializer's zeros (portals_soft, which evolves only qie, would read them as they are).
