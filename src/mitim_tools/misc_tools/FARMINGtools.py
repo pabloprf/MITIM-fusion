@@ -66,6 +66,36 @@ New handling of jobs in remote or local clusters. Example use:
 SRUN_STEP_REFUSAL_WAITS = (60, 120, 240)
 SRUN_STEP_REFUSAL_PATTERNS = ("Unable to create step for job", "Job/step already completing or completed")
 
+# Fallback for jobs with srun_shim_on_refusal (local bash dispatch only): once a job has run past its --time-min,
+# Perlmutter refuses every new step for the rest of the job (two-job test, 2026-10-19), so waiting cannot help.
+# The dispatch is instead re-run once with this `srun` first on PATH (after the modules). It runs a 1-task launch
+# directly, which a Cray-MPICH binary accepts as an MPI singleton, and hands anything else to the real srun.
+SRUN_SHIM_FOLDER = "mitim_srun_shim"
+SRUN_SHIM_SCRIPT = r'''#!/usr/bin/env bash
+# Written by MITIM after SLURM refused job steps: 1-task launches run without srun.
+args=("$@")
+ntasks=1
+prog=()
+while (( $# )); do
+    case "$1" in
+        -n|--ntasks) ntasks=$2; shift 2 ;;
+        -n*) ntasks=${1#-n}; shift ;;
+        --ntasks=*) ntasks=${1#--ntasks=}; shift ;;
+        -c|-N|-t|-p|-A|-q|-C|-w|-x|-o|-e|-G|-J|--cpus-per-task|--nodes|--time|--partition|--account|--qos|--constraint|--nodelist|--exclude|--output|--error|--gpus|--job-name) shift 2 ;;
+        --) shift; prog=("$@"); break ;;
+        -*) shift ;;
+        *) prog=("$@"); break ;;
+    esac
+done
+if [[ "$ntasks" == "1" && ${#prog[@]} -gt 0 ]]; then
+    echo "MITIM srun shim: running '${prog[*]}' without srun (1 task)" >&2
+    exec "${prog[@]}"
+fi
+shim_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PATH=$(echo "$PATH" | tr ':' '\n' | grep -vxF "$shim_dir" | paste -sd: -)
+exec srun "${args[@]}"
+'''
+
 # Bounds on every paramiko call that can wait on the server [s]. Without them a link that stays up but stops
 # answering (seen from a laptop driver to Perlmutter, 2026-10-14) blocked open_sftp for 10-15 min, inside
 # paramiko's 1 h channel-open default, and the driver stopped polling. A timeout raises SSHException or
@@ -411,6 +441,9 @@ class mitim_job:
         # Optional {"cap": int, "fallback": str} (allocation qos_cap / fallback_qos): every sbatch of this job
         # goes to the fallback qos when the user's jobs in the configured one would pass the cap (qos_for_submission)
         self.qos_cap = None
+        # True for codes that may run without srun after a SLURM step refusal (SRUN_SHIM_SCRIPT; NEO sets it)
+        self.srun_shim_on_refusal = False
+        self._srun_shim_active = False
 
     # The five historical attribute names are views on the spec: external code
     # (SIMtools.load_submission_state, fetch_cgyro_intermediate) assigns them directly,
@@ -651,9 +684,10 @@ class mitim_job:
             command_str_mod += [command]
             
         # ****** Prepare SLURM job *****************************
-        comm, fileSBATCH, fileSHELL = create_slurm_execution_files(
-            command_str_mod,
-            self.folderExecution,
+        # kept so that _activate_srun_shim can rewrite the same files with one more line
+        self._execution_files_args = dict(
+            command=command_str_mod,
+            folderExecution=self.folderExecution,
             modules_remote=self.machineSettings["modules"],
             folder_local=self.folder_local,
             shellPreCommands=self.shellPreCommands,
@@ -664,6 +698,8 @@ class mitim_job:
             launchSlurm=self.launchSlurm,
             slurm_settings=self.slurm_settings,
         )
+        self._srun_shim_active = False
+        comm, fileSBATCH, fileSHELL = create_slurm_execution_files(**self._execution_files_args)
         # ******************************************************
 
         if fileSBATCH not in self.input_files:
@@ -937,11 +973,11 @@ class mitim_job:
 
             # ~~~~~~ Execute
             execution_counter = 0
-            refusal_reruns, refusals_seen = 0, 0
+            refusal_reruns, refusals_seen, shim_reruns = 0, 0, 0
             received, output, error = False, None, None
 
             # A re-run after a SLURM step refusal is not a spent attempt
-            while execution_counter < attempts_execution + refusal_reruns:
+            while execution_counter < attempts_execution + refusal_reruns + shim_reruns:
 
                 if execute_flag and self.scheduler is not None and self.ssh is None:
                     output, error = b"", b""
@@ -978,19 +1014,29 @@ class mitim_job:
                 execution_counter += 1
 
                 if received:
+                    if self._srun_shim_active:
+                        print("\t* The outputs of this dispatch come from a run WITHOUT srun (SLURM step-refusal fallback)", typeMsg="w")
                     break
 
                 refusals = srun_step_refusals(error)
                 refusals_seen += refusals
-                if refusals and refusal_reruns < len(SRUN_STEP_REFUSAL_WAITS):
+                if refusals and self._srun_shim_applies():
+                    shim_reruns += 1
+                    slurm_job_snapshot(self.folder_local, "step refusal, before re-run without srun")
+                    self._activate_srun_shim()
+                elif refusals and refusal_reruns < len(SRUN_STEP_REFUSAL_WAITS):
                     wait = SRUN_STEP_REFUSAL_WAITS[refusal_reruns]
                     refusal_reruns += 1
                     print(f"\t* SLURM refused {refusals} job step(s) ('{SRUN_STEP_REFUSAL_PATTERNS[0]}') and outputs are missing: "
                           f"re-running the same dispatch in {wait}s (step-refusal re-run {refusal_reruns}/{len(SRUN_STEP_REFUSAL_WAITS)})", typeMsg="w")
                     slurm_job_snapshot(self.folder_local, f"step refusal, before re-run {refusal_reruns}")
                     time.sleep(wait)
-                elif execution_counter < attempts_execution + refusal_reruns:
-                    print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter - refusal_reruns}/{attempts_execution})")
+                elif execution_counter < attempts_execution + refusal_reruns + shim_reruns:
+                    print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter - refusal_reruns - shim_reruns}/{attempts_execution})")
+
+            if self._srun_shim_active and self.run_in_place:
+                # in place the execution folder is the user's own folder, which keeps nothing of the fallback
+                shutil.rmtree(Path(self.folderExecution) / SRUN_SHIM_FOLDER, ignore_errors=True)
 
             # what the last execution printed: run() reads a refused sbatch from it
             self.last_dispatch_output, self.last_dispatch_error = output, error
@@ -1015,6 +1061,7 @@ class mitim_job:
                     if refusals_seen:
                         slurm_job_snapshot(self.folder_local, "step refusal, giving up")
                     refused = (f" SLURM refused {refusals_seen} job step(s) ('{SRUN_STEP_REFUSAL_PATTERNS[0]}') and "
+                               f"{'a re-run without srun and ' if shim_reruns else ''}"
                                f"{refusal_reruns} re-run(s) after waits of {SRUN_STEP_REFUSAL_WAITS[:refusal_reruns]}s did not help."
                                if refusals_seen else "")
                     raise MissingOutputsError(
@@ -1318,6 +1365,34 @@ class mitim_job:
         (self.folder_local / "mitim_send.tar.gz").unlink(missing_ok=True)
         print("\t\t- Removing tarball (remote side)")
         self.execute(f"rm {self.folderExecution}/mitim_send.tar.gz")
+
+    def _srun_shim_applies(self):
+        '''The no-srun fallback: opted-in code, a local bash dispatch (the refused srun ran inside this allocation), once.'''
+        return (self.srun_shim_on_refusal and not self._srun_shim_active and self.ssh is None
+                and not self.launchSlurm and self.scheduler is None and hasattr(self, "_execution_files_args"))
+
+    def _activate_srun_shim(self):
+        '''
+        Write SRUN_SHIM_SCRIPT into the execution folder and rewrite the execution files with that folder first
+        on PATH, right after the `cd` that follows the modules, so the same `comm` re-runs without srun.
+        '''
+        shim_dir = Path(self.folderExecution) / SRUN_SHIM_FOLDER
+        shim_dir.mkdir(parents=True, exist_ok=True)
+        shim = shim_dir / "srun"
+        shim.write_text(SRUN_SHIM_SCRIPT)
+        shim.chmod(0o755)
+
+        args = dict(self._execution_files_args)
+        command = list(args.pop("command"))
+        command.insert(1, f'export PATH={shlex.quote(str(shim_dir))}:"$PATH"')
+        _, fileSBATCH, fileSHELL = create_slurm_execution_files(command, **args)
+        if not self.run_in_place:
+            for file in (fileSBATCH, fileSHELL):
+                shutil.copy2(file, Path(self.folderExecution) / file.name)
+
+        self._srun_shim_active = True
+        print(f"\t* SLURM refuses new job steps in this allocation (past its --time-min): re-running the dispatch "
+              f"WITHOUT srun (1-task launches run directly; shim in {shim_dir})", typeMsg="w")
 
     def execute(self, command_str, log_file=None, **kwargs):
 

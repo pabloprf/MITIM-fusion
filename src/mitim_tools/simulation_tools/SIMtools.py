@@ -1244,6 +1244,7 @@ class mitim_simulation:
         )
         self.simulation_job.scheduler = getattr(self, "_scheduler_to_attach", None)
         self._scheduler_to_attach = None
+        self.simulation_job.srun_shim_on_refusal = bool(self.run_specifications.get("srun_shim_on_refusal", False))
         # allocation qos_cap / fallback_qos: every sbatch of this submission (array, rescues, extras) checks the cap
         if settings.allocation.get("qos_cap") is not None:
             self.simulation_job.qos_cap = {"cap": int(settings.allocation["qos_cap"]), "fallback": settings.allocation["fallback_qos"]}
