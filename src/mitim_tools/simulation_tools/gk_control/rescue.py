@@ -160,26 +160,27 @@ class StallRescuer:
         return self.sim._resubmit_ledger
 
     def rescue(self, rows):
+        '''The folders continued in place this poll: their rows still read the timed-out element.'''
         if not self.array_index_by_folder or not self.per_folder_commands:
-            return   # not a slurm_array submission — single-task rescue does not apply
+            return set()   # not a slurm_array submission — single-task rescue does not apply
 
         candidates = self._candidates(rows)
         continuations = self._continuation_candidates(rows)
         if not (candidates or continuations):
-            return
+            return set()
         if candidates:
             print(f"\t- [auto-resubmit] {len(candidates)} stalled task(s) past the kill threshold; attempting rescue", typeMsg='w')
 
         if self.session is not None:
-            self._act(candidates, continuations)
+            continued = self._act(candidates, continuations)
         else:
             try:
                 self.job.connect()
             except Exception as e:
                 print(f"\t- [auto-resubmit] could not open SSH connection ({type(e).__name__}: {e}); skipping rescue this poll", typeMsg='w')
-                return
+                return set()
             try:
-                self._act(candidates, continuations)
+                continued = self._act(candidates, continuations)
             finally:
                 try:
                     self.job.close()
@@ -191,11 +192,13 @@ class StallRescuer:
                 self.sim._write_submission_metadata(getattr(self.sim, "_base_subfolder", None))
             except Exception as e:
                 print(f"\t- [auto-resubmit] metadata write failed ({type(e).__name__}: {e}); ledger held in-memory only", typeMsg='w')
+        return continued
 
     def _act(self, candidates, continuations):
         '''Continue the wall-hit radii first; a continued radius is no stall to rescue.'''
         continued = self._continue_all(continuations)
         self._rescue_all([(row, threshold) for row, threshold in candidates if row["folder"] not in continued])
+        return continued
 
     def _candidates(self, rows):
         '''(row, threshold) for every row stalled longer than its own kill threshold.'''
@@ -492,13 +495,16 @@ class StallRescuer:
 
 
 def _cgyro_handle_stalled_tasks(sim, rows, session=None):
-    '''Stall-rescue entry point for one poll's rows (see StallRescuer). No-op unless the user opted in.'''
+    '''
+    Stall-rescue entry point for one poll's rows (see StallRescuer). No-op unless the user opted in.
+    Returns the folders continued in place this poll.
+    '''
     settings = getattr(sim, "auto_resubmit_settings", None) or {}
     if not (settings.get("enabled", False) or settings.get("max_continuations_per_rho", 0)):
-        return
+        return set()
     if getattr(sim, "simulation_job", None) is None:
-        return
-    StallRescuer(sim, settings, session=session).rescue(rows)
+        return set()
+    return StallRescuer(sim, settings, session=session).rescue(rows)
 
 
 def _restart_output(token):

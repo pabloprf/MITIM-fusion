@@ -343,8 +343,8 @@ def cgyro_per_task_callback(sim):
         with job.session() as session:
             rows = cgyro_per_task_status(sim, session=session)
             if rows:
-                _cgyro_handle_stalled_tasks(sim, rows, session=session)
-                ArrayExtraPoints(sim, session=session).poll(rows)
+                continued = _cgyro_handle_stalled_tasks(sim, rows, session=session)
+                ArrayExtraPoints(sim, session=session).poll(rows, continued_now=continued)
             return rows
     except Exception as e:
         print(f"\t- [per-task status] poll over ssh failed ({type(e).__name__}: {e}); continuing", typeMsg='w')

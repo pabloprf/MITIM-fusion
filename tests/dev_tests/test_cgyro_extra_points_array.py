@@ -141,10 +141,10 @@ def scratch_with_finished_radius():
         shutil.rmtree(d, ignore_errors=True)
 
 
-def quiet_poll(sim, rows):
+def quiet_poll(sim, rows, continued_now=()):
     log = io.StringIO()
     with contextlib.redirect_stdout(log):
-        CGYROtools.ArrayExtraPoints(sim, session=sim.simulation_job).poll(rows)
+        CGYROtools.ArrayExtraPoints(sim, session=sim.simulation_job).poll(rows, continued_now=continued_now)
     return log.getvalue()
 
 
@@ -381,6 +381,24 @@ def test_radius_on_a_rescue_job_keeps_the_extras_running():
     print("PASS test_radius_on_a_rescue_job_keeps_the_extras_running")
 
 
+def test_radius_continued_in_place_this_poll_keeps_the_extras_running():
+    # G_pt06 Ev.11 (2026-10-21): the last main radius hit its wall, the rescuer continued it in the same
+    # poll, but its row still read TIMED_OUT and the extra was stopped
+    with scratch_with_finished_radius() as d:
+        sim = _launched(d)
+        write_running_extra(d, t=220)
+        sim.simulation_job.infoSLURM = {"STATE": "NOT FOUND"}
+        sim._resubmit_ledger[SLOW] = {"n_attempts": 0, "child_jobids": ["160"], "continuation_jobids": ["160"], "status": "active"}
+        rows = [row(FAST, "FINISHED", cost=10.0), row(SLOW, "TIMED_OUT", cost=40.0)]
+        quiet_poll(sim, rows, continued_now={SLOW})
+        assert not (d / EXTRA / "mitim_stop").exists()
+        assert sim._extra_ledger[FAST]["status"] == "RUNNING"
+        # the next poll sees the continuation running on its own
+        quiet_poll(sim, [row(FAST, "FINISHED", cost=10.0), row(SLOW, "RUNNING", cost=40.0, remaining=5000.0)])
+        assert not (d / EXTRA / "mitim_stop").exists()
+    print("PASS test_radius_continued_in_place_this_poll_keeps_the_extras_running")
+
+
 # ---------------------------------------------------------------------------
 # Fetch and re-attach
 # ---------------------------------------------------------------------------
@@ -479,6 +497,7 @@ if __name__ == "__main__":
     test_extra_that_ignores_the_stop_is_cancelled_after_the_grace()
     test_no_answer_from_slurm_keeps_the_extra_in_flight()
     test_radius_on_a_rescue_job_keeps_the_extras_running()
+    test_radius_continued_in_place_this_poll_keeps_the_extras_running()
     test_collect_adds_accepted_extras_to_the_retrieval()
     test_submission_record_carries_the_extras()
     test_plan_holds_one_stop_mode_body_per_radius()

@@ -280,11 +280,12 @@ class ArrayExtraPoints:
     # Every poll
     # ------------------------------------------------------------------
 
-    def poll(self, rows):
+    def poll(self, rows, continued_now=()):
+        '''`continued_now`: main folders the stall rescuer continued in place this poll, after `rows` were probed.'''
         if not (self.commands or self.ledger):
             return
         states = self._refresh()
-        if self._mains_over(rows):
+        if self._mains_over(rows, continued_now):
             continued = self._continued_mains(rows)
             if continued:
                 self._hand_over(continued)
@@ -327,11 +328,14 @@ class ArrayExtraPoints:
         self.dirty = True
         print(f"\t- [extra point] {entry['folder']} {why}: {'accepted' if accepted else 'discarded (it did not reach min_time)'}", typeMsg="i")
 
-    def _mains_over(self, rows):
+    def _mains_over(self, rows, continued_now=()):
         '''
         True when no main radius is integrating any more. A radius handed to a rescue job follows that
-        job (the array's own state says nothing about it) until the stall rescuer closes it.
+        job (the array's own state says nothing about it) until the stall rescuer closes it. A radius
+        continued in place this poll integrates again although its row still reads TIMED_OUT.
         '''
+        if set(continued_now) & {row["folder"] for row in rows}:
+            return False
         job_gone = SlurmState.from_token((getattr(self.job, "infoSLURM", None) or {}).get("STATE")) in _SLURM_JOB_GONE_STATES
         rescues = getattr(self.sim, "_resubmit_ledger", None) or {}
         for row in rows:
