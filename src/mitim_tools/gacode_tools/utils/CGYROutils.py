@@ -552,7 +552,10 @@ class CGYROoutput(SIMtools.GACODEoutput):
         binary, which floors that count from 4 to 3 and silently drops the exchange
         moment (Se). When the two disagree, read only the rows the binary holds:
         the private read directory gets a trimmed regular copy of out.cgyro.time in
-        place of its link (a bare run folder is never modified, only warned about).
+        place of its link (a bare run folder is never modified, only warned about),
+        and so does every other per-output binary that holds one record per row of
+        out.cgyro.time: bin.cgyro.freq kept 500 records against a ky_flux of 493
+        and pygacode could not reshape it (D_pt03 SR ev3, 2026-10-22).
         '''
         d = self.folder_read
         ftime, fflux, fgrid = d / "out.cgyro.time", d / "bin.cgyro.ky_flux", d / "out.cgyro.grids"
@@ -578,6 +581,25 @@ class CGYROoutput(SIMtools.GACODEoutput):
         print(f"\t- {msg}; reading the first {nt_eff} rows", typeMsg='w')
         ftime.unlink()
         np.savetxt(ftime, rows[:4 * nt_eff].reshape(nt_eff, 4), fmt='%.8E')
+        for name in self._PER_OUTPUT_BINARIES:
+            self._trim_binary(d / f"bin.cgyro.{name}", nt, nt_eff)
+
+    # The binaries CGYRO appends one record to at every output, besides ky_flux (as cgyro_inplace_truncate.sh)
+    _PER_OUTPUT_BINARIES = ("ky_cflux", "lky_flux_n", "lky_flux_e", "lky_flux_v", "kxky_n", "kxky_e", "kxky_v", "kxky_phi",
+                            "kxky_apar", "kxky_bpar", "freq", "hb", "phib", "aparb", "bparb")
+
+    @staticmethod
+    def _trim_binary(path, nt, nt_eff):
+        '''Replace the link `path` by a regular copy of its first nt_eff records, when it holds exactly nt of them.'''
+        if not path.exists():
+            return
+        size = path.stat().st_size
+        if size == 0 or size % nt != 0:
+            return
+        with open(path, "rb") as f:
+            head = f.read(size // nt * nt_eff)
+        path.unlink()
+        path.write_bytes(head)
 
     def read_using_cgyroplot(self, folder, suffix):
 
