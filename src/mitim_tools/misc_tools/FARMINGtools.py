@@ -4,6 +4,7 @@ Set of tools to farm out simulations to run in either remote clusters or locally
 
 from tqdm import tqdm
 import os
+import errno
 import re
 import shlex
 import shutil
@@ -96,6 +97,21 @@ shim_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PATH=$(echo "$PATH" | tr ':' '\n' | grep -vxF "$shim_dir" | paste -sd: -)
 exec srun "${args[@]}"
 '''
+
+# A shared file system can refuse a read or write for a moment (EBUSY on mitim_receive.tar.gz, /orcd/pool at 92%,
+# 2026-10-22). _pull_outputs redoes the tar/download/extract after each of these waits (seconds) before it falls
+# back to the disk-full prompt, which kills a batch driver.
+TRANSIENT_FS_ERRNOS = (errno.EBUSY, errno.EAGAIN, errno.ESTALE, errno.EINTR)
+TRANSIENT_FS_RETRY_WAITS = (30, 60, 120, 240)
+
+
+def transient_fs_errno(exc):
+    '''The errno of a transient file-system error anywhere in the exception chain (tarfile wraps it in ReadError), or None.'''
+    while exc is not None:
+        if isinstance(exc, OSError) and exc.errno in TRANSIENT_FS_ERRNOS:
+            return exc.errno
+        exc = exc.__cause__ or exc.__context__
+    return None
 
 # Bounds on every paramiko call that can wait on the server [s]. Without them a link that stays up but stops
 # answering (seen from a laptop driver to Perlmutter, 2026-10-14) blocked open_sftp for 10-15 min, inside
@@ -1736,6 +1752,7 @@ class mitim_job:
         # transient remote issue) and resume the same retrieval without
         # losing the BO process. Answering 'n' re-raises the original
         # exception so the caller sees the real failure.
+        fs_retries = 0
         while True:
             try:
                 self.execute(
@@ -1795,6 +1812,15 @@ class mitim_job:
                     # Network error that already survived the retry policy: it is not a full
                     # disk, and the prompt below would misdiagnose it
                     raise
+                fs_errno = transient_fs_errno(_retrieve_exc)
+                if fs_errno is not None and fs_retries < len(TRANSIENT_FS_RETRY_WAITS):
+                    wait = TRANSIENT_FS_RETRY_WAITS[fs_retries]
+                    fs_retries += 1
+                    print(f"\t* Transient file-system error ({errno.errorcode.get(fs_errno, fs_errno)}: {_retrieve_exc}); "
+                          f"redoing the tar/download/extract in {wait}s (retry {fs_retries}/{len(TRANSIENT_FS_RETRY_WAITS)})", typeMsg='w')
+                    (self.folder_local / "mitim_receive.tar.gz").unlink(missing_ok=True)
+                    time.sleep(wait)
+                    continue
                 msg = (
                     f"Remote tar/download/extract failed "
                     f"({type(_retrieve_exc).__name__}: {_retrieve_exc}). "
