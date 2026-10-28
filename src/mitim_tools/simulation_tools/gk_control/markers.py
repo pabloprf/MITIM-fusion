@@ -8,6 +8,7 @@ tests/dev_tests/test_gk_control_markers.py checks that they match.
 # Stops and their outcome
 BUDGET_TAG = "mitim_budget.tag"          # watchdog stopped the radius on purpose: it counts as finished
 DISCARD_TAG = "mitim_discard.tag"        # an extra case stopped below min_time: thrown away
+ABORT_TAG = "mitim_abort.tag"            # Cash-Karp abort the guard did not accept: the radius is held, never continued as is
 STOP_REQUEST = "mitim_stop"              # dropped by the scheduler or mitim_kill_cgyro: stop at the next restart write
 GUARD_TOKEN = "GUARD"                    # first word of a BUDGET_TAG written by the cost guard
 

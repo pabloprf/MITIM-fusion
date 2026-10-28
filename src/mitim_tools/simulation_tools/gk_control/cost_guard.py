@@ -41,6 +41,9 @@ class CostGuard:
         # Cash-Karp abort accepted as a guard stop (cgyro_guard.abort_verdict); null ratio = flux_ratio
         self.thresholds["accept_abort"] = bool(options.get("accept_abort", True))
         self.thresholds["abort_flux_ratio"] = float(options.get("abort_flux_ratio") or self.thresholds["flux_ratio"])
+        # an abort before this time is not judged; null = no floor
+        floor = options.get("abort_floor_time")
+        self.thresholds["abort_floor_time"] = None if floor is None else float(floor)
         self.std_floor = float(options.get("std_floor") or 0.0)
         self.targets_GB = options.get("targets_GB") or {}
         if self.enabled and not self.targets_GB:

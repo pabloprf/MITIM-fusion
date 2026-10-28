@@ -676,10 +676,13 @@ transport:
         # is not available in the batched multi-plasma dispatch.
         # accept_abort: a radius over-driven this far often dies before min_time with CGYRO's
         #   "Cash-Carp step exceeded max iteration count" (dt collapses). With accept_abort, a radius
-        #   that ends on that abort with t >= floor_time and Qe or Qi, averaged over the same
-        #   [max(floor_time, t/2), t], >= abort_flux_ratio x target (null = flux_ratio) is accepted as a guard
-        #   stop (tag "GUARD ... reason=cash_karp_abort"): no rescue, no new launch. An abort before
-        #   floor_time or close to target is a numerics problem and stays an error.
+        #   that ends on that abort with Qe or Qi, averaged over [max(abort_floor_time, t/2), t],
+        #   >= abort_flux_ratio x target (null = flux_ratio) is accepted as a guard stop (tag
+        #   "GUARD ... reason=cash_karp_abort"): no rescue, no new launch. abort_floor_time null = no
+        #   floor; an early abort then averages over the first nonlinear overshoot, so its ratio is
+        #   biased high (harmless far above target, not near abort_flux_ratio). An abort that is not
+        #   accepted stays an error and leaves mitim_abort.tag: rescue_interrupted then stops the run
+        #   instead of continuing that radius with the same numerics.
         # std_floor: for every guard-stopped radius (abort or not), each turbulent flux std is raised
         #   to at least std_floor x |flux| (1 sigma, fraction of the flux itself), so the surrogates
         #   treat the point as direction-only. Simple relax uses the mean and is unaffected.
@@ -695,6 +698,7 @@ transport:
           rising_tolerance: 0.1
           accept_abort: true
           abort_flux_ratio: null
+          abort_floor_time: null
           std_floor: 0.5
 
       read:

@@ -44,7 +44,9 @@ DESCRIPTION
     ratio is averaged over `[max(floor_time, t/2), t]`, so a single burst cannot trigger a stop, and a flux
     still rising over that stretch is left to run (`rising_tolerance`); `seconds_per_acs` can be given per
     machine class (`{gpu: 100, cpu: 1000}`, the default). A radius
-    that dies on CGYRO's Cash-Karp abort while over-driven is accepted the same way (`accept_abort`), and
+    that dies on CGYRO's Cash-Karp abort while over-driven is accepted the same way (`accept_abort`, averaged over
+    `[t/2, t]` with no floor unless `abort_floor_time` is set); a crash that is not accepted is held: the next link refuses
+    to continue it with the same input, and the chain's queued links go on hold (the error gives `scontrol release`). And
     every guard-stopped radius gets a flux std of at least `std_floor` x |flux| so the surrogates use it for
     its direction only. Thresholds and time gates are documented in `templates/namelist.portals.yaml`;
     needs `python3` on the compute node.
@@ -380,7 +382,10 @@ DESCRIPTION
     NEO call of PORTALS-CGYRO chain links) is re-run after 60/120/240 s, with `scontrol show job`/`squeue -s` logged to
     `mitim_slurm_snapshot.txt` and the driver log; if outputs are still missing, a non-interactive run raises a clear
     `MissingOutputsError` instead of the "Not all expected files received" prompt, and the outer repeat no longer re-sends
-    output-only folders (the cause of `FileNotFoundError: input.neo`).
+    output-only folders (the cause of `FileNotFoundError: input.neo`). Once a job is past its `--time-min`, Perlmutter
+    refuses every new step for the rest of the job: the waits are then skipped, the error says so, and a job submitted with
+    `--time-min` is warned at its first dispatch. NEO instead re-runs at once without srun (a 1-task launch runs as an MPI
+    singleton, with identical outputs).
 
 *   🐛 **C-Mod TRANSP/MAESTRO paths import again off the PSFC workstations**: `CMODtools` imported `eqtools` from a hardcoded workstation path at module load, so the C-Mod branches of `NMLtools` (namelist structures, ICRF antennas), `TRANSPbeat` and `TRANSPhelpers` failed with `ModuleNotFoundError` anywhere else. The workstation-only retrieval (MDSplus trees, IDL, scrunch2) and its scripts are removed; `getTRANSP_MDS` now reads TRANSP runs through `CMODConnection`.
 

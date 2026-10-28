@@ -23,6 +23,7 @@ Exits non-zero on any assertion failure. Each test prints PASS on success.
 from __future__ import annotations
 
 import contextlib
+import os
 import hashlib
 import io
 import shutil
@@ -165,6 +166,87 @@ def test_rescue_keeps_finished_radii_without_relaunching():
     print("PASS: finished radius kept and not trimmed, interrupted one trimmed, stale finished one discarded")
 
 
+class HeldJob(FakeJob):
+    '''FakeJob that can also read the held markers back.'''
+    folderExecution, folder_local = Path("/scratch/run"), Path(tempfile.gettempdir())
+
+    @contextlib.contextmanager
+    def session(self, **kwargs):
+        yield
+
+    def execute(self, command):
+        self.executed = command
+        return b"base_cgyro/rho_0.8085: ABORT WAIT t=100 ratio=3.1x_QiGB reason=cash_karp_abort\n", b""
+
+
+def test_rescue_refuses_a_held_radius():
+    '''A Cash-Karp abort the guard did not accept (mitim_abort.tag) is not continued with the same input.'''
+    d = Path(tempfile.mkdtemp())
+    try:
+        rels = ["base_cgyro/rho_0.5435", "base_cgyro/rho_0.8085"]
+        folders = [d / r for r in rels]
+        for f in folders:
+            _write(f, input__cgyro=INPUT, bin__cgyro__restart="staged blob")
+        md5 = _md5(INPUT)
+        report = "out.cgyro.tag=26 mitim_abort.tag=60"
+        cases = {
+            "held": ({rels[0]: (md5, "4.25E+02", "out.cgyro.tag=26", False), rels[1]: (md5, "1.00E+02", report, False)}, True),
+            "other input": ({rels[1]: ("stale", "1.00E+02", report, False)}, False),
+            "accepted by hand": ({rels[1]: (md5, "1.00E+02", report, True)}, False),
+        }
+        for name, (found, raises) in cases.items():
+            sim = types.SimpleNamespace(run_specifications=CGYROtools.CGYRO().run_specifications, simulation_job=HeldJob(found))
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    SIMtools.mitim_simulation._rescue_interrupted_runs(sim, {"rescue_interrupted": True}, folders, rels, "input.cgyro")
+                assert not raises, name
+            except RuntimeError as e:
+                assert raises, (name, e)
+                msg = str(e)
+                assert "base_cgyro/rho_0.8085 (resume t=1.00E+02): ABORT WAIT t=100 ratio=3.1x_QiGB" in msg, msg
+                assert "rho_0.5435" not in msg and "mitim_budget.tag" in msg, msg
+                # nothing staged was touched before stopping
+                assert all((f / "bin.cgyro.restart").exists() for f in folders)
+            for f in folders:
+                _write(f, input__cgyro=INPUT, bin__cgyro__restart="staged blob")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    print("PASS: held radius stops the run with its t and verdict; other input or a manual tag does not")
+
+
+def test_held_radius_holds_the_chain():
+    '''Inside a chain link, the queued links that depend on it are put on hold, so they do not run the chain out.'''
+    d = Path(tempfile.mkdtemp())
+    saved = {k: os.environ.get(k) for k in ("PATH", "SLURM_JOB_ID")}
+    try:
+        bin_dir = d / "slurm_bin"
+        bin_dir.mkdir()
+        # next link 601 waits on this job 600; 602 waits on 601 (held through it); 6000 is another chain
+        (bin_dir / "squeue").write_text("#!/usr/bin/env bash\nprintf '601 afterany:600(unfulfilled)\\n602 afterany:601(unfulfilled)\\n6000 afterany:6001(unfulfilled)\\n'\n")
+        (bin_dir / "scontrol").write_text(f"#!/usr/bin/env bash\necho \"$*\" >> {d / 'scontrol.log'}\n")
+        for f in bin_dir.iterdir():
+            f.chmod(0o755)
+        os.environ["PATH"], os.environ["SLURM_JOB_ID"] = f"{bin_dir}:{saved['PATH']}", "600"
+        rels = ["base_cgyro/rho_0.8085"]
+        folders = [d / r for r in rels]
+        _write(folders[0], input__cgyro=INPUT, bin__cgyro__restart="staged blob")
+        found = {rels[0]: (_md5(INPUT), "1.00E+02", "out.cgyro.tag=26 mitim_abort.tag=60", False)}
+        sim = types.SimpleNamespace(run_specifications=CGYROtools.CGYRO().run_specifications, simulation_job=HeldJob(found))
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                SIMtools.mitim_simulation._rescue_interrupted_runs(sim, {"rescue_interrupted": True}, folders, rels, "input.cgyro")
+            raise AssertionError("held radius should raise")
+        except RuntimeError as e:
+            msg = str(e)
+        assert (d / "scontrol.log").read_text() == "hold 601\n", (d / "scontrol.log").read_text()
+        assert "scontrol release 601" in msg, msg
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+        shutil.rmtree(d, ignore_errors=True)
+    print("PASS: held radius puts the chain's next link on hold and says how to release it")
+
+
 # ---------------------------------------------------------------------------
 # SIMtools._run: what is launched vs what is retrieved
 # ---------------------------------------------------------------------------
@@ -270,6 +352,8 @@ def test_stall_rescue_ignores_radii_outside_the_array():
 if __name__ == "__main__":
     test_probe_flags_finished_radii()
     test_rescue_keeps_finished_radii_without_relaunching()
+    test_rescue_refuses_a_held_radius()
+    test_held_radius_holds_the_chain()
     test_run_launches_only_unfinished()
     test_idle_slots_offered_for_scratch_finished_radii()
     test_stall_rescue_ignores_radii_outside_the_array()

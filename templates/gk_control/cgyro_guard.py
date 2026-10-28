@@ -9,8 +9,9 @@ radius). Standard library only, Python >= 3.6. It prints ONE line and never rais
     WAIT ...                                   anything else, including "cannot tell"
 
 With `--abort` (run once, after CGYRO ended on the Cash-Karp abort) it judges whether that abort
-belongs to an over-driven radius: STOP t=.. ratio=.. when t >= floor_time and Qe or Qi, averaged
-over the same [max(floor_time, t/2), t], is >= abort_flux_ratio x target; WAIT otherwise.
+belongs to an over-driven radius: STOP t=.. ratio=.. when Qe or Qi, averaged over [max(abort_floor_time, t/2), t],
+is >= abort_flux_ratio x target, and t >= abort_floor_time (null = no floor); WAIT otherwise. Without a floor an
+early abort averages over the first nonlinear overshoot, which runs above the saturated flux (high-biased ratio).
 
 Units and conventions (the same ones CGYROutils.CGYROoutput uses):
     t          [a/cs]   first column of out.cgyro.time
@@ -219,7 +220,8 @@ def abort_verdict(folder):
     '''
     The Cash-Karp abort of CGYRO's adaptive integrator (dt collapses until the step iteration limit)
     ends a radius driven far above its target. No cost clause: the cost of the last outputs only
-    measures the collapse. The flux is averaged over flux_outputs, as in verdict.
+    measures the collapse. The flux is averaged over [max(abort_floor_time, t/2), t] (flux_outputs);
+    abort_floor_time null (default) means no floor: an abort is judged whenever it happens.
     '''
     with open(os.path.join(folder, FILE)) as f:
         g = json.load(f)
@@ -230,10 +232,11 @@ def abort_verdict(folder):
     if not t:
         return "WAIT no output rows"
     t_now = t[-1]
-    if t_now < g["floor_time"]:
-        return "WAIT t={:g} abort before floor_time".format(t_now)
+    floor = float(g.get("abort_floor_time") or 0.0)
+    if t_now < floor:
+        return "WAIT t={:g} abort before abort_floor_time".format(t_now)
 
-    fluxes = heat_fluxes(folder, len(t), flux_outputs(t, g["floor_time"]))
+    fluxes = heat_fluxes(folder, len(t), flux_outputs(t, floor))
     ratios = {k: fluxes[k] / target for k, target in g["targets_GB"].items() if k in fluxes and target > 0.0}
     if not ratios:
         return "WAIT t={:g} no positive heat-flux target".format(t_now)

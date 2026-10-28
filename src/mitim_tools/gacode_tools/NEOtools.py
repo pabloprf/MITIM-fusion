@@ -47,6 +47,7 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
             'complete_variation': None,
             'default_cores': 1,  # Default cores to use in the simulation
             'output_class': NEOoutput,
+            'srun_shim_on_refusal': True,  # after a SLURM step refusal, 1-core NEO runs without srun (FARMINGtools.SRUN_SHIM_SCRIPT)
         }
         
         print("\n-----------------------------------------------------------------------------------------")
