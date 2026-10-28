@@ -4,6 +4,7 @@ Set of tools to farm out simulations to run in either remote clusters or locally
 
 from tqdm import tqdm
 import os
+import re
 import shlex
 import shutil
 import string
@@ -138,6 +139,38 @@ def srun_step_refusals(error):
         return 0
     return sum(any(p in line for p in SRUN_STEP_REFUSAL_PATTERNS)
                for line in error.decode("utf-8", errors="ignore").splitlines())
+
+
+def slurm_duration_seconds(token):
+    '''SLURM duration ("[D-]HH:MM:SS", or "MM:SS") in seconds; None when it cannot be parsed.'''
+    try:
+        days, _, clock = token.strip().rpartition("-")
+        seconds = 0
+        for part in clock.split(":"):
+            seconds = 60 * seconds + int(part)
+        return seconds + 86400 * int(days or 0)
+    except ValueError:
+        return None
+
+
+def hold_dependent_jobs():
+    '''
+    Inside a SLURM job: put on hold the user's pending jobs whose dependency names this job (the next links
+    of a chain), so they do not start, fail the same way and run the chain out. Returns the held job ids.
+    '''
+    job_id = os.environ.get("SLURM_JOB_ID")
+    if not job_id:
+        return []
+    try:
+        res = subprocess.run(["squeue", "-h", "-u", os.environ.get("USER", ""), "-t", "PD", "-o", "%i %E"],
+                             capture_output=True, text=True, timeout=60)
+        dependents = [line.split()[0] for line in res.stdout.splitlines()
+                      if len(line.split()) > 1 and re.search(rf"(?<![0-9]){job_id}(?![0-9])", line.split(None, 1)[1])]
+        if dependents and subprocess.run(["scontrol", "hold", ",".join(dependents)], capture_output=True, text=True, timeout=60).returncode:
+            return []
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    return dependents
 
 
 class MissingOutputsError(LOGtools.InteractiveTerminalError):

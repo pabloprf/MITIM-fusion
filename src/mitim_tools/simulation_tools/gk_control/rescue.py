@@ -9,23 +9,11 @@ import datetime
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from mitim_tools.misc_tools.FARMINGtools import SlurmState
+from mitim_tools.misc_tools.FARMINGtools import SlurmState, hold_dependent_jobs, slurm_duration_seconds as _slurm_elapsed_seconds
 from mitim_tools.simulation_tools.gk_control import markers
 from mitim_tools.simulation_tools.gk_control.completion import CompletionSpec
 from mitim_tools.simulation_tools.gk_control.status import TaskState
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-
-
-def _slurm_elapsed_seconds(token):
-    '''sacct Elapsed ("[D-]HH:MM:SS", or "MM:SS") in seconds; None when it cannot be parsed.'''
-    try:
-        days, _, clock = token.strip().rpartition("-")
-        seconds = 0
-        for part in clock.split(":"):
-            seconds = 60 * seconds + int(part)
-        return seconds + 86400 * int(days or 0)
-    except ValueError:
-        return None
 
 
 def _slurm_state_for_target(job, target):
@@ -501,6 +489,25 @@ def _cgyro_handle_stalled_tasks(sim, rows, session=None):
     StallRescuer(sim, settings, session=session).rescue(rows)
 
 
+def _raise_held(sim, held, found, held_marker):
+    '''Stop before staging anything: each held radius, the time it would resume from and what its marker says.'''
+    job = sim.simulation_job
+    with job.session(log_file=job.folder_local / "paramiko.log"):
+        output, _ = job.execute("; ".join(f'echo "{rel}: $(head -n 1 {job.folderExecution}/{rel}/{held_marker})"' for rel in held))
+    tags = dict(line.split(": ", 1) for line in (output or b"").decode("utf-8", errors="ignore").splitlines() if ": " in line)
+    lines = [f"{rel} (resume t={found[rel][1]}): {tags.get(rel, '?')}" for rel in held]
+    # a chain's next links would start, raise here too and run the chain out: hold them until the radius is dealt with
+    on_hold = hold_dependent_jobs()
+    chain = (f"\nPut on hold the queued jobs that depend on this one ({', '.join(on_hold)}); once the radius is dealt "
+             f"with, continue the chain with: scontrol release {','.join(on_hold)}" if on_hold else "")
+    raise RuntimeError(
+        f"[MITIM] radii ended on an abort that continuing with the same input would repeat ({held_marker} in scratch "
+        f"{job.folderExecution}):\n\t" + "\n\t".join(lines) + "\nNot relaunched. Accept the flux so far with a manual "
+        f"{markers.BUDGET_TAG} (first line 'STOP t=<t> manual=<why>'), change the numerics of that radius, or delete its "
+        f"scratch folder to start it afresh.{chain}"
+    )
+
+
 def _restart_output(token):
     '''The output index a run resumes from (first token of out.cgyro.tag), or None unless a positive integer.'''
     token = str(token or "").strip()
@@ -587,7 +594,9 @@ def rescue_interrupted_runs(sim, kwargs_run, folders, folders_red, input_file):
             follow the trimmed run length (CGYRO: RESTART_STEP),
          "report_files": files whose sizes are logged for forensics (optional),
          "keep_staged": staged files a continued radius still receives (optional; CGYRO: the
-            cost-guard files, which a launch made before the guard existed left no copy of)}
+            cost-guard files, which a launch made before the guard existed left no copy of),
+         "held_marker": file a run leaves when continuing it with the same input would only fail
+            again (optional; CGYRO: mitim_abort.tag, a Cash-Karp abort the cost guard did not accept)}
     A rho sub-folder is rescued only if the required files are there and its
     input file is byte-identical (md5) to the one just generated, so a changed
     namelist, preset or gradient never continues a stale run. Rescued folders
@@ -609,6 +618,8 @@ def rescue_interrupted_runs(sim, kwargs_run, folders, folders_red, input_file):
     after some radii finished leaves them finished in scratch only. Such folders are kept
     across the wipe like the rescued ones and returned, so `_run` launches the others and
     retrieves them all.
+    An unfinished sub-folder holding `held_marker` with the same input stops the run with a
+    RuntimeError naming it, before anything is changed: continuing it would only fail again.
     Returns the scratch-relative folders that ended.
     '''
     spec = sim.run_specifications.get("rescue_spec")
@@ -623,10 +634,12 @@ def rescue_interrupted_runs(sim, kwargs_run, folders, folders_red, input_file):
     time_key = spec.get("time_key")
     ignore_prefixes = list(spec.get("checksum_ignore") or ([time_key] if time_key else []))
     completion = CompletionSpec.from_run_specifications(sim.run_specifications)
+    held_marker = spec.get("held_marker")
     found = sim.simulation_job.probe_interrupted_runs(
         folders_red, spec.get("required", []), input_file,
         progress_file=spec.get("progress_file"), progress_line=spec.get("progress_line"),
-        checksum_ignore_prefix=ignore_prefixes, report_files=spec.get("report_files"),
+        checksum_ignore_prefix=ignore_prefixes,
+        report_files=list(spec.get("report_files") or []) + ([held_marker] if held_marker else []),
         completion=None if completion is None else (completion.marker_file, completion.marker_text, completion.alt_file),
         progress_cmd=spec["progress_cmd"]("$d") if spec.get("progress_cmd") else None,
     )
@@ -640,15 +653,25 @@ def rescue_interrupted_runs(sim, kwargs_run, folders, folders_red, input_file):
             + ". Re-attach to it (check_existing_runs: true) or scancel those jobs before running it again"
         )
 
+    def same_input(folder_sim_this, md5_remote):
+        text = (folder_sim_this / input_file).read_text()
+        kept = "".join(l for l in text.splitlines(keepends=True) if not any(l.startswith(p) for p in ignore_prefixes))
+        return hashlib.md5(kept.encode()).hexdigest() == md5_remote
+
     import hashlib
+    held = [rel for folder_sim_this, rel in zip(folders, folders_red)
+            if held_marker and rel in found and not found[rel][3] and f"{held_marker}=" in found[rel][2]
+            and same_input(folder_sim_this, found[rel][0])]
+    if held:
+        _raise_held(sim, held, found, held_marker)
+
     rescued, finished = [], []
     for folder_sim_this, rel in zip(folders, folders_red):
         if rel not in found:
             continue
         md5_remote, progress, report, ended = found[rel]
         text = (folder_sim_this / input_file).read_text()
-        kept = "".join(l for l in text.splitlines(keepends=True) if not any(l.startswith(p) for p in ignore_prefixes))
-        if hashlib.md5(kept.encode()).hexdigest() != md5_remote:
+        if not same_input(folder_sim_this, md5_remote):
             print(f"\t- [rescue] {rel}: {'finished' if ended else 'interrupted'} run found but its {input_file} differs from the new one; discarding it", typeMsg="w")
             continue
         if ended:

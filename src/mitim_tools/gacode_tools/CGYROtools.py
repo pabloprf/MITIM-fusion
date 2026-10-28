@@ -333,6 +333,8 @@ class CGYRO(GKRunControl, SIMtools.mitim_simulation, SIMplot.GKplotting):
                             'report_files': ['out.cgyro.time', 'bin.cgyro.ky_flux', 'bin.cgyro.restart', 'out.cgyro.tag'],
                             # a radius continued in place is guarded like a fresh one
                             'keep_staged': [CostGuard.FILE, CostGuard.SCRIPT],
+                            # a Cash-Karp abort the guard did not accept would abort again from the same restart
+                            'held_marker': markers.ABORT_TAG,
                             # a tag or blob broken by a failed restart write is repaired at launch
                             # (cgyro_restart_validate.sh): read the time that repair resumes from
                             'progress_cmd': functools.partial(_watchdog.restart_validate, apply=False)},

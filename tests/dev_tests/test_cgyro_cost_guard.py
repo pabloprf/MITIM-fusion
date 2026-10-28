@@ -324,13 +324,15 @@ CASH_KARP = "ERROR: (CGYRO) Cash-Carp step exceeded max iteration count"
 
 
 def test_abort_rule():
-    '''An abort is a guard stop only past floor_time (50) and with Qe or Qi >= abort_flux_ratio x target
-    (null = flux_ratio, 5) over the second half of the trace; the cost does not enter.'''
+    '''An abort is a guard stop when Qe or Qi >= abort_flux_ratio x target (null = flux_ratio, 5) over the
+    second half of the trace, at any t unless abort_floor_time is set; the cost does not enter.'''
     root = Path(tempfile.mkdtemp())
     cases = [
         # name,                              kwargs,                                                   stops
         ("pt07: t=77, cheap at the end",     dict(nt=77, cost=10.0),                                   True),
-        ("abort before floor_time",          dict(nt=40),                                              False),
+        ("D_pt03: abort before floor_time",  dict(nt=40),                                              True),
+        ("abort before abort_floor_time",    dict(nt=40, options={"abort_floor_time": 50}),            False),
+        ("abort past abort_floor_time",      dict(nt=77, options={"abort_floor_time": 50}),            True),
         ("abort close to target",            dict(nt=77, qe=20.0, qi=20.0),                            False),
         ("accept_abort off",                 dict(nt=77, options={"accept_abort": False}),             False),
         ("abort_flux_ratio above the flux",  dict(nt=77, options={"abort_flux_ratio": 10}),            False),
@@ -371,11 +373,16 @@ def test_watchdog_accepts_abort():
             d = _fake_radius(root / name, nt=77, **kwargs)
             subprocess.run(["bash", "-c", f"cd {d}; " + _watchdog(d, abort, guard_on=guard_on)], timeout=60)
             assert not (d / "mitim_budget.tag").exists(), name
+            # not accepted: held for the next launch, with the guard's verdict; nothing when the guard is off
+            held = d / "mitim_abort.tag"
+            assert held.exists() == guard_on, name
+            if guard_on:
+                assert held.read_text().startswith("ABORT WAIT t=77 ratio=") and "reason=cash_karp_abort" in held.read_text(), held.read_text()
 
         # an abort that is not Cash-Karp is never judged
         d = _fake_radius(root / "other", nt=77)
         subprocess.run(["bash", "-c", f"cd {d}; " + _watchdog(d, "echo 'ERROR: (CGYRO) something else' >> out.cgyro.info")], timeout=60)
-        assert not (d / "mitim_budget.tag").exists()
+        assert not (d / "mitim_budget.tag").exists() and not (d / "mitim_abort.tag").exists()
     finally:
         shutil.rmtree(root, ignore_errors=True)
     print("PASS test_watchdog_accepts_abort")

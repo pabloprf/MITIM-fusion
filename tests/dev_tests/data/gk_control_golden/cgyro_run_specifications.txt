@@ -20,6 +20,7 @@
    "MAX_TIME",
    "RESTART_STEP"
   ],
+  "held_marker": "mitim_abort.tag",
   "keep_staged": [
    "mitim_guard.json",
    "mitim_guard.py"
