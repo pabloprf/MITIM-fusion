@@ -153,6 +153,47 @@ def slurm_duration_seconds(token):
         return None
 
 
+def slurm_time_min():
+    '''
+    Inside a SLURM job submitted with --time-min: (TimeMin, RunTime) as scontrol prints them; None otherwise.
+    Perlmutter refuses every new step once RunTime passes TimeMin (two-job test, 2026-10-19).
+    '''
+    job_id = os.environ.get("SLURM_JOB_ID")
+    if not job_id:
+        return None
+    try:
+        res = subprocess.run(["scontrol", "show", "job", "-o", job_id], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    fields = dict(tok.split("=", 1) for tok in res.stdout.split() if "=" in tok)
+    if slurm_duration_seconds(fields.get("TimeMin", "N/A")) is None:
+        return None
+    return fields["TimeMin"], fields.get("RunTime", "?")
+
+
+def slurm_past_time_min():
+    '''The (TimeMin, RunTime) of this job once it has run past its --time-min, else None.'''
+    time_min = slurm_time_min()
+    if time_min is None or (slurm_duration_seconds(time_min[1]) or 0) < slurm_duration_seconds(time_min[0]):
+        return None
+    return time_min
+
+
+_TIME_MIN_WARNED = False
+
+
+def warn_slurm_time_min():
+    '''Once per process: say that this job has a --time-min, after which SLURM refuses every new srun step.'''
+    global _TIME_MIN_WARNED
+    if _TIME_MIN_WARNED:
+        return
+    _TIME_MIN_WARNED = True
+    time_min = slurm_time_min()
+    if time_min is not None:
+        print(f"\t* This SLURM job ({os.environ['SLURM_JOB_ID']}) was submitted with --time-min (TimeMin={time_min[0]}): "
+              "on Perlmutter every new srun step after that mark is refused. Submit without --time-min.", typeMsg="w")
+
+
 def hold_dependent_jobs():
     '''
     Inside a SLURM job: put on hold the user's pending jobs whose dependency names this job (the next links
@@ -689,6 +730,8 @@ class mitim_job:
             so I just want to retrieve them. In that case, I do not remove the scratch folder going in, and I do not execute the commands.
         '''
 
+        warn_slurm_time_min()
+
         # Make run() idempotent w.r.t. the input file/folder lists. Below, fileSBATCH/
         # fileSHELL are appended and self.input_files/self.input_folders are rewritten to
         # paths relative to folder_local, in place. If run() is re-invoked on the same job
@@ -1007,6 +1050,7 @@ class mitim_job:
             # ~~~~~~ Execute
             execution_counter = 0
             refusal_reruns, refusals_seen, shim_reruns = 0, 0, 0
+            past_time_min = None  # (TimeMin, RunTime), read at the first refusal
             received, output, error = False, None, None
 
             # A re-run after a SLURM step refusal is not a spent attempt
@@ -1053,17 +1097,21 @@ class mitim_job:
 
                 refusals = srun_step_refusals(error)
                 refusals_seen += refusals
+                if refusals and refusals_seen == refusals:
+                    past_time_min = slurm_past_time_min()
                 if refusals and self._srun_shim_applies():
                     shim_reruns += 1
                     slurm_job_snapshot(self.folder_local, "step refusal, before re-run without srun")
                     self._activate_srun_shim()
-                elif refusals and refusal_reruns < len(SRUN_STEP_REFUSAL_WAITS):
+                elif refusals and past_time_min is None and refusal_reruns < len(SRUN_STEP_REFUSAL_WAITS):
                     wait = SRUN_STEP_REFUSAL_WAITS[refusal_reruns]
                     refusal_reruns += 1
                     print(f"\t* SLURM refused {refusals} job step(s) ('{SRUN_STEP_REFUSAL_PATTERNS[0]}') and outputs are missing: "
                           f"re-running the same dispatch in {wait}s (step-refusal re-run {refusal_reruns}/{len(SRUN_STEP_REFUSAL_WAITS)})", typeMsg="w")
                     slurm_job_snapshot(self.folder_local, f"step refusal, before re-run {refusal_reruns}")
                     time.sleep(wait)
+                elif refusals and past_time_min is not None:
+                    break  # refused for the rest of the job: neither waits nor the same dispatch again can help
                 elif execution_counter < attempts_execution + refusal_reruns + shim_reruns:
                     print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter - refusal_reruns - shim_reruns}/{attempts_execution})")
 
@@ -1097,6 +1145,9 @@ class mitim_job:
                                f"{'a re-run without srun and ' if shim_reruns else ''}"
                                f"{refusal_reruns} re-run(s) after waits of {SRUN_STEP_REFUSAL_WAITS[:refusal_reruns]}s did not help."
                                if refusals_seen else "")
+                    if past_time_min is not None:
+                        refused += (f" This job is past its --time-min (TimeMin={past_time_min[0]}, RunTime={past_time_min[1]}), "
+                                    "after which SLURM refuses every new step, so no timed re-run was tried: submit without --time-min.")
                     raise MissingOutputsError(
                         f"[MITIM] Dispatch in {self.folderExecution} did not return its expected outputs after "
                         f"{execution_counter} execution(s).{refused} Scratch folder kept; stdout/stderr in "

@@ -13,6 +13,8 @@ once with FARMINGtools.SRUN_SHIM_SCRIPT as `srun`, first on PATH after the modul
   wait, its outputs are kept, the driver log says the outputs come from a run WITHOUT srun, and the
   shim folder is removed from the user's folder.
 - A job that did not opt in keeps the timed re-runs and never writes the shim.
+- A job past its --time-min skips the timed re-runs (refused for good) and says so; a job with a
+  --time-min is warned at its first dispatch.
 
 Run as:
 
@@ -151,8 +153,42 @@ def test_job_without_opt_in_keeps_timed_reruns():
     print("PASS test_job_without_opt_in_keeps_timed_reruns")
 
 
+def _scontrol(folder, time_min, run_time):
+    '''A stand-in for scontrol show job: this job's TimeMin and RunTime.'''
+    folder.mkdir(parents=True, exist_ok=True)
+    return _bin(folder, "scontrol", f'echo "JobId=600 RunTime={run_time} TimeLimit=08:00:00 TimeMin={time_min}"').parent
+
+
+def test_past_time_min_skips_timed_reruns():
+    saved = {k: os.environ.get(k) for k in ("PATH", "SLURM_JOB_ID")}
+    try:
+        for time_min, run_time, past in (("02:00:00", "02:40:12", True), ("02:00:00", "00:30:00", False), ("N/A", "1-02:40:12", False)):
+            job, folder = _local_job(opt_in=False)
+            os.environ["PATH"] = f"{_scontrol(folder / 'ctl_bin', time_min, run_time)}:{saved['PATH']}"
+            os.environ["SLURM_JOB_ID"] = "600"
+            FARMINGtools._TIME_MIN_WARNED = False
+            with _harness() as (slept, log):
+                try:
+                    job.run(waitYN=True, attempts_execution=1)
+                    raise AssertionError("run should have raised")
+                except FARMINGtools.MissingOutputsError as e:
+                    msg = str(e)
+            out = log.getvalue()
+            assert ("submitted with --time-min" in out) == (time_min != "N/A"), out
+            if past:
+                assert slept == [] and f"past its --time-min (TimeMin={time_min}, RunTime={run_time})" in msg, (slept, msg)
+            else:
+                assert slept == list(FARMINGtools.SRUN_STEP_REFUSAL_WAITS) and "--time-min" not in msg, (slept, msg)
+            shutil.rmtree(folder)
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+    print("PASS test_past_time_min_skips_timed_reruns")
+
+
 if __name__ == "__main__":
     test_shim_routes_by_task_count()
     test_refused_dispatch_reruns_without_srun()
     test_job_without_opt_in_keeps_timed_reruns()
+    test_past_time_min_skips_timed_reruns()
     print("\nALL PASS")
